@@ -1,0 +1,32 @@
+# Reproducible builds: never copy host artifacts into the image.
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+**/.next
+out
+**/out
+.turbo
+**/.turbo
+*.tsbuildinfo
+
+# VCS / editor / OS
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+
+# Secrets & local env (compose injects env at runtime)
+.env
+.env.*
+!.env.example
+
+# Yarn install state (regenerated in-image)
+.yarn/install-state.gz
+
+# Logs / coverage / docs
+*.log
+coverage
+docs
