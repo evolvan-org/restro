@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Providers } from '@/components/providers';
+import AppProvider from '@/providers';
+import AppLayout from '@/components/AppLayout';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -12,7 +13,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <AppProvider>
+          <AppLayout>{children}</AppLayout>
+        </AppProvider>
       </body>
     </html>
   );

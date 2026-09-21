@@ -1,14 +1,14 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { getStatus } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { useStatus } from '@/services/api/requests/status';
+import { useShowSampleModal } from '@/store/hooks/modal';
+import { useShowSampleSidePane } from '@/store/hooks/sidepane';
 
 export default function HomePage() {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['status'],
-    queryFn: getStatus,
-    retry: 1,
-  });
+  const { data, isLoading, isError } = useStatus();
+  const showSampleModal = useShowSampleModal();
+  const showSampleSidePane = useShowSampleSidePane();
 
   const online = !isError && data?.status === 'online';
   const label = isLoading ? 'Checking server…' : online ? 'Server is online' : 'Server offline';
@@ -19,7 +19,7 @@ export default function HomePage() {
       : 'bg-destructive';
 
   return (
-    <main className="container flex min-h-screen flex-col items-center justify-center gap-6 py-16 text-center">
+    <main className="flex min-h-screen w-full flex-col items-center justify-center gap-6 py-16 text-center">
       <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
         Restaurant Management System
       </p>
@@ -36,6 +36,13 @@ export default function HomePage() {
           {data.service} · v{data.version}
         </p>
       ) : null}
+
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <Button variant="outline" onClick={showSampleModal}>
+          Open sample modal
+        </Button>
+        <Button onClick={showSampleSidePane}>Open sample side pane</Button>
+      </div>
     </main>
   );
 }
