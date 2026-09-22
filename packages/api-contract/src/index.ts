@@ -6,3 +6,4 @@
 
 export * from './common';
 export * from './status';
+export * from './auth';
