@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env.validation';
 import { StatusModule } from './status/status.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { StatusModule } from './status/status.module';
       validate: validateEnv,
     }),
     StatusModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

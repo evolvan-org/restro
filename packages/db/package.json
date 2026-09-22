@@ -16,6 +16,7 @@
     "generate": "prisma generate",
     "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "seed": "dotenv -e ../../.env -- ts-node prisma/seed.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "format": "prisma format",
     "validate": "dotenv -e ../../.env -- prisma validate",
@@ -23,11 +24,19 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0"
+    "@prisma/client": "^5.20.0",
+    "@rms/permissions": "workspace:*",
+    "bcrypt": "^6.0.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/node": "^20.16.10",
     "dotenv-cli": "^7.4.2",
     "prisma": "^5.20.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.6.2"
+  },
+  "prisma": {
+    "seed": "yarn seed"
   }
 }
