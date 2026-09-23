@@ -1,5 +1,5 @@
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body , HttpCode, HttpStatus, } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { type LoginResponse, type LoginRequest } from '@rms/api-contract';
@@ -11,6 +11,7 @@ export class AuthController {
     constructor(private readonly authService: AuthService) { }
 
     @Post('login')
+    @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Login user',
         description: 'Authenticates a user using their email and password.',
