@@ -2,6 +2,9 @@
 
 import { Fragment, type ReactNode } from 'react';
 
+import { api } from '@/lib/api';
+import useSetupAxios from '@/hooks/api/useSetupAxios';
+
 import ModalDialog from './ModalDialog';
 import SidePane from './SidePane';
 
@@ -11,6 +14,8 @@ import SidePane from './SidePane';
  * them via `useShowModal` / `useShowSidePane` without mounting them locally.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
+  useSetupAxios(api);
+
   return (
     <Fragment>
       {children}
