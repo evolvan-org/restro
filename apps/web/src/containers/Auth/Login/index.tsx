@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { LoginForm } from '@/components/login-form';
 import { useLogin } from '@/services/api/requests/auth';
 
-export default function LoginContainer() {
+export default function Login() {
   const router = useRouter();
   const login = useLogin();
   const form = useForm<LoginRequest>({
@@ -26,7 +26,6 @@ export default function LoginContainer() {
       },
     });
   });
-
 
   return (
     <LoginForm
