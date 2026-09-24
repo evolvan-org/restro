@@ -1,13 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Workspace packages ship compiled CommonJS `dist` and are consumed as normal
-  // dependencies (NOT in transpilePackages). Keep webpack from resolving the
-  // yarn workspace symlink to its real path under packages/ — otherwise Next
-  // treats the compiled dist as first-party source, applies the Fast Refresh
-  // transform, and injects `import.meta` into CommonJS (which fails to parse).
+  // Consume the @rms/* workspace packages as first-party TypeScript source so
+  // edits are picked up by Fast Refresh without a separate `yarn build`.
+  //   - transpilePackages: run each package through Next's compiler.
+  //   - conditionNames: prefer each package's `source` export condition
+  //     (./src/index.ts) over the compiled `dist`. `'...'` keeps Next's default
+  //     conditions as the fallback for everything else.
+  transpilePackages: ['@rms/api-contract', '@rms/db', '@rms/shared', '@rms/permissions'],
   webpack: (config) => {
-    config.resolve.symlinks = false;
+    config.resolve.conditionNames = ['source', '...'];
     return config;
   },
 };

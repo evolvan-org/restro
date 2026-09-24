@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
+  // Production build resolves @rms/* via node_modules -> compiled `dist`
+  // (the `source` paths are dev-only), so `nest build` emits just apps/api/src.
+  "compilerOptions": {
+    "paths": {}
+  },
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }
