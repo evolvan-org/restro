@@ -13,6 +13,9 @@ export class AuthService {
   ) {}
 
   async login(input: LoginRequest): Promise<LoginResponse> {
+    // TODO(restaurant epic): scope login by restaurantId — email is unique per-tenant
+    // (@@unique([restaurantId, email])), so findFirst must handle 0/1/many matches
+    // and the JWT should carry restaurantId + roleId once tenants exist.
     const user = await this.prisma.user.findFirst({
       where: {
         email: input.email,
@@ -41,15 +44,13 @@ export class AuthService {
     const accessToken = jwt.sign(
       { userId: user.id },
       this.config.getOrThrow<string>('JWT_SECRET'),
-      { expiresIn: '1h' },
+      { expiresIn: '1d' },
     );
 
     return {
       success: true,
       message: 'Login successful',
-      data: {
-        accessToken,
-      },
+      accessToken,
     };
   }
 }

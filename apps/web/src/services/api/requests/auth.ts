@@ -12,11 +12,10 @@ const useLogin = () => {
   return useMutation({
     mutationFn: async (loginRequest: LoginRequest): Promise<LoginResponse> => {
       const response = await api.post('/auth/login', loginRequest);
-
       return loginResponseSchema.parse(response.data);
     },
     onSuccess: (response) => {
-      dispatch(actions.login({ accessToken: response.data.accessToken }));
+      dispatch(actions.login({ accessToken: response.accessToken }));
     },
   });
 };

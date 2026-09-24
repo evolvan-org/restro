@@ -8,9 +8,7 @@ export const loginRequestSchema = z.object({
 export const loginResponseSchema = z.object({
     success: z.boolean(),
     message: z.string(),
-    data: z.object({
-        accessToken: z.string(),
-    }),
+    accessToken: z.string(),
 });
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
