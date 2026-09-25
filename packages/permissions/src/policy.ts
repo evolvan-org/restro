@@ -13,12 +13,14 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RESTAURANT_READ,
     Permission.RESTAURANT_WRITE,
   ],
+  // Owners (ADMIN) and managers manage staff accounts (REST-14); staff can't see other accounts.
   [Role.MANAGER]: [
     Permission.USER_READ,
+    Permission.USER_WRITE,
     Permission.RESTAURANT_READ,
     Permission.RESTAURANT_WRITE,
   ],
-  [Role.STAFF]: [Permission.USER_READ, Permission.RESTAURANT_READ],
+  [Role.STAFF]: [Permission.RESTAURANT_READ],
   [Role.CUSTOMER]: [],
 };
 

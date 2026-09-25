@@ -21,6 +21,7 @@
     "@nestjs/swagger": "^7.4.2",
     "@rms/api-contract": "workspace:*",
     "@rms/db": "workspace:*",
+    "@rms/permissions": "workspace:*",
     "@rms/shared": "workspace:*",
     "bcrypt": "^6.0.0",
     "jsonwebtoken": "^9.0.3",

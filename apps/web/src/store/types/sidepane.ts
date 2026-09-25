@@ -12,6 +12,7 @@ import { CaseReducer, PayloadAction } from '@reduxjs/toolkit';
 export enum SidePaneType {
   None,
   Sample,
+  StaffForm,
 }
 
 /**

@@ -11,6 +11,8 @@ import {
 } from '@nestjs/swagger';
 import {
   changePasswordRequestSchema,
+  changePasswordResponseSchema,
+  profileResponseSchema,
   updateProfileRequestSchema,
   type ChangePasswordRequest,
   type ChangePasswordResponse,
@@ -20,12 +22,7 @@ import {
 import { CurrentUserId } from '../common/auth/current-user-id.decorator';
 import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import {
-  ChangePasswordRequestDto,
-  ChangePasswordResponseDto,
-  ProfileResponseDto,
-  UpdateProfileRequestDto,
-} from './profile.dto';
+import { apiError, zodOpenApiSchema } from '../common/swagger/zod-openapi';
 import { ProfileService } from './profile.service';
 
 @ApiTags('profile')
@@ -37,19 +34,25 @@ export class ProfileController {
 
   @Get()
   @ApiOperation({ summary: 'View the authenticated user profile' })
-  @ApiOkResponse({ description: 'The authenticated user profile', type: ProfileResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Authentication failed or the account is inactive' })
+  @ApiOkResponse({
+    description: 'The authenticated user profile',
+    schema: zodOpenApiSchema(profileResponseSchema),
+  })
+  @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
   getProfile(@CurrentUserId() userId: string): Promise<ProfileResponse> {
     return this.profileService.getProfile(userId);
   }
 
   @Patch()
   @ApiOperation({ summary: 'Update the authenticated user profile' })
-  @ApiBody({ type: UpdateProfileRequestDto })
-  @ApiOkResponse({ description: 'The updated user profile', type: ProfileResponseDto })
-  @ApiBadRequestResponse({ description: 'The profile data is invalid' })
-  @ApiConflictResponse({ description: 'The email address is already in use' })
-  @ApiUnauthorizedResponse({ description: 'Authentication failed or the account is inactive' })
+  @ApiBody({ schema: zodOpenApiSchema(updateProfileRequestSchema) })
+  @ApiOkResponse({
+    description: 'The updated user profile',
+    schema: zodOpenApiSchema(profileResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('The profile data is invalid'))
+  @ApiConflictResponse(apiError('The email address is already in use'))
+  @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
   updateProfile(
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(updateProfileRequestSchema)) input: UpdateProfileRequest,
@@ -60,10 +63,13 @@ export class ProfileController {
   @Patch('password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change the authenticated user password' })
-  @ApiBody({ type: ChangePasswordRequestDto })
-  @ApiOkResponse({ description: 'The password was changed', type: ChangePasswordResponseDto })
-  @ApiBadRequestResponse({ description: 'The password data or current password is invalid' })
-  @ApiUnauthorizedResponse({ description: 'Authentication failed or the account is inactive' })
+  @ApiBody({ schema: zodOpenApiSchema(changePasswordRequestSchema) })
+  @ApiOkResponse({
+    description: 'The password was changed',
+    schema: zodOpenApiSchema(changePasswordResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('The password data or current password is invalid'))
+  @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
   changePassword(
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(changePasswordRequestSchema)) input: ChangePasswordRequest,

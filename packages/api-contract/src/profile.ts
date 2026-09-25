@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { userEmailSchema, userNameSchema, userPhoneSchema } from './user-fields';
 
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_BYTES = 72;
@@ -17,27 +18,9 @@ export const profileResponseSchema = z
 
 export const updateProfileRequestSchema = z
   .object({
-    name: z.string().trim().min(1, 'Name is required').max(255, 'Name is too long'),
-    email: z
-      .string()
-      .trim()
-      .toLowerCase()
-      .email('Enter a valid email address')
-      .max(255, 'Email address is too long'),
-    phone: z
-      .string()
-      .trim()
-      .max(30, 'Phone number must be 30 characters or fewer')
-      .regex(
-        /^\+?[0-9().\-\s]*$/,
-        'Phone number may only contain digits, spaces, +, -, parentheses, and periods',
-      )
-      .refine(
-        (value) => value.length === 0 || value.replace(/\D/g, '').length >= 10,
-        'Phone number must contain at least 10 digits',
-      )
-      .nullable()
-      .describe('Optional; when non-empty, must contain at least 10 digits'),
+    name: userNameSchema,
+    email: userEmailSchema,
+    phone: userPhoneSchema,
   })
   .strict();
 

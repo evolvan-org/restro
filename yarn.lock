@@ -2091,8 +2091,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@rms/api-contract@workspace:packages/api-contract"
   dependencies:
+    "@rms/shared": "workspace:*"
     typescript: "npm:^5.6.2"
-    zod: "npm:^3.23.8"
+    zod: "npm:^3.25.0"
   languageName: unknown
   linkType: soft
 
@@ -2109,6 +2110,7 @@ __metadata:
     "@nestjs/testing": "npm:^10.4.4"
     "@rms/api-contract": "workspace:*"
     "@rms/db": "workspace:*"
+    "@rms/permissions": "workspace:*"
     "@rms/shared": "workspace:*"
     "@types/bcrypt": "npm:^6.0.0"
     "@types/express": "npm:^4.17.21"
@@ -2121,12 +2123,13 @@ __metadata:
     eslint: "npm:^8.57.1"
     jest: "npm:^30.5.2"
     jsonwebtoken: "npm:^9.0.3"
+    nestjs-zod: "npm:^5.5.0"
     reflect-metadata: "npm:^0.2.2"
     rxjs: "npm:^7.8.1"
     ts-jest: "npm:^29.4.12"
     ts-node: "npm:^10.9.2"
     typescript: "npm:^5.6.2"
-    zod: "npm:^3.23.8"
+    zod: "npm:^3.25.0"
   languageName: unknown
   linkType: soft
 
@@ -2170,6 +2173,7 @@ __metadata:
     "@hookform/resolvers": "npm:^3.9.1"
     "@reduxjs/toolkit": "npm:^2.5.0"
     "@rms/api-contract": "workspace:*"
+    "@rms/permissions": "workspace:*"
     "@rms/shared": "workspace:*"
     "@tailwindcss/postcss": "npm:^4.1.0"
     "@tanstack/react-query": "npm:^5.59.0"
@@ -8534,6 +8538,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"nestjs-zod@npm:^5.5.0":
+  version: 5.5.0
+  resolution: "nestjs-zod@npm:5.5.0"
+  dependencies:
+    deepmerge: "npm:^4.3.1"
+  peerDependencies:
+    "@nestjs/common": ^10.0.0 || ^11.0.0
+    "@nestjs/swagger": ^7.4.2 || ^8.0.0 || ^11.0.0
+    rxjs: ^7.0.0
+    zod: ^3.25.0 || ^4.0.0
+  peerDependenciesMeta:
+    "@nestjs/swagger":
+      optional: true
+  checksum: 10c0/210b76bc6eafa7eb3463971b07954a37db9a63a9787d9bdd5a3efce11d4c771966b939276a90aa1a0d73391f612968af4d19a7e9424d98382a50bf518286544e
+  languageName: node
+  linkType: hard
+
 "next@npm:^15.1.0":
   version: 15.5.25
   resolution: "next@npm:15.5.25"
@@ -11684,7 +11705,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.23.8, zod@npm:^3.24.1":
+"zod@npm:^3.24.1, zod@npm:^3.25.0":
   version: 3.25.76
   resolution: "zod@npm:3.25.76"
   checksum: 10c0/5718ec35e3c40b600316c5b4c5e4976f7fee68151bc8f8d90ec18a469be9571f072e1bbaace10f1e85cf8892ea12d90821b200e980ab46916a6166a4260a983c

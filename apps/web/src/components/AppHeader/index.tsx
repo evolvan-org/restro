@@ -1,20 +1,29 @@
 'use client';
 
+import { Permission } from '@rms/permissions';
 import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactElement } from 'react';
 
 import { Button } from '@/components/ui/button';
+import usePermissions from '@/hooks/auth/usePermissions';
 import { useLogout } from '@/store/hooks/auth';
 
-const NAV_LINKS = [{ href: '/profile', label: 'Profile' }] as const;
+type NavLink = { href: string; label: string; permission?: Permission };
+
+const NAV_LINKS: readonly NavLink[] = [
+  { href: '/profile', label: 'Profile' },
+  { href: '/staff', label: 'Staff', permission: Permission.USER_READ },
+];
 
 /** Top navigation for signed-in pages. Log out removes the token and returns to the login page. */
 export default function AppHeader(): ReactElement {
   const router = useRouter();
   const pathname = usePathname();
   const logout = useLogout();
+  const { can } = usePermissions();
+  const visibleLinks = NAV_LINKS.filter((link) => !link.permission || can(link.permission));
 
   const handleLogout = (): void => {
     logout();
@@ -29,7 +38,7 @@ export default function AppHeader(): ReactElement {
             Restaurant Management System
           </Link>
           <nav aria-label="Main" className="flex items-center gap-4 text-sm">
-            {NAV_LINKS.map(({ href, label }) => (
+            {visibleLinks.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}
