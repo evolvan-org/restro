@@ -18,7 +18,7 @@ export class AuthService {
     // and the JWT should carry restaurantId + roleId once tenants exist.
     const user = await this.prisma.user.findFirst({
       where: {
-        email: input.email,
+        email: { equals: input.email, mode: 'insensitive' },
       },
       select: {
         passwordHash: true,
@@ -44,7 +44,7 @@ export class AuthService {
     const accessToken = jwt.sign(
       { userId: user.id },
       this.config.getOrThrow<string>('JWT_SECRET'),
-      { expiresIn: '1d' },
+      { expiresIn: '1d', algorithm: 'HS256' },
     );
 
     return {

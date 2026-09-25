@@ -20,8 +20,17 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Restaurant Management System API')
-    .setDescription('REST API for the Restaurant Management System')
     .setVersion('0.0.0')
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'Access token returned by POST /auth/login (valid for 24 hours).',
+    })
+    .addTag('status', 'Health check')
+    .addTag('authentication', 'Log in to get an access token')
+    .addTag('profile', "The signed-in user's own account: details and password")
+    .addTag('staff', "Manage the restaurant's staff accounts (owners and managers)")
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);

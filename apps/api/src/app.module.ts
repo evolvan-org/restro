@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env.validation';
 import { StatusModule } from './status/status.module';
 import { AuthModule } from './auth/auth.module';
+import { ProfileModule } from './profile/profile.module';
+import { StaffModule } from './staff/staff.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { AuthModule } from './auth/auth.module';
     }),
     StatusModule,
     AuthModule,
+    ProfileModule,
+    StaffModule,
   ],
 })
 export class AppModule {}

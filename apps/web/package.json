@@ -16,6 +16,7 @@
     "@hookform/resolvers": "^3.9.1",
     "@reduxjs/toolkit": "^2.5.0",
     "@rms/api-contract": "workspace:*",
+    "@rms/permissions": "workspace:*",
     "@rms/shared": "workspace:*",
     "@tanstack/react-query": "^5.59.0",
     "axios": "^1.7.9",
