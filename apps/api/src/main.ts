@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
@@ -22,9 +23,11 @@ async function bootstrap() {
     .setTitle('Restaurant Management System API')
     .setDescription('REST API for the Restaurant Management System')
     .setVersion('0.0.0')
+    .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  // Post-processes schemas emitted by nestjs-zod DTOs (see profile/profile.dto.ts).
+  SwaggerModule.setup('api/docs', app, cleanupOpenApiDoc(document));
 
   const port = config.get<number>('API_PORT') ?? 3000;
   await app.listen(port);
