@@ -10,7 +10,6 @@ import {
   type UpdateProfileRequest,
 } from '@rms/api-contract';
 import { KeyRound, ShieldCheck, UserRound } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
@@ -19,7 +18,6 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/c
 import { Input } from '@/components/ui/input';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useChangePassword, useProfile, useUpdateProfile } from '@/services/api/requests/profile';
-import { useAccessToken } from '@/store/hooks/auth';
 
 type Notice = { kind: 'success' | 'error'; message: string } | null;
 
@@ -43,9 +41,7 @@ function NoticeMessage({ notice }: { notice: Notice }): ReactElement | null {
   );
 }
 
-export default function Profile(): ReactElement | null {
-  const router = useRouter();
-  const accessToken = useAccessToken();
+export default function Profile(): ReactElement {
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
   const changePassword = useChangePassword();
@@ -68,12 +64,6 @@ export default function Profile(): ReactElement | null {
       newPassword: '',
     },
   });
-
-  useEffect(() => {
-    if (!accessToken) {
-      router.replace('/auth/login');
-    }
-  }, [accessToken, router]);
 
   useEffect(() => {
     if (profile.data) {
@@ -123,13 +113,9 @@ export default function Profile(): ReactElement | null {
     }
   });
 
-  if (!accessToken) {
-    return null;
-  }
-
   if (profile.isPending) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-12">
+      <main className="mx-auto flex max-w-6xl items-center justify-center px-6 py-24">
         <p className="text-sm text-muted-foreground">Loading your profile…</p>
       </main>
     );
@@ -137,7 +123,7 @@ export default function Profile(): ReactElement | null {
 
   if (profile.isError || !profile.data) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-12">
+      <main className="mx-auto flex max-w-6xl items-center justify-center px-6 py-24">
         <div className="space-y-4 text-center">
           <p role="alert" className="text-sm text-destructive">
             {getApiErrorMessage(profile.error, 'Unable to load your profile.')}
@@ -151,7 +137,7 @@ export default function Profile(): ReactElement | null {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 sm:py-14">
+    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
       <div className="mb-8 max-w-2xl">
         <p className="text-sm font-medium text-muted-foreground">Account settings</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Personal profile</h1>
