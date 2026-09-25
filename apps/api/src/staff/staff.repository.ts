@@ -126,13 +126,18 @@ export class StaffRepository {
     }
   }
 
-  async update(userId: string, data: StaffDetails): Promise<StaffRecord> {
+  async update(
+    restaurantId: string,
+    userId: string,
+    data: StaffDetails,
+  ): Promise<StaffRecord | null> {
     try {
-      return await this.prisma.user.update({
-        where: { id: userId },
+      // Tenant-scoped write: never touches a user outside this restaurant.
+      const { count } = await this.prisma.user.updateMany({
+        where: { id: userId, ...staffWhere(restaurantId) },
         data,
-        select: staffSelect,
       });
+      return count === 0 ? null : this.findById(restaurantId, userId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new StaffEmailConflictError();
@@ -141,12 +146,16 @@ export class StaffRepository {
     }
   }
 
-  updateStatus(userId: string, status: UserStatus): Promise<StaffRecord> {
-    return this.prisma.user.update({
-      where: { id: userId },
+  async updateStatus(
+    restaurantId: string,
+    userId: string,
+    status: UserStatus,
+  ): Promise<StaffRecord | null> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { id: userId, ...staffWhere(restaurantId) },
       data: { status },
-      select: staffSelect,
     });
+    return count === 0 ? null : this.findById(restaurantId, userId);
   }
 
   findRoles(restaurantId: string): Promise<RoleRecord[]> {

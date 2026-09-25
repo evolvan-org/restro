@@ -86,8 +86,11 @@ export class StaffService {
     }
 
     const updated = await this.mapEmailConflict(() =>
-      this.staffRepository.update(userId, toStaffDetails(input)),
+      this.staffRepository.update(actor.restaurantId, userId, toStaffDetails(input)),
     );
+    if (!updated) {
+      throw new NotFoundException('Staff account not found');
+    }
 
     return toStaffAccount(updated);
   }
@@ -106,7 +109,14 @@ export class StaffService {
       return toStaffAccount(existing);
     }
 
-    const updated = await this.staffRepository.updateStatus(userId, input.status);
+    const updated = await this.staffRepository.updateStatus(
+      actor.restaurantId,
+      userId,
+      input.status,
+    );
+    if (!updated) {
+      throw new NotFoundException('Staff account not found');
+    }
     return toStaffAccount(updated);
   }
 
@@ -142,7 +152,7 @@ export class StaffService {
   }
 
   /** Two concurrent requests can both pass the email check; the unique index decides. */
-  private async mapEmailConflict(write: () => Promise<StaffRecord>): Promise<StaffRecord> {
+  private async mapEmailConflict<T>(write: () => Promise<T>): Promise<T> {
     try {
       return await write();
     } catch (error) {
