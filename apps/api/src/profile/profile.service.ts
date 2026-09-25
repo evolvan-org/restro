@@ -11,7 +11,8 @@ import {
   type ProfileResponse,
   type UpdateProfileRequest,
 } from '@rms/api-contract';
-import { compare, getRounds, hash } from 'bcrypt';
+import { compare, hash } from 'bcrypt';
+import { BCRYPT_ROUNDS } from '../common/auth/password';
 import {
   ProfileEmailConflictError,
   ProfileRepository,
@@ -74,7 +75,7 @@ export class ProfileService {
       throw new BadRequestException('Current password is incorrect');
     }
 
-    const passwordHash = await hash(input.newPassword, getRounds(user.passwordHash));
+    const passwordHash = await hash(input.newPassword, BCRYPT_ROUNDS);
     await this.profileRepository.updatePasswordById(userId, passwordHash);
 
     return { message: 'Password updated successfully' };
