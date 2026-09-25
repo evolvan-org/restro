@@ -44,7 +44,7 @@ export class AuthService {
     const accessToken = jwt.sign(
       { userId: user.id },
       this.config.getOrThrow<string>('JWT_SECRET'),
-      { expiresIn: '1d' },
+      { expiresIn: '1d', algorithm: 'HS256' },
     );
 
     return {
