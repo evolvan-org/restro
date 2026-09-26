@@ -1,8 +1,15 @@
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 
 import store from '@/store';
 import { useLogout } from '@/store/hooks/auth';
+
+/** The API's standard error envelope (see the global HttpExceptionFilter). */
+type ApiErrorBody = { message?: string };
+
+const FORBIDDEN_FALLBACK = 'You do not have permission to perform this action';
+const SERVER_ERROR_MESSAGE = 'Something went wrong. Please try again.';
 
 /**
  * Registers interceptors on the shared axios instance. Mounted once from the
@@ -45,8 +52,16 @@ export default function useSetupAxios(instance: AxiosInstance) {
     const responseInterceptor = instance.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        if (error.response?.status === 401) {
+        const status = error.response?.status;
+
+        if (status === 401) {
           logoutRef.current();
+        } else if (status === 403) {
+          // Authorization denied on an action — surface the reason (AC4).
+          const message = (error.response?.data as ApiErrorBody | undefined)?.message;
+          toast.error(message ?? FORBIDDEN_FALLBACK);
+        } else if (status !== undefined && status >= 500) {
+          toast.error(SERVER_ERROR_MESSAGE);
         }
 
         return Promise.reject(error);

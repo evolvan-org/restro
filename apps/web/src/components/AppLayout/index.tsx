@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, type ReactNode } from 'react';
+import { Toaster } from 'sonner';
 
 import useSetupAxios from '@/hooks/api/useSetupAxios';
 import { api } from '@/lib/api';
@@ -21,6 +22,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {children}
       <SidePane />
       <ModalDialog />
+      <Toaster position="top-right" richColors closeButton />
     </Fragment>
   );
 }
