@@ -13,13 +13,15 @@ export const loginResponseSchema = z.object({
 
 export const registerRequestSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  restaurantName: z.string().trim().min(1).max(255),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8),
 });
 
 export const registerResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
+  accessToken: z.string(),
 });
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
