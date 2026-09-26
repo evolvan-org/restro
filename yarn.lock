@@ -2198,7 +2198,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@prisma/client@npm:^5.20.0":
+"@prisma/client@npm:5.22.0":
   version: 5.22.0
   resolution: "@prisma/client@npm:5.22.0"
   peerDependencies:
@@ -2329,7 +2329,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@rms/db@workspace:packages/db"
   dependencies:
-    "@prisma/client": "npm:^5.20.0"
+    "@prisma/client": "npm:5.22.0"
     "@rms/permissions": "workspace:*"
     "@types/bcrypt": "npm:^6.0.0"
     "@types/node": "npm:^20.16.10"

@@ -24,7 +24,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0",
+    "@prisma/client": "5.22.0",
     "@rms/permissions": "workspace:*",
     "bcrypt": "^6.0.0"
   },
