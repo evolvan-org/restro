@@ -2,61 +2,42 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type LoginRequest, type LoginResponse } from '@rms/api-contract';
 import { type RegisterRequest, type RegisterResponse } from '@rms/api-contract';
-import { compare, hash } from 'bcrypt';
+import { compare } from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 import { PrismaService } from '../common/database/prisma.service';
-
-const TEMP_RESTAURANT_NAME = 'Temporary Restaurant';
-const TEMP_ADMIN_ROLE_NAME = 'ADMIN';
+import { ProvisioningService } from '../provisioning/provisioning.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly provisioning: ProvisioningService,
   ) {}
 
   async register(input: RegisterRequest): Promise<RegisterResponse> {
-    // TODO(restaurant registration): replace this temporary default tenant/role
-    // once registration creates the real restaurant and seeds its roles.
-    const { restaurantId, roleId } = await this.getTemporaryRestaurantAndRoleIds();
-
-    const existingUser = await this.prisma.user.findUnique({
-      where: {
-        restaurantId_email: {
-          restaurantId,
-          email: input.email,
-        },
-      },
+    const { userId, restaurantId, roleId } = await this.provisioning.provisionOwner({
+      name: input.name,
+      restaurantName: input.restaurantName,
+      email: input.email,
+      password: input.password,
     });
 
-    if (existingUser) {
-      throw new UnauthorizedException('Email is already registered');
-    }
-
-    const passwordHash = await hash(input.password, 10);
-
-    await this.prisma.user.create({
-      data: {
-        email: input.email,
-        passwordHash,
-        name: input.name,
-        restaurantId,
-        roleId,
-      },
-    });
+    // Sign the owner in immediately so the client can enter the app without a
+    // separate login round-trip.
+    const accessToken = this.signAccessToken({ userId, restaurantId, roleId });
 
     return {
       success: true,
       message: 'User registered successfully',
+      accessToken,
     };
   }
 
   async login(input: LoginRequest): Promise<LoginResponse> {
-    // TODO(restaurant epic): scope login by restaurantId — email is unique per-tenant
-    // (@@unique([restaurantId, email])), so findFirst must handle 0/1/many matches
-    // and the JWT should carry restaurantId + roleId once tenants exist.
+    // Owner signup enforces email uniqueness globally (see ProvisioningService),
+    // so a case-insensitive lookup resolves to at most one user.
     const user = await this.prisma.user.findFirst({
       where: {
         email: { equals: input.email, mode: 'insensitive' },
@@ -84,11 +65,11 @@ export class AuthService {
       throw new UnauthorizedException('User account is not active');
     }
 
-    const accessToken = jwt.sign(
-      { userId: user.id, restaurantId: user.restaurantId, roleId: user.roleId },
-      this.config.getOrThrow<string>('JWT_SECRET'),
-      { expiresIn: '1d', algorithm: 'HS256' },
-    );
+    const accessToken = this.signAccessToken({
+      userId: user.id,
+      restaurantId: user.restaurantId,
+      roleId: user.roleId,
+    });
 
     return {
       success: true,
@@ -97,45 +78,14 @@ export class AuthService {
     };
   }
 
-  // TODO(restaurant registration): temporary bridge until restaurant signup and
-  // role seeding are implemented; remove when real tenant creation lands.
-  private async getTemporaryRestaurantAndRoleIds(): Promise<{
+  private signAccessToken(payload: {
+    userId: string;
     restaurantId: string;
     roleId: string;
-  }> {
-    const restaurant =
-      (await this.prisma.restaurant.findFirst({
-        where: { name: TEMP_RESTAURANT_NAME },
-        select: { id: true },
-      })) ??
-      (await this.prisma.restaurant.create({
-        data: { name: TEMP_RESTAURANT_NAME },
-        select: { id: true },
-      }));
-
-    const role =
-      (await this.prisma.role.findUnique({
-        where: {
-          restaurantId_name: {
-            restaurantId: restaurant.id,
-            name: TEMP_ADMIN_ROLE_NAME,
-          },
-        },
-        select: { id: true },
-      })) ??
-      (await this.prisma.role.create({
-        data: {
-          restaurantId: restaurant.id,
-          name: TEMP_ADMIN_ROLE_NAME,
-          description: 'Temporary default role for auth registration',
-          isSystem: true,
-        },
-        select: { id: true },
-      }));
-
-    return {
-      restaurantId: restaurant.id,
-      roleId: role.id,
-    };
+  }): string {
+    return jwt.sign(payload, this.config.getOrThrow<string>('JWT_SECRET'), {
+      expiresIn: '1d',
+      algorithm: 'HS256',
+    });
   }
 }

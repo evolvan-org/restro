@@ -26,12 +26,18 @@ const useLogin = () => {
   });
 };
 
-const useRegister = () =>
-  useMutation({
+const useRegister = () => {
+  const dispatch = useAppDispatch();
+
+  return useMutation({
     mutationFn: async (registerRequest: RegisterRequest): Promise<RegisterResponse> => {
       const response = await api.post('/auth/register', registerRequest);
       return registerResponseSchema.parse(response.data);
     },
+    onSuccess: (response) => {
+      dispatch(actions.login({ accessToken: response.accessToken }));
+    },
   });
+};
 
 export { useLogin, useRegister };

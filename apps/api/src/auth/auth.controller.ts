@@ -2,6 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
+  ApiConflictResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -29,8 +30,9 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({
-    summary: 'Register user',
-    description: 'Creates a new user account.',
+    summary: 'Register restaurant owner',
+    description:
+      'Provisions a new restaurant (tenant), seeds its system roles, and creates the signing-up user as the ADMIN owner — all atomically.',
   })
   @ApiBody({ schema: zodOpenApiSchema(registerRequestSchema) })
   @ApiOkResponse({
@@ -38,6 +40,7 @@ export class AuthController {
     schema: zodOpenApiSchema(registerResponseSchema),
   })
   @ApiBadRequestResponse(apiError('Missing or malformed registration details'))
+  @ApiConflictResponse(apiError('Email is already registered'))
   register(
     @Body(new ZodValidationPipe(registerRequestSchema)) body: RegisterRequest,
   ): Promise<RegisterResponse> {
