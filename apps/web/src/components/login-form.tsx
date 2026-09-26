@@ -1,11 +1,13 @@
 import type { LoginRequest } from '@rms/api-contract';
 import { cn } from 'cn';
+import Link from 'next/link';
 import type { UseFormRegister } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 
 export function LoginForm({
   className,
@@ -48,9 +50,8 @@ export function LoginForm({
                 <div className="flex items-center">
                   <FieldLabel htmlFor="password">Password</FieldLabel>
                 </div>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   aria-invalid={!!errors?.password}
                   {...register('password')}
                   required
@@ -63,6 +64,12 @@ export function LoginForm({
                   {isSubmitting ? 'Logging in...' : 'Login'}
                 </Button>
               </Field>
+              <FieldDescription className="text-center">
+                Don&apos;t have an account?{' '}
+                <Link href="/auth/register" className="underline underline-offset-4">
+                  Sign up
+                </Link>
+              </FieldDescription>
             </FieldGroup>
           </form>
         </CardContent>

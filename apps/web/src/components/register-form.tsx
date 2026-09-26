@@ -1,11 +1,16 @@
 import type { RegisterRequest } from '@rms/api-contract';
 import { cn } from 'cn';
+import Link from 'next/link';
 import type { UseFormRegister } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
+
+/** Register form values, including the FE-only confirm-password field. */
+export type RegisterFormValues = RegisterRequest & { confirmPassword: string };
 
 export function RegisterForm({
   className,
@@ -16,10 +21,10 @@ export function RegisterForm({
   submitError,
   ...props
 }: React.ComponentProps<'div'> & {
-  errors?: Partial<Record<keyof RegisterRequest, string>>;
+  errors?: Partial<Record<keyof RegisterFormValues, string>>;
   isSubmitting?: boolean;
   onSubmit: React.FormEventHandler<HTMLFormElement>;
-  register: UseFormRegister<RegisterRequest>;
+  register: UseFormRegister<RegisterFormValues>;
   submitError?: string;
 }) {
   return (
@@ -44,6 +49,18 @@ export function RegisterForm({
                 />
                 <FieldError>{errors?.name}</FieldError>
               </Field>
+              <Field data-invalid={!!errors?.restaurantName}>
+                <FieldLabel htmlFor="restaurantName">Restaurant name</FieldLabel>
+                <Input
+                  id="restaurantName"
+                  type="text"
+                  placeholder="Jane's Bistro"
+                  aria-invalid={!!errors?.restaurantName}
+                  {...register('restaurantName')}
+                  required
+                />
+                <FieldError>{errors?.restaurantName}</FieldError>
+              </Field>
               <Field data-invalid={!!errors?.email}>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -58,14 +75,23 @@ export function RegisterForm({
               </Field>
               <Field data-invalid={!!errors?.password}>
                 <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   aria-invalid={!!errors?.password}
                   {...register('password')}
                   required
                 />
                 <FieldError>{errors?.password}</FieldError>
+              </Field>
+              <Field data-invalid={!!errors?.confirmPassword}>
+                <FieldLabel htmlFor="confirmPassword">Confirm password</FieldLabel>
+                <PasswordInput
+                  id="confirmPassword"
+                  aria-invalid={!!errors?.confirmPassword}
+                  {...register('confirmPassword')}
+                  required
+                />
+                <FieldError>{errors?.confirmPassword}</FieldError>
               </Field>
               {submitError ? <FieldError>{submitError}</FieldError> : null}
               <Field>
@@ -73,6 +99,12 @@ export function RegisterForm({
                   {isSubmitting ? 'Creating account...' : 'Create account'}
                 </Button>
               </Field>
+              <FieldDescription className="text-center">
+                Already have an account?{' '}
+                <Link href="/auth/login" className="underline underline-offset-4">
+                  Login
+                </Link>
+              </FieldDescription>
             </FieldGroup>
           </form>
         </CardContent>
