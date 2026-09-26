@@ -24,16 +24,17 @@ services:
       POSTGRES_DB: rms
     ports:
       # Host 5433 -> container 5432 (5432 is often taken by another local pg).
-      - "5433:5432"
+      - '5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d rms"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d rms']
       interval: 5s
       timeout: 5s
       retries: 10
 
   api:
+    image: rms-api:local
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -50,9 +51,22 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       WEB_ORIGIN: http://localhost:3001
     ports:
-      - "3000:3000"
+      - '3000:3000'
+    healthcheck:
+      # slim image has no curl/wget; Node 20 has a global fetch().
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3000/status'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Grace for `prisma migrate deploy` + Nest boot before probes count.
+      start_period: 40s
 
   web:
+    image: rms-web:local
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -62,12 +76,24 @@ services:
         NEXT_PUBLIC_API_URL: http://localhost:3000
     restart: unless-stopped
     depends_on:
-      - api
+      # Wait until the API is actually serving, not just started.
+      api:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       WEB_PORT: 3001
     ports:
-      - "3001:3001"
+      - '3001:3001'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3001/'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   pgdata:
