@@ -2109,6 +2109,7 @@ __metadata:
     "@nestjs/testing": "npm:^10.4.4"
     "@rms/api-contract": "workspace:*"
     "@rms/db": "workspace:*"
+    "@rms/permissions": "workspace:*"
     "@rms/shared": "workspace:*"
     "@types/bcrypt": "npm:^6.0.0"
     "@types/express": "npm:^4.17.21"

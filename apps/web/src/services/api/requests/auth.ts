@@ -1,5 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
-import { loginResponseSchema, type LoginRequest, type LoginResponse } from '@rms/api-contract';
+import {
+  loginResponseSchema,
+  registerResponseSchema,
+  type LoginRequest,
+  type LoginResponse,
+  type RegisterRequest,
+  type RegisterResponse,
+} from '@rms/api-contract';
 
 import { api } from '@/lib/api';
 import { actions } from '@/store/slices/auth';
@@ -20,4 +27,14 @@ const useLogin = () => {
   });
 };
 
-export { useLogin };
+const useRegister = () =>
+  useMutation({
+    mutationFn: async (
+      registerRequest: RegisterRequest,
+    ): Promise<RegisterResponse> => {
+      const response = await api.post('/auth/register', registerRequest);
+      return registerResponseSchema.parse(response.data);
+    },
+  });
+
+export { useLogin, useRegister };
