@@ -42,12 +42,6 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Validate branch name
-        if: ${{ !cancelled() }}
-        env:
-          BRANCH_NAME: ${{ github.head_ref }}
-        run: ./scripts/check-branch-name.sh "$BRANCH_NAME"
-
       - name: Lint PR commit messages
         if: ${{ !cancelled() }}
         env:

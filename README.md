@@ -112,11 +112,11 @@ whether the server is online.
 
 Every PR to `main` runs GitHub Actions (`.github/workflows/ci.yml`) as a single **verify**
 job — install (immutable lockfile), lint, format check, typecheck, Prisma migration-drift,
-secret scan (gitleaks), and branch-name + commit-message conventions — followed by a gated
+secret scan (gitleaks), and commit-message conventions — followed by a gated
 **Docker smoke** job that builds both images and boots the full stack with
 `docker compose up --wait`.
 
-Locally, a **pre-push** hook (Husky) validates the branch name, commit messages,
+Locally, a **pre-push** hook (Husky) validates commit messages,
 formatting, and lint over the files and commits being pushed. Run `yarn install` once to
 enable it. See the [Development Guide](docs/01-development-guide.md) for details.
 
