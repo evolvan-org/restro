@@ -14,72 +14,13 @@ permissions:
   contents: read
 
 jobs:
-  # --- Fast tier: cheap checks that catch most failures in seconds ----------
-  install:
-    name: Install (lockfile guard)
+  # One job runs every static check after a single install + prisma generate.
+  # Steps use `if: !cancelled()` so a failure in one still reports the rest.
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup
-      - run: yarn lint
-
-  format:
-    name: Format (prettier --check)
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup
-      - run: yarn format:check
-
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup
-      - run: yarn typecheck
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    needs: install
     services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: rms
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d rms"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rms?schema=public
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup
-      - run: yarn test
-
-  prisma-check:
-    name: Prisma migration drift
-    runs-on: ubuntu-latest
-    needs: install
-    services:
-      # `migrate diff --from-migrations` replays migrations into a shadow DB.
+      # `prisma migrate diff --from-migrations` replays migrations into a shadow DB.
       postgres:
         image: postgres:16-alpine
         env:
@@ -95,10 +36,40 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Full history for commitlint (PR range) and the gitleaks scan.
+          fetch-depth: 0
+
       - uses: ./.github/actions/setup
-      # Exit code 2 => schema.prisma has changes not captured by a migration
-      # (i.e. someone edited the schema but forgot to create a migration).
-      - name: Assert schema matches committed migrations
+
+      - name: Validate branch name
+        if: ${{ !cancelled() }}
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+        run: ./scripts/check-branch-name.sh "$BRANCH_NAME"
+
+      - name: Lint PR commit messages
+        if: ${{ !cancelled() }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: yarn commitlint --from "$BASE_SHA" --to "$HEAD_SHA"
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: yarn lint
+
+      - name: Format check
+        if: ${{ !cancelled() }}
+        run: yarn format:check
+
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: yarn typecheck
+
+      - name: Prisma migration drift
+        if: ${{ !cancelled() }}
+        # Exit code 2 => schema.prisma has changes not captured by a migration.
         run: |
           yarn workspace @rms/db exec prisma migrate diff \
             --from-migrations prisma/migrations \
@@ -106,43 +77,18 @@ jobs:
             --shadow-database-url postgresql://postgres:postgres@localhost:5432/shadow?schema=public \
             --exit-code
 
-  gitleaks:
-    name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-      - name: Run gitleaks
+      - name: Secret scan (gitleaks)
+        if: ${{ !cancelled() }}
         run: |
           docker run --rm -v "$PWD:/repo" \
             ghcr.io/gitleaks/gitleaks:v8.30.1 \
             detect --source=/repo --config=/repo/.gitleaks.toml --redact --verbose
 
-  conventions:
-    name: Branch name & commit messages
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/setup
-      - name: Validate branch name
-        env:
-          BRANCH_NAME: ${{ github.head_ref }}
-        run: ./scripts/check-branch-name.sh "$BRANCH_NAME"
-      - name: Lint PR commit messages
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: yarn commitlint --from "$BASE_SHA" --to "$HEAD_SHA"
-
-  # --- Slow tier: full container boot, gated behind the fast checks ----------
+  # Slow tier: full container boot, gated behind the static checks.
   docker-smoke:
     name: Docker smoke (build + boot stack)
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    needs: verify
     env:
       # Boot-only throwaway; env validation requires it but it grants nothing.
       JWT_SECRET: ci-smoke-test-secret-not-used-for-anything

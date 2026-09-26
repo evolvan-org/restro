@@ -110,10 +110,11 @@ whether the server is online.
 
 ## Continuous Integration & Quality Gates
 
-Every PR to `main` runs GitHub Actions (`.github/workflows/ci.yml`): install (immutable
-lockfile), lint, format check, typecheck, tests, Prisma migration-drift, secret scan
-(gitleaks), and branch-name + commit-message conventions — then a gated **Docker smoke**
-job that builds both images and boots the full stack with `docker compose up --wait`.
+Every PR to `main` runs GitHub Actions (`.github/workflows/ci.yml`) as a single **verify**
+job — install (immutable lockfile), lint, format check, typecheck, Prisma migration-drift,
+secret scan (gitleaks), and branch-name + commit-message conventions — followed by a gated
+**Docker smoke** job that builds both images and boots the full stack with
+`docker compose up --wait`.
 
 Locally, a **pre-push** hook (Husky) validates the branch name, commit messages,
 formatting, and lint over the files and commits being pushed. Run `yarn install` once to

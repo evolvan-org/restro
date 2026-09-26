@@ -59,8 +59,8 @@ There is no per-commit hook. To bypass in an emergency, use `git push --no-verif
 
 Every PR to `main` runs `.github/workflows/ci.yml`:
 
-- **Fast checks:** install (immutable lockfile), lint, format check, typecheck, test (with a Postgres service), Prisma migration-drift, gitleaks secret scan, and branch-name + commitlint conventions.
-- **Docker smoke** (gated behind lint/typecheck/test): builds both images with layer caching and boots the full stack via `docker compose up --wait`, which also runs `prisma migrate deploy`.
+- **`verify`** (one job, all static checks): install (immutable lockfile), lint, format check, typecheck, Prisma migration-drift, gitleaks secret scan, and branch-name + commitlint conventions. Each check reports independently even if an earlier one fails.
+- **`docker-smoke`** (gated behind `verify`): builds both images with layer caching and boots the full stack via `docker compose up --wait`, which also runs `prisma migrate deploy`.
 
 CI running does not block a merge on its own — enable branch protection with required status checks on `main` to make failures blocking.
 
