@@ -15,16 +15,17 @@ import {
   type UpdateStaffRequest,
   type UpdateStaffStatusRequest,
 } from '@rms/api-contract';
-import { ROLE_PERMISSIONS, Role, isRole, roleHasAll } from '@rms/permissions';
+import { isRole, Role, ROLE_PERMISSIONS, roleHasAll } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 import { hash } from 'bcrypt';
+
 import type { Actor } from '../common/auth/authenticated-request';
 import { BCRYPT_ROUNDS, generateTemporaryPassword } from '../common/auth/password';
 import {
-  StaffEmailConflictError,
-  StaffRepository,
   type StaffDetails,
+  StaffEmailConflictError,
   type StaffRecord,
+  StaffRepository,
 } from './staff.repository';
 
 const EMAIL_IN_USE_MESSAGE = 'Email address is already in use';

@@ -2,8 +2,8 @@
 
 import { Fragment, type ReactNode } from 'react';
 
-import { api } from '@/lib/api';
 import useSetupAxios from '@/hooks/api/useSetupAxios';
+import { api } from '@/lib/api';
 
 import ModalDialog from './ModalDialog';
 import SidePane from './SidePane';

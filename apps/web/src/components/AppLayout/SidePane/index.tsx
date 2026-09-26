@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ComponentType } from 'react';
+import { type ComponentType, Fragment } from 'react';
 
 import SampleSidePane from '@/components/SidePanes/SampleSidePane';
 import StaffFormSidePane from '@/components/SidePanes/StaffFormSidePane';

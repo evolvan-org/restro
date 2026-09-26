@@ -10,15 +10,16 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
-  changePasswordRequestSchema,
-  changePasswordResponseSchema,
-  profileResponseSchema,
-  updateProfileRequestSchema,
   type ChangePasswordRequest,
+  changePasswordRequestSchema,
   type ChangePasswordResponse,
+  changePasswordResponseSchema,
   type ProfileResponse,
+  profileResponseSchema,
   type UpdateProfileRequest,
+  updateProfileRequestSchema,
 } from '@rms/api-contract';
+
 import { CurrentUserId } from '../common/auth/current-user-id.decorator';
 import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';

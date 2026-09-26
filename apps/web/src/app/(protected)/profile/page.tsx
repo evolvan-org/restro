@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+
 import Profile from '@/containers/Profile';
 
 export const metadata: Metadata = {

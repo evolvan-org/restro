@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { type LoginRequest, type LoginResponse } from '@rms/api-contract';
 import { compare } from 'bcrypt';
 import jwt from 'jsonwebtoken';
+
 import { PrismaService } from '../common/database/prisma.service';
 
 @Injectable()

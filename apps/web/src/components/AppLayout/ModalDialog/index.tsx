@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ComponentType } from 'react';
+import { type ComponentType, Fragment } from 'react';
 
 import SampleModal from '@/components/Modals/SampleModal';
 import StaffStatusModal from '@/components/Modals/StaffStatusModal';

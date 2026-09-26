@@ -1,4 +1,5 @@
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
+
 import type { Actor, AuthorizedRequest } from './authenticated-request';
 
 /** The caller loaded by `PermissionsGuard`; only available on routes that use it. */

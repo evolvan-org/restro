@@ -5,18 +5,19 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
-  profileResponseSchema,
   type ChangePasswordRequest,
   type ChangePasswordResponse,
   type ProfileResponse,
+  profileResponseSchema,
   type UpdateProfileRequest,
 } from '@rms/api-contract';
 import { compare, hash } from 'bcrypt';
+
 import { BCRYPT_ROUNDS } from '../common/auth/password';
 import {
   ProfileEmailConflictError,
-  ProfileRepository,
   type ProfileRecord,
+  ProfileRepository,
 } from './profile.repository';
 
 @Injectable()

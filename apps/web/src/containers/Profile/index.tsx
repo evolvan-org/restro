@@ -2,16 +2,17 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  type ChangePasswordRequest,
   changePasswordRequestSchema,
   PASSWORD_MAX_BYTES,
   PASSWORD_MIN_LENGTH,
-  updateProfileRequestSchema,
-  type ChangePasswordRequest,
   type UpdateProfileRequest,
+  updateProfileRequestSchema,
 } from '@rms/api-contract';
 import { KeyRound, ShieldCheck, UserRound } from 'lucide-react';
-import { useEffect, useState, type ReactElement } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';

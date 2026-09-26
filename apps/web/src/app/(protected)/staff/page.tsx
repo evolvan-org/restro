@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+
 import Staff from '@/containers/Staff';
 
 export const metadata: Metadata = {

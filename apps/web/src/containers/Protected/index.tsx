@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, type ReactElement, type ReactNode } from 'react';
+import { type ReactElement, type ReactNode, useEffect } from 'react';
 
 import AppHeader from '@/components/AppHeader';
 import { useAccessToken } from '@/store/hooks/auth';

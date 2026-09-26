@@ -1,7 +1,7 @@
 'use client';
 
 import { QueryClient, QueryClientProvider as Provider } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 const MAX_RETRIES = 2;
 const STALE_TIME = 60_000; // 1 minute

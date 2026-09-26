@@ -4,7 +4,7 @@ import type { StaffStatus, UserStatus } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Pencil, Plus, Search } from 'lucide-react';
-import { useState, type ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

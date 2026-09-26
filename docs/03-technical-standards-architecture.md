@@ -10,12 +10,12 @@ The API follows a strict layering. Dependencies point inward; outer layers may d
 Controller  ──►  Service (business logic)  ──►  Repository  ──►  Prisma  ──►  PostgreSQL
 ```
 
-| Layer          | Responsibility                                        | Status        |
-| -------------- | ----------------------------------------------------- | ------------- |
-| **Controller** | HTTP concerns: routing, DTO binding, status codes     | in use (`status.controller.ts`) |
-| **Service**    | Business rules, orchestration, entity → DTO mapping    | later sprint  |
-| **Repository** | The only place Prisma is touched for an entity         | later sprint  |
-| **Prisma**     | Generated client + schema                              | later sprint  |
+| Layer          | Responsibility                                      | Status                          |
+| -------------- | --------------------------------------------------- | ------------------------------- |
+| **Controller** | HTTP concerns: routing, DTO binding, status codes   | in use (`status.controller.ts`) |
+| **Service**    | Business rules, orchestration, entity → DTO mapping | later sprint                    |
+| **Repository** | The only place Prisma is touched for an entity      | later sprint                    |
+| **Prisma**     | Generated client + schema                           | later sprint                    |
 
 **Rule:** controllers never call Prisma directly; repositories never contain business rules.
 
@@ -39,7 +39,7 @@ Each domain is a self-contained NestJS module (currently `status/`; `auth/`, `or
 - **TypeScript strict mode** everywhere (`strict`, `noUncheckedIndexedAccess`).
 - Prefer explicit return types on exported functions and public methods.
 - No silent failures — handle or propagate errors; the API surfaces them through the global filter.
-- Formatting via Prettier; linting via ESLint. Run `yarn lint` and `yarn typecheck` before pushing.
+- Formatting via Prettier; linting via ESLint with import order enforced by `simple-import-sort`. A pre-push hook runs format and lint on changed files automatically; CI runs the full `yarn lint` / `yarn typecheck` on every PR.
 - Validate all external input at the boundary with Zod.
 
 ## Database conventions (future)

@@ -23,31 +23,32 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
-  createStaffRequestSchema,
-  createStaffResponseSchema,
-  staffAccountSchema,
-  staffListQuerySchema,
-  staffListResponseSchema,
-  staffRolesResponseSchema,
-  updateStaffRequestSchema,
-  updateStaffStatusRequestSchema,
   type CreateStaffRequest,
+  createStaffRequestSchema,
   type CreateStaffResponse,
+  createStaffResponseSchema,
   type StaffAccount,
+  staffAccountSchema,
   type StaffListQuery,
+  staffListQuerySchema,
   type StaffListResponse,
+  staffListResponseSchema,
   type StaffRolesResponse,
+  staffRolesResponseSchema,
   type UpdateStaffRequest,
+  updateStaffRequestSchema,
   type UpdateStaffStatusRequest,
+  updateStaffStatusRequestSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
+
 import type { Actor } from '../common/auth/authenticated-request';
 import { CurrentActor } from '../common/auth/current-actor.decorator';
 import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
 import { PermissionsGuard } from '../common/auth/permissions.guard';
 import { RequirePermissions } from '../common/auth/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { ApiZodQuery, apiError, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
 import { StaffService } from './staff.service';
 
 @ApiTags('staff')
