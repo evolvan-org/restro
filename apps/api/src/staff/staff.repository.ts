@@ -48,9 +48,9 @@ export class StaffEmailConflictError extends Error {
   }
 }
 
-/** Staff are the restaurant's users, excluding customer accounts. */
+/** Staff are the restaurant's users, excluding the account owner. */
 function staffWhere(restaurantId: string): Prisma.UserWhereInput {
-  return { restaurantId, role: { name: { not: Role.CUSTOMER } } };
+  return { restaurantId, role: { name: { not: Role.OWNER } } };
 }
 
 function isUniqueViolation(error: unknown): boolean {

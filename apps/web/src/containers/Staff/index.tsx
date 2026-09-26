@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -43,19 +44,10 @@ const STATUS_BADGES: Record<
   SUSPENDED: { label: 'Suspended', variant: 'destructive' },
 };
 
-function PageMessage({ children, alert }: { children: string; alert?: boolean }): ReactElement {
-  return (
-    <main className="mx-auto flex max-w-6xl items-center justify-center px-6 py-24">
-      <p role={alert ? 'alert' : undefined} className="text-sm text-muted-foreground">
-        {children}
-      </p>
-    </main>
-  );
-}
-
-export default function Staff(): ReactElement {
+export default function Staff(): ReactElement | null {
+  const isAllowed = usePermissionGuard([Permission.USER_READ]);
   const { data: profile } = useProfile();
-  const { can, isLoading: permissionsLoading } = usePermissions();
+  const { can } = usePermissions();
   const canRead = can(Permission.USER_READ);
   const canWrite = can(Permission.USER_WRITE);
 
@@ -80,12 +72,9 @@ export default function Staff(): ReactElement {
   const showStaffForm = useShowStaffFormSidePane();
   const showStatusModal = useShowStaffStatusModal();
 
-  if (permissionsLoading) {
-    return <PageMessage>Loading…</PageMessage>;
-  }
-
-  if (!canRead) {
-    return <PageMessage alert>You don&apos;t have permission to view staff accounts.</PageMessage>;
+  // The guard redirects users without `user:read` to /forbidden; render nothing until allowed.
+  if (!isAllowed) {
+    return null;
   }
 
   const meta = staff.data?.meta;

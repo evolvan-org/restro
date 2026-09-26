@@ -13,6 +13,7 @@ import { useLogout } from '@/store/hooks/auth';
 type NavLink = { href: string; label: string; permission?: Permission };
 
 const NAV_LINKS: readonly NavLink[] = [
+  { href: '/dashboard', label: 'Dashboard' },
   { href: '/profile', label: 'Profile' },
   { href: '/staff', label: 'Staff', permission: Permission.USER_READ },
 ];

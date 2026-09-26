@@ -166,13 +166,14 @@ export class StaffService {
 }
 
 /**
- * A staff role can be granted only if it is a known system role other than CUSTOMER and grants
- * nothing beyond the actor's own permissions, so nobody can create an account above themselves.
+ * A staff role can be granted only if it is a known system role other than OWNER (the account
+ * owner is provisioned at signup, never assigned) and grants nothing beyond the actor's own
+ * permissions, so nobody can create an account above themselves.
  */
 function canAssignRole(actor: Actor, roleName: string): boolean {
   return (
     isRole(roleName) &&
-    roleName !== Role.CUSTOMER &&
+    roleName !== Role.OWNER &&
     roleHasAll(actor.role, ROLE_PERMISSIONS[roleName])
   );
 }

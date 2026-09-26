@@ -24,7 +24,7 @@ export class ProvisioningService {
 
   /**
    * Turns a fresh signup into a fully usable tenant: a restaurant, the seeded
-   * system roles, and the signing-up user assigned as ADMIN owner.
+   * system roles, and the signing-up user assigned the OWNER role.
    *
    * Email uniqueness is enforced globally here so that signup is idempotent
    * (AC8) and login-by-email stays unambiguous.

@@ -32,7 +32,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Register restaurant owner',
     description:
-      'Provisions a new restaurant (tenant), seeds its system roles, and creates the signing-up user as the ADMIN owner — all atomically.',
+      'Provisions a new restaurant (tenant), seeds its system roles, and creates the signing-up user as the OWNER — all atomically.',
   })
   @ApiBody({ schema: zodOpenApiSchema(registerRequestSchema) })
   @ApiOkResponse({

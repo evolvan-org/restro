@@ -40,8 +40,9 @@ export class ProvisioningRepository {
 
   /**
    * Provisions a restaurant, seeds the system roles (with their permissions)
-   * from `@rms/permissions`, and creates the owner as ADMIN — all in a single
-   * transaction so a failure part-way leaves nothing behind (AC4).
+   * from `@rms/permissions`, and creates the signing-up user with the OWNER
+   * role — all in a single transaction so a failure part-way leaves nothing
+   * behind (AC4).
    */
   provisionOwner(input: ProvisionOwnerInput): Promise<ProvisionOwnerResult> {
     return this.prisma.$transaction(async (tx) => {
@@ -50,7 +51,7 @@ export class ProvisioningRepository {
         select: { id: true },
       });
 
-      let adminRoleId: string | undefined;
+      let ownerRoleId: string | undefined;
 
       for (const role of ALL_ROLES) {
         const created = await tx.role.create({
@@ -72,20 +73,20 @@ export class ProvisioningRepository {
           });
         }
 
-        if (role === Role.ADMIN) {
-          adminRoleId = created.id;
+        if (role === Role.OWNER) {
+          ownerRoleId = created.id;
         }
       }
 
-      // ALL_ROLES always contains ADMIN; this guards against a policy regression.
-      if (!adminRoleId) {
-        throw new Error('ADMIN role is missing from @rms/permissions role definitions');
+      // ALL_ROLES always contains OWNER; this guards against a policy regression.
+      if (!ownerRoleId) {
+        throw new Error('OWNER role is missing from @rms/permissions role definitions');
       }
 
       const user = await tx.user.create({
         data: {
           restaurantId: restaurant.id,
-          roleId: adminRoleId,
+          roleId: ownerRoleId,
           name: input.owner.name,
           email: input.owner.email,
           passwordHash: input.owner.passwordHash,
@@ -96,7 +97,7 @@ export class ProvisioningRepository {
       return {
         restaurantId: restaurant.id,
         userId: user.id,
-        roleId: adminRoleId,
+        roleId: ownerRoleId,
       };
     });
   }

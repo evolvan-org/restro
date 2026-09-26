@@ -1,9 +1,11 @@
 /** System roles. Ordered loosely from most to least privileged. */
 export const Role = {
-  ADMIN: 'ADMIN',
+  OWNER: 'OWNER',
   MANAGER: 'MANAGER',
-  STAFF: 'STAFF',
-  CUSTOMER: 'CUSTOMER',
+  CAPTAIN: 'CAPTAIN',
+  KITCHEN_STAFF: 'KITCHEN_STAFF',
+  BAR_STAFF: 'BAR_STAFF',
+  CASHIER: 'CASHIER',
 } as const;
 
 export type Role = (typeof Role)[keyof typeof Role];
