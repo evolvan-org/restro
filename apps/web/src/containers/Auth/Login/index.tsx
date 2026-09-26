@@ -23,8 +23,8 @@ export default function Login(): ReactElement {
   const onSubmit = form.handleSubmit((values) => {
     login.mutate(values, {
       onSuccess: () => {
-        // Land on a page inside the signed-in shell so navigation (and Log out) is available.
-        router.push('/profile');
+        // Land on the dashboard inside the signed-in shell so navigation (and Log out) is available.
+        router.push('/dashboard');
       },
     });
   });
