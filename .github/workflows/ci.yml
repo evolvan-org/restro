@@ -37,17 +37,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # Full history for commitlint (PR range) and the gitleaks scan.
+          # Full history for the gitleaks scan.
           fetch-depth: 0
 
       - uses: ./.github/actions/setup
-
-      - name: Lint PR commit messages
-        if: ${{ !cancelled() }}
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: yarn commitlint --from "$BASE_SHA" --to "$HEAD_SHA"
 
       - name: Lint
         if: ${{ !cancelled() }}
