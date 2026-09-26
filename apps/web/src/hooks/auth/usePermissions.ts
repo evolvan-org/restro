@@ -1,10 +1,12 @@
-import { isRole, type Permission, roleHasPermission } from '@rms/permissions';
+import { isRole, type Permission, roleHasAny, roleHasPermission } from '@rms/permissions';
 
 import { useProfile } from '@/services/api/requests/profile';
 
 type Permissions = {
   /** Whether the signed-in user's role grants `permission`. `false` until the role has loaded. */
   can: (permission: Permission) => boolean;
+  /** Whether the role grants at least one of `permissions`. `false` until the role has loaded. */
+  canAny: (permissions: readonly Permission[]) => boolean;
   isLoading: boolean;
 };
 
@@ -18,6 +20,7 @@ export default function usePermissions(): Permissions {
 
   return {
     can: (permission) => role !== undefined && isRole(role) && roleHasPermission(role, permission),
+    canAny: (permissions) => role !== undefined && isRole(role) && roleHasAny(role, permissions),
     isLoading: isPending,
   };
 }
