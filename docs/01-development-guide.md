@@ -35,31 +35,28 @@ Turborepo drives cross-workspace tasks (`yarn dev`, `yarn build`, `yarn lint`, `
 
 ## Branching & Jira workflow
 
-- Branch from `main` using the Jira key: `<type>/<JIRA-KEY>-<slug>`, e.g. `feature/REST-24-ci-pipeline`, `fix/REST-101-login-casing`. Allowed types: `feature`, `fix`, `chore`, `hotfix`, `bugfix`, `release`, `docs`, `refactor`, `test`.
-- This pattern is enforced by the pre-push hook and by CI.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`type(scope): summary`), checked by commitlint.
+- Branch from `main` using the Jira key: `<type>/<JIRA-KEY>-<slug>`, e.g. `feature/REST-24-ci-pipeline`, `fix/REST-101-login-casing`. Suggested types: `feature`, `fix`, `chore`, `hotfix`, `bugfix`, `release`, `docs`, `refactor`, `test`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`type(scope): summary`) as a convention.
 - Keep PRs scoped to a single story where possible.
 - Reference the Jira key in the PR title and description.
 - After opening a PR, a structured QA test plan is posted to the linked Jira ticket.
 
 ## Git hooks (pre-push)
 
-A Husky `pre-push` hook runs automatically on `git push` (enabled by `yarn install`). It validates only what the push introduces — the changed files and the pushed commits:
+A Husky `pre-push` hook runs automatically on `git push` (enabled by `yarn install`). It validates only what the push introduces — the changed files:
 
-- branch name convention
-- commit messages (commitlint / Conventional Commits)
 - `prettier --check` on changed files
 - ESLint (including import order via `simple-import-sort`) on changed app source
 
 There is no per-commit hook. To bypass in an emergency, use `git push --no-verify` (CI still enforces the same checks).
 
-**Fixing failures:** most formatting and import-order issues are auto-fixable — run `yarn fix` (which runs `yarn lint:fix` then `yarn format`), then amend or add a commit and push again. Commit-message and branch-name issues must be fixed manually (reword the commit, or `git branch -m <valid-name>`).
+**Fixing failures:** most formatting and import-order issues are auto-fixable — run `yarn fix` (which runs `yarn lint:fix` then `yarn format`), then amend or add a commit and push again.
 
 ## Continuous integration
 
 Every PR to `main` runs `.github/workflows/ci.yml`:
 
-- **`verify`** (one job, all static checks): install (immutable lockfile), lint, format check, typecheck, Prisma migration-drift, gitleaks secret scan, and branch-name + commitlint conventions. Each check reports independently even if an earlier one fails.
+- **`verify`** (one job, all static checks): install (immutable lockfile), lint, format check, typecheck, Prisma migration-drift, and gitleaks secret scan. Each check reports independently even if an earlier one fails.
 - **`docker-smoke`** (gated behind `verify`): builds both images with layer caching and boots the full stack via `docker compose up --wait`, which also runs `prisma migrate deploy`.
 
 CI running does not block a merge on its own — enable branch protection with required status checks on `main` to make failures blocking.

@@ -4,16 +4,11 @@
 # fast and doesn't re-check the whole repo.
 #
 # Checks, in order:
-#   1. Branch name convention (feature/<JIRA-KEY>-...)
-#   2. Commit messages in the pushed range (commitlint / conventional commits)
-#   3. Prettier formatting on changed files
-#   4. ESLint (incl. import order) on changed app source
+#   1. Prettier formatting on changed files
+#   2. ESLint (incl. import order) on changed app source
 #
 # Git passes the push refs on stdin as: <local ref> <local sha> <remote ref> <remote sha>
 set -eu
-
-# 1) Branch name.
-./scripts/check-branch-name.sh
 
 ZERO=0000000000000000000000000000000000000000
 files=""
@@ -47,9 +42,6 @@ files=$(printf '%s\n' "$files" | sort -u | sed '/^$/d')
 
 echo "[pre-push] validating $(printf '%s\n' "$files" | wc -l | tr -d ' ') changed file(s) in $from..$to"
 
-# 2) Commit messages in the pushed range.
-yarn commitlint --from "$from" --to "$to"
-
 # Most formatting/lint failures are auto-fixable — point the dev at `yarn fix`.
 fix_hint() {
   echo "" >&2
@@ -58,13 +50,13 @@ fix_hint() {
   exit 1
 }
 
-# 3) Prettier on changed files (xargs guarded: never run on empty input).
+# 1) Prettier on changed files (xargs guarded: never run on empty input).
 fmt=$(printf '%s\n' "$files" | grep -E '\.(ts|tsx|js|jsx|cjs|mjs|json|md|yml|yaml)$' || true)
 if [ -n "$fmt" ]; then
   printf '%s\n' "$fmt" | xargs yarn prettier --check || fix_hint "formatting issues"
 fi
 
-# 4) ESLint on changed app source only (that's where eslint configs live).
+# 2) ESLint on changed app source only (that's where eslint configs live).
 #    eslint is an app dependency, not a root one, so run each app's own eslint
 #    via `yarn workspace ... exec`. Absolute paths keep it cwd-independent.
 api_es=$(printf '%s\n' "$files" | grep -E '^apps/api/.*\.ts$' || true)

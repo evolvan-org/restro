@@ -12,6 +12,10 @@ import {
   loginRequestSchema,
   type LoginResponse,
   loginResponseSchema,
+  type RegisterRequest,
+  registerRequestSchema,
+  type RegisterResponse,
+  registerResponseSchema,
 } from '@rms/api-contract';
 
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -22,6 +26,23 @@ import { AuthService } from './auth.service';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  @ApiOperation({
+    summary: 'Register user',
+    description: 'Creates a new user account.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(registerRequestSchema) })
+  @ApiOkResponse({
+    description: 'Registration result',
+    schema: zodOpenApiSchema(registerResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('Missing or malformed registration details'))
+  register(
+    @Body(new ZodValidationPipe(registerRequestSchema)) body: RegisterRequest,
+  ): Promise<RegisterResponse> {
+    return this.authService.register(body);
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
