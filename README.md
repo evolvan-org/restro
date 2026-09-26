@@ -94,13 +94,30 @@ whether the server is online.
 
 ## Common Commands
 
-| Command          | Description                             |
-| ---------------- | --------------------------------------- |
-| `yarn dev`       | Run web + api in watch mode (Turborepo) |
-| `yarn build`     | Build all workspaces                    |
-| `yarn lint`      | Lint all workspaces                     |
-| `yarn typecheck` | Type-check all workspaces               |
-| `yarn test`      | Run all tests                           |
+| Command             | Description                             |
+| ------------------- | --------------------------------------- |
+| `yarn dev`          | Run web + api in watch mode (Turborepo) |
+| `yarn build`        | Build all workspaces                    |
+| `yarn lint`         | Lint all workspaces                     |
+| `yarn lint:fix`     | Lint and auto-fix (incl. import order)  |
+| `yarn typecheck`    | Type-check all workspaces               |
+| `yarn test`         | Run all tests                           |
+| `yarn format`       | Format the repo with Prettier           |
+| `yarn format:check` | Check formatting (CI gate)              |
+| `yarn fix`          | Auto-fix lint + import order + format   |
+
+---
+
+## Continuous Integration & Quality Gates
+
+Every PR to `main` runs GitHub Actions (`.github/workflows/ci.yml`): install (immutable
+lockfile), lint, format check, typecheck, tests, Prisma migration-drift, secret scan
+(gitleaks), and branch-name + commit-message conventions — then a gated **Docker smoke**
+job that builds both images and boots the full stack with `docker compose up --wait`.
+
+Locally, a **pre-push** hook (Husky) validates the branch name, commit messages,
+formatting, and lint over the files and commits being pushed. Run `yarn install` once to
+enable it. See the [Development Guide](docs/01-development-guide.md) for details.
 
 ---
 

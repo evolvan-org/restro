@@ -39,7 +39,7 @@ Each domain is a self-contained NestJS module (currently `status/`; `auth/`, `or
 - **TypeScript strict mode** everywhere (`strict`, `noUncheckedIndexedAccess`).
 - Prefer explicit return types on exported functions and public methods.
 - No silent failures — handle or propagate errors; the API surfaces them through the global filter.
-- Formatting via Prettier; linting via ESLint. Run `yarn lint` and `yarn typecheck` before pushing.
+- Formatting via Prettier; linting via ESLint with import order enforced by `simple-import-sort`. A pre-push hook runs format and lint on changed files automatically; CI runs the full `yarn lint` / `yarn typecheck` on every PR.
 - Validate all external input at the boundary with Zod.
 
 ## Database conventions (future)
