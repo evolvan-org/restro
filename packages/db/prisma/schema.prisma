@@ -146,7 +146,7 @@ model User {
   restaurantId String     @map("restaurant_id") @db.Uuid
   roleId       String     @map("role_id") @db.Uuid
   name         String     @db.VarChar(255)
-  email        String     @db.VarChar(255)
+  email        String     @unique @db.VarChar(255) // globally unique across all tenants
   phone        String?    @db.VarChar(30)
   /// Authentication-only; never expose through the API.
   passwordHash String     @map("password_hash") @db.VarChar(255)
@@ -164,7 +164,6 @@ model User {
   billsGenerated      Bill[]        @relation("BillGeneratedBy")
   paymentsRecorded    Payment[]     @relation("PaymentRecordedBy")
 
-  @@unique([restaurantId, email]) // email unique per tenant, not globally
   @@index([restaurantId])
   @@index([roleId])
   @@map("users")
