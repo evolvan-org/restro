@@ -3,7 +3,6 @@ import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/modal';
 import { ModalPayload, ModalType } from '../types/modal';
-
 import useStoreSelector from './useStoreSelector';
 
 /** Open a modal of `type`, passing it `payload`. */

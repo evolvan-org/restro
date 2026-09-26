@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, Copy } from 'lucide-react';
-import { useState, type ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {

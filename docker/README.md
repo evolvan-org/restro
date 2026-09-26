@@ -4,11 +4,11 @@ Local containerized stack: **postgres + api + web**.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `../docker-compose.yml` | Orchestrates the three services |
-| `Dockerfile` | Multi-target build (`api`, `web`) for the Yarn/Turborepo monorepo |
-| `entrypoint-api.sh` | Runs `prisma migrate deploy` against Postgres, then boots the API |
+| File                    | Purpose                                                           |
+| ----------------------- | ----------------------------------------------------------------- |
+| `../docker-compose.yml` | Orchestrates the three services                                   |
+| `Dockerfile`            | Multi-target build (`api`, `web`) for the Yarn/Turborepo monorepo |
+| `entrypoint-api.sh`     | Runs `prisma migrate deploy` against Postgres, then boots the API |
 
 ## Usage
 
@@ -24,6 +24,7 @@ docker compose down -v
 ```
 
 Services:
+
 - **web** — http://localhost:3001
 - **api** — http://localhost:3000 (Swagger at `/api/docs`)
 - **postgres** — `localhost:5433` (db `rms`, user/pass `postgres`/`postgres`)
@@ -41,7 +42,7 @@ the exposed Postgres port (the root `.env` already targets `localhost:5433`):
 yarn workspace @rms/db migrate:dev --name <change>
 ```
 
-This generates the migration files locally *and* applies them to the running
+This generates the migration files locally _and_ applies them to the running
 container. On the next `docker compose up`, the api entrypoint re-applies them
 idempotently.
 

@@ -8,11 +8,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
-  loginRequestSchema,
-  loginResponseSchema,
   type LoginRequest,
+  loginRequestSchema,
   type LoginResponse,
+  loginResponseSchema,
 } from '@rms/api-contract';
+
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { apiError, zodOpenApiSchema } from '../common/swagger/zod-openapi';
 import { AuthService } from './auth.service';

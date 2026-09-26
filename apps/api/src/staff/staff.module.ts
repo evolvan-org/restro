@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+
 import { AuthorizationModule } from '../common/auth/authorization.module';
 import { DatabaseModule } from '../common/database/database.module';
 import { StaffController } from './staff.controller';

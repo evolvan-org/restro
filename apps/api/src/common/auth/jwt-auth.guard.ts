@@ -1,12 +1,13 @@
 import {
-  Injectable,
-  UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
+  Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+
 import type { AuthenticatedRequest } from './authenticated-request';
 
 const jwtClaimsSchema = z.object({

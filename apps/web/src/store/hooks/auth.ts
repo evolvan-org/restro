@@ -4,7 +4,6 @@ import { useDispatch } from 'react-redux';
 import { persistor } from '../index';
 import { actions } from '../slices/auth';
 import { AuthState } from '../types/auth';
-
 import useStoreSelector from './useStoreSelector';
 
 /** Store the auth state (access token, …) returned by the login endpoint. */

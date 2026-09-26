@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+
 import { DatabaseModule } from '../database/database.module';
 import { ActorRepository } from './actor.repository';
 import { JwtAuthGuard } from './jwt-auth.guard';

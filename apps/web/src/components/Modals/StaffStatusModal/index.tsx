@@ -1,7 +1,7 @@
 'use client';
 
 import type { StaffAccount } from '@rms/api-contract';
-import { useState, type ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {

@@ -10,12 +10,12 @@ The API follows a strict layering. Dependencies point inward; outer layers may d
 Controller  ──►  Service (business logic)  ──►  Repository  ──►  Prisma  ──►  PostgreSQL
 ```
 
-| Layer          | Responsibility                                        | Status        |
-| -------------- | ----------------------------------------------------- | ------------- |
-| **Controller** | HTTP concerns: routing, DTO binding, status codes     | in use (`status.controller.ts`) |
-| **Service**    | Business rules, orchestration, entity → DTO mapping    | later sprint  |
-| **Repository** | The only place Prisma is touched for an entity         | later sprint  |
-| **Prisma**     | Generated client + schema                              | later sprint  |
+| Layer          | Responsibility                                      | Status                          |
+| -------------- | --------------------------------------------------- | ------------------------------- |
+| **Controller** | HTTP concerns: routing, DTO binding, status codes   | in use (`status.controller.ts`) |
+| **Service**    | Business rules, orchestration, entity → DTO mapping | later sprint                    |
+| **Repository** | The only place Prisma is touched for an entity      | later sprint                    |
+| **Prisma**     | Generated client + schema                           | later sprint                    |
 
 **Rule:** controllers never call Prisma directly; repositories never contain business rules.
 

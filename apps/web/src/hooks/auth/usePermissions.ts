@@ -1,4 +1,4 @@
-import { isRole, roleHasPermission, type Permission } from '@rms/permissions';
+import { isRole, type Permission, roleHasPermission } from '@rms/permissions';
 
 import { useProfile } from '@/services/api/requests/profile';
 

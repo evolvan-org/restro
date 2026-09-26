@@ -81,12 +81,12 @@ yarn dev
 Open http://localhost:3001 — the page reads the API's status endpoint and shows
 whether the server is online.
 
-| Service            | URL                             |
-| ------------------ | ------------------------------- |
-| Web (Next.js)      | http://localhost:3001           |
-| API (NestJS)       | http://localhost:3000           |
-| API status         | http://localhost:3000/status    |
-| Swagger UI         | http://localhost:3000/api/docs  |
+| Service       | URL                            |
+| ------------- | ------------------------------ |
+| Web (Next.js) | http://localhost:3001          |
+| API (NestJS)  | http://localhost:3000          |
+| API status    | http://localhost:3000/status   |
+| Swagger UI    | http://localhost:3000/api/docs |
 
 > This project uses **Yarn** exclusively. Never run `npm install` — it would create a conflicting lockfile and break workspace resolution.
 
@@ -94,22 +94,22 @@ whether the server is online.
 
 ## Common Commands
 
-| Command             | Description                              |
-| ------------------- | ---------------------------------------- |
-| `yarn dev`          | Run web + api in watch mode (Turborepo)  |
-| `yarn build`        | Build all workspaces                     |
-| `yarn lint`         | Lint all workspaces                      |
-| `yarn typecheck`    | Type-check all workspaces                |
-| `yarn test`         | Run all tests                            |
+| Command          | Description                             |
+| ---------------- | --------------------------------------- |
+| `yarn dev`       | Run web + api in watch mode (Turborepo) |
+| `yarn build`     | Build all workspaces                    |
+| `yarn lint`      | Lint all workspaces                     |
+| `yarn typecheck` | Type-check all workspaces               |
+| `yarn test`      | Run all tests                           |
 
 ---
 
 ## Documentation
 
-| Document                                             | Purpose                                                        |
-| ---------------------------------------------------- | -------------------------------------------------------------- |
-| [Development Guide](docs/01-development-guide.md)     | Team workflow, sprint process, Jira workflow, PRs, releases    |
-| [API Standards](docs/02-api-standards.md)            | API conventions, request/response formats, auth, versioning    |
+| Document                                                                          | Purpose                                                          |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [Development Guide](docs/01-development-guide.md)                                 | Team workflow, sprint process, Jira workflow, PRs, releases      |
+| [API Standards](docs/02-api-standards.md)                                         | API conventions, request/response formats, auth, versioning      |
 | [Technical Standards & Architecture](docs/03-technical-standards-architecture.md) | Coding standards, architecture, folder structure, DB conventions |
 
 ---

@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { statusResponseSchema, type StatusResponse } from '@rms/api-contract';
+import { type StatusResponse, statusResponseSchema } from '@rms/api-contract';
+
 import { zodOpenApiSchema } from '../common/swagger/zod-openapi';
 
 @ApiTags('status')

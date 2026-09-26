@@ -1,22 +1,11 @@
-import { cn } from "cn"
-import type { UseFormRegister } from "react-hook-form"
+import type { LoginRequest } from '@rms/api-contract';
+import { cn } from 'cn';
+import type { UseFormRegister } from 'react-hook-form';
 
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import type { LoginRequest } from "@rms/api-contract"
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 
 export function LoginForm({
   className,
@@ -26,7 +15,7 @@ export function LoginForm({
   register,
   submitError,
   ...props
-}: React.ComponentProps<"div"> & {
+}: React.ComponentProps<'div'> & {
   errors?: Partial<Record<keyof LoginRequest, string>>;
   isSubmitting?: boolean;
   onSubmit: React.FormEventHandler<HTMLFormElement>;
@@ -34,13 +23,11 @@ export function LoginForm({
   submitError?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    <div className={cn('flex flex-col gap-6', className)} {...props}>
       <Card>
         <CardHeader>
           <CardTitle>Login to your account</CardTitle>
-          <CardDescription>
-            Enter your email below to login to your account
-          </CardDescription>
+          <CardDescription>Enter your email below to login to your account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>
@@ -52,7 +39,7 @@ export function LoginForm({
                   type="email"
                   placeholder="m@example.com"
                   aria-invalid={!!errors?.email}
-                  {...register("email")}
+                  {...register('email')}
                   required
                 />
                 <FieldError>{errors?.email}</FieldError>
@@ -65,7 +52,7 @@ export function LoginForm({
                   id="password"
                   type="password"
                   aria-invalid={!!errors?.password}
-                  {...register("password")}
+                  {...register('password')}
                   required
                 />
                 <FieldError>{errors?.password}</FieldError>
@@ -73,7 +60,7 @@ export function LoginForm({
               {submitError ? <FieldError>{submitError}</FieldError> : null}
               <Field>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Logging in..." : "Login"}
+                  {isSubmitting ? 'Logging in...' : 'Login'}
                 </Button>
               </Field>
             </FieldGroup>
@@ -81,5 +68,5 @@ export function LoginForm({
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

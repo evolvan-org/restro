@@ -3,9 +3,7 @@
  * Prefer this at layer boundaries where a failure is an expected outcome
  * rather than an exceptional one.
  */
-export type Result<T, E = Error> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
+export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 
 export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
 

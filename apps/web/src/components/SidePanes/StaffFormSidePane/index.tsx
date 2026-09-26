@@ -2,11 +2,11 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  createStaffRequestSchema,
   type CreateStaffRequest,
+  createStaffRequestSchema,
   type StaffAccount,
 } from '@rms/api-contract';
-import { useState, type ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';

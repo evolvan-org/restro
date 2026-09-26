@@ -23,13 +23,13 @@ No database is required for the Sprint 0 bootstrap.
 
 ## Monorepo layout
 
-| Path                    | Workspace          | Purpose                          |
-| ----------------------- | ------------------ | -------------------------------- |
-| `apps/web`              | `@rms/web`         | Next.js frontend                 |
-| `apps/api`              | `@rms/api`         | NestJS backend                   |
-| `packages/api-contract` | `@rms/api-contract`| Zod schemas + inferred types     |
-| `packages/permissions`  | `@rms/permissions` | Roles & permission policy        |
-| `packages/shared`       | `@rms/shared`      | Framework-agnostic utilities     |
+| Path                    | Workspace           | Purpose                      |
+| ----------------------- | ------------------- | ---------------------------- |
+| `apps/web`              | `@rms/web`          | Next.js frontend             |
+| `apps/api`              | `@rms/api`          | NestJS backend               |
+| `packages/api-contract` | `@rms/api-contract` | Zod schemas + inferred types |
+| `packages/permissions`  | `@rms/permissions`  | Roles & permission policy    |
+| `packages/shared`       | `@rms/shared`       | Framework-agnostic utilities |
 
 Turborepo drives cross-workspace tasks (`yarn dev`, `yarn build`, `yarn lint`, `yarn typecheck`, `yarn test`).
 

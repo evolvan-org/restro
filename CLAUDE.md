@@ -47,14 +47,14 @@ docker compose down -v      # stop and wipe the db volume
 
 Turborepo + Yarn-workspaces monorepo. Two apps, four packages:
 
-| Path | Workspace | Role |
-| --- | --- | --- |
-| `apps/api` | `@rms/api` | NestJS REST API |
-| `apps/web` | `@rms/web` | Next.js 15 (App Router) + React 19 + Tailwind + TanStack Query |
-| `packages/api-contract` | `@rms/api-contract` | Zod schemas + inferred types (the API↔web contract) |
-| `packages/permissions` | `@rms/permissions` | Roles + permission policy (pure data) |
-| `packages/shared` | `@rms/shared` | Framework-agnostic utilities (`Result`, pagination, strings) |
-| `packages/db` | `@rms/db` | Prisma schema + generated client |
+| Path                    | Workspace           | Role                                                           |
+| ----------------------- | ------------------- | -------------------------------------------------------------- |
+| `apps/api`              | `@rms/api`          | NestJS REST API                                                |
+| `apps/web`              | `@rms/web`          | Next.js 15 (App Router) + React 19 + Tailwind + TanStack Query |
+| `packages/api-contract` | `@rms/api-contract` | Zod schemas + inferred types (the API↔web contract)            |
+| `packages/permissions`  | `@rms/permissions`  | Roles + permission policy (pure data)                          |
+| `packages/shared`       | `@rms/shared`       | Framework-agnostic utilities (`Result`, pagination, strings)   |
+| `packages/db`           | `@rms/db`           | Prisma schema + generated client                               |
 
 **Dependency direction (do not violate):** `@rms/shared` and `@rms/permissions` are leaves; `@rms/api-contract` builds on them; the two apps depend on the packages, never the reverse. `@rms/shared` must stay free of any Nest/Next imports.
 

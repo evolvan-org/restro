@@ -1,18 +1,19 @@
 import {
-  changePasswordResponseSchema,
-  profileResponseSchema,
   type ChangePasswordRequest,
   type ChangePasswordResponse,
+  changePasswordResponseSchema,
   type ProfileResponse,
+  profileResponseSchema,
   type UpdateProfileRequest,
 } from '@rms/api-contract';
 import {
   useMutation,
+  type UseMutationResult,
   useQuery,
   useQueryClient,
-  type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
+
 import { api } from '@/lib/api';
 import { useAccessToken } from '@/store/hooks/auth';
 

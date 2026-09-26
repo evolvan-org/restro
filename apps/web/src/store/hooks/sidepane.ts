@@ -3,7 +3,6 @@ import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/sidepane';
 import { SidePanePayload, SidePaneType } from '../types/sidepane';
-
 import useStoreSelector from './useStoreSelector';
 
 /** Open a side pane of `type`, passing it `payload`. */

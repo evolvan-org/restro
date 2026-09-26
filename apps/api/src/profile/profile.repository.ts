@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
+
 import { PrismaService } from '../common/database/prisma.service';
 
 const profileSelect = {

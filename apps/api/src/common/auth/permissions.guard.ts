@@ -1,12 +1,13 @@
 import {
+  type CanActivate,
+  type ExecutionContext,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
-  type CanActivate,
-  type ExecutionContext,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { isRole, roleHasAll, type Permission } from '@rms/permissions';
+import { isRole, type Permission, roleHasAll } from '@rms/permissions';
+
 import { ActorRepository } from './actor.repository';
 import type { AuthorizedRequest } from './authenticated-request';
 import { REQUIRED_PERMISSIONS_KEY } from './require-permissions.decorator';

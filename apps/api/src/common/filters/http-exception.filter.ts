@@ -6,8 +6,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
 import type { ErrorResponse } from '@rms/api-contract';
+import type { Request, Response } from 'express';
 
 /**
  * Translates any thrown error into the standard error envelope documented in
