@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { type RegisterRequest,registerRequestSchema } from '@rms/api-contract';
+import { type RegisterRequest, registerRequestSchema } from '@rms/api-contract';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
