@@ -17,3 +17,9 @@ runs:
     - name: Install dependencies
       shell: bash
       run: yarn install --immutable
+
+    # @rms/db re-exports PrismaClient, which only exists after generation.
+    # Every build (^build) depends on it, so generate here (no DB needed).
+    - name: Generate Prisma client
+      shell: bash
+      run: yarn workspace @rms/db generate
