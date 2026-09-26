@@ -1,14 +1,15 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loginRequestSchema, type LoginRequest } from '@rms/api-contract';
+import { type LoginRequest, loginRequestSchema } from '@rms/api-contract';
 import { useRouter } from 'next/navigation';
+import type { ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { LoginForm } from '@/components/login-form';
 import { useLogin } from '@/services/api/requests/auth';
 
-export default function Login() {
+export default function Login(): ReactElement {
   const router = useRouter();
   const login = useLogin();
   const form = useForm<LoginRequest>({
@@ -22,7 +23,8 @@ export default function Login() {
   const onSubmit = form.handleSubmit((values) => {
     login.mutate(values, {
       onSuccess: () => {
-        router.push('/');
+        // Land on a page inside the signed-in shell so navigation (and Log out) is available.
+        router.push('/profile');
       },
     });
   });

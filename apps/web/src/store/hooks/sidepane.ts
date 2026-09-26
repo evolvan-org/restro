@@ -1,8 +1,8 @@
+import type { StaffAccount } from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/sidepane';
 import { SidePanePayload, SidePaneType } from '../types/sidepane';
-
 import useStoreSelector from './useStoreSelector';
 
 /** Open a side pane of `type`, passing it `payload`. */
@@ -24,6 +24,14 @@ export function useSidePaneType() {
 
 export function useSidePanePayload() {
   return useStoreSelector(({ sidepane }) => sidepane.payload);
+}
+
+/** Open the staff account form: pass an account to edit it, or nothing to create one. */
+export function useShowStaffFormSidePane(): (account?: StaffAccount) => void {
+  const showSidePane = useShowSidePane();
+  return (account) => {
+    showSidePane(SidePaneType.StaffForm, account ? { account } : {});
+  };
 }
 
 /** Open the sample pane — the template for per-pane convenience hooks. */

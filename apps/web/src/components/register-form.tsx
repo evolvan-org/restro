@@ -1,22 +1,11 @@
+import type { RegisterRequest } from '@rms/api-contract';
 import { cn } from 'cn';
 import type { UseFormRegister } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from '@/components/ui/field';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import type { RegisterRequest } from '@rms/api-contract';
 
 export function RegisterForm({
   className,
@@ -38,9 +27,7 @@ export function RegisterForm({
       <Card>
         <CardHeader>
           <CardTitle>Create your account</CardTitle>
-          <CardDescription>
-            Enter your details below to create a new account
-          </CardDescription>
+          <CardDescription>Enter your details below to create a new account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>
@@ -52,7 +39,7 @@ export function RegisterForm({
                   type="text"
                   placeholder="Jane Doe"
                   aria-invalid={!!errors?.name}
-                  {...register('name')}   
+                  {...register('name')}
                   required
                 />
                 <FieldError>{errors?.name}</FieldError>

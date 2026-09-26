@@ -1,17 +1,16 @@
-import { useMutation } from '@tanstack/react-query';
 import {
-  loginResponseSchema,
-  registerResponseSchema,
   type LoginRequest,
   type LoginResponse,
+  loginResponseSchema,
   type RegisterRequest,
   type RegisterResponse,
+  registerResponseSchema,
 } from '@rms/api-contract';
+import { useMutation } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
-import { actions } from '@/store/slices/auth';
-
 import useAppDispatch from '@/store/hooks/useAppDispatch';
+import { actions } from '@/store/slices/auth';
 
 const useLogin = () => {
   const dispatch = useAppDispatch();
@@ -29,9 +28,7 @@ const useLogin = () => {
 
 const useRegister = () =>
   useMutation({
-    mutationFn: async (
-      registerRequest: RegisterRequest,
-    ): Promise<RegisterResponse> => {
+    mutationFn: async (registerRequest: RegisterRequest): Promise<RegisterResponse> => {
       const response = await api.post('/auth/register', registerRequest);
       return registerResponseSchema.parse(response.data);
     },

@@ -1,5 +1,6 @@
+import { type StatusResponse, statusResponseSchema } from '@rms/api-contract';
 import { useQuery } from '@tanstack/react-query';
-import { statusResponseSchema, type StatusResponse } from '@rms/api-contract';
+
 import { api } from '@/lib/api';
 
 import { StatusQueryKey } from '../types/StatusQueryKey';

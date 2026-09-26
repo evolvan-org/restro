@@ -12,11 +12,7 @@ export default function HomePage() {
 
   const online = !isError && data?.status === 'online';
   const label = isLoading ? 'Checking server…' : online ? 'Server is online' : 'Server offline';
-  const dotColor = isLoading
-    ? 'bg-muted-foreground'
-    : online
-      ? 'bg-emerald-500'
-      : 'bg-destructive';
+  const dotColor = isLoading ? 'bg-muted-foreground' : online ? 'bg-emerald-500' : 'bg-destructive';
 
   return (
     <main className="flex min-h-screen w-full flex-col items-center justify-center gap-6 py-16 text-center">

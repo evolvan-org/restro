@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { registerRequestSchema, type RegisterRequest } from '@rms/api-contract';
+import { type RegisterRequest,registerRequestSchema } from '@rms/api-contract';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
@@ -38,9 +38,7 @@ export default function Register() {
       isSubmitting={form.formState.isSubmitting || registerUser.isPending}
       onSubmit={onSubmit}
       register={form.register}
-      submitError={
-        registerUser.isError ? 'Unable to create account.' : undefined
-      }
+      submitError={registerUser.isError ? 'Unable to create account.' : undefined}
     />
   );
 }

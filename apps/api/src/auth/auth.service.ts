@@ -1,10 +1,11 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type LoginRequest, type LoginResponse } from '@rms/api-contract';
+import { type RegisterRequest, type RegisterResponse } from '@rms/api-contract';
 import { compare, hash } from 'bcrypt';
 import jwt from 'jsonwebtoken';
+
 import { PrismaService } from '../common/database/prisma.service';
-import { type RegisterRequest, type RegisterResponse } from '@rms/api-contract';
 
 const TEMP_RESTAURANT_NAME = 'Temporary Restaurant';
 const TEMP_ADMIN_ROLE_NAME = 'ADMIN';
@@ -19,8 +20,7 @@ export class AuthService {
   async register(input: RegisterRequest): Promise<RegisterResponse> {
     // TODO(restaurant registration): replace this temporary default tenant/role
     // once registration creates the real restaurant and seeds its roles.
-    const { restaurantId, roleId } =
-      await this.getTemporaryRestaurantAndRoleIds();
+    const { restaurantId, roleId } = await this.getTemporaryRestaurantAndRoleIds();
 
     const existingUser = await this.prisma.user.findUnique({
       where: {
@@ -59,7 +59,7 @@ export class AuthService {
     // and the JWT should carry restaurantId + roleId once tenants exist.
     const user = await this.prisma.user.findFirst({
       where: {
-        email: input.email,
+        email: { equals: input.email, mode: 'insensitive' },
       },
       select: {
         passwordHash: true,
@@ -85,9 +85,9 @@ export class AuthService {
     }
 
     const accessToken = jwt.sign(
-      { userId: user.id, restaurantId: user.restaurantId, roleId: user.roleId  },
+      { userId: user.id, restaurantId: user.restaurantId, roleId: user.roleId },
       this.config.getOrThrow<string>('JWT_SECRET'),
-      { expiresIn: '1d' },
+      { expiresIn: '1d', algorithm: 'HS256' },
     );
 
     return {

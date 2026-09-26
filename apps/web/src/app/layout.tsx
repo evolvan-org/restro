@@ -1,8 +1,10 @@
+import './globals.css';
+
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import AppProvider from '@/providers';
+
 import AppLayout from '@/components/AppLayout';
-import './globals.css';
+import AppProvider from '@/providers';
 
 export const metadata: Metadata = {
   title: 'Restaurant Management System',

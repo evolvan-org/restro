@@ -1,0 +1,16 @@
+title = "restro gitleaks config"
+
+# Start from gitleaks' built-in rules, then add our allowlist below.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known false positives"
+# Match against the whole line, not just the captured secret.
+regexTarget = "line"
+regexes = [
+  # apps/api/src/common/auth/password.ts — this is the character set used to
+  # generate random temporary passwords, not a credential. Its high entropy
+  # trips the generic-api-key rule.
+  '''TEMPORARY_PASSWORD_ALPHABET''',
+]

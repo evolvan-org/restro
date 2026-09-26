@@ -14,7 +14,10 @@ export type SampleSidePaneProps = {
  * container provides. Uses the sheet's header/footer primitives; `onCancel`
  * closes the drawer.
  */
-export default function SampleSidePane({ title = 'Sample side pane', onCancel }: SampleSidePaneProps) {
+export default function SampleSidePane({
+  title = 'Sample side pane',
+  onCancel,
+}: SampleSidePaneProps) {
   return (
     <>
       <SheetHeader>
@@ -25,9 +28,7 @@ export default function SampleSidePane({ title = 'Sample side pane', onCancel }:
         </SheetDescription>
       </SheetHeader>
 
-      <div className="flex-1 px-4 text-sm text-muted-foreground">
-        Pane body goes here.
-      </div>
+      <div className="flex-1 px-4 text-sm text-muted-foreground">Pane body goes here.</div>
 
       <SheetFooter>
         <Button variant="outline" onClick={onCancel}>

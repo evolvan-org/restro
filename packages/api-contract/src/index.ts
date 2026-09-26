@@ -7,3 +7,6 @@
 export * from './common';
 export * from './status';
 export * from './auth';
+export * from './profile';
+export * from './staff';
+export * from './user-fields';

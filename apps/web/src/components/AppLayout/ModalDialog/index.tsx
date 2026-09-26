@@ -1,8 +1,10 @@
 'use client';
 
-import { Fragment, type ComponentType } from 'react';
+import { type ComponentType, Fragment } from 'react';
 
 import SampleModal from '@/components/Modals/SampleModal';
+import StaffStatusModal from '@/components/Modals/StaffStatusModal';
+import StaffTemporaryPasswordModal from '@/components/Modals/StaffTemporaryPasswordModal';
 import { useModalPayload, useModalType } from '@/store/hooks/modal';
 import { ModalType } from '@/store/types/modal';
 
@@ -16,6 +18,8 @@ import { ModalType } from '@/store/types/modal';
 const MODALS: Partial<Record<ModalType, ComponentType<any>>> = {
   [ModalType.None]: Fragment,
   [ModalType.Sample]: SampleModal,
+  [ModalType.StaffTemporaryPassword]: StaffTemporaryPasswordModal,
+  [ModalType.StaffStatus]: StaffStatusModal,
 };
 
 /** Single mount point for every modal, driven by the `modal` slice. */

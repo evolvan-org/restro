@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { useEffect, useRef } from 'react';
 
 import store from '@/store';
 import { useLogout } from '@/store/hooks/auth';
