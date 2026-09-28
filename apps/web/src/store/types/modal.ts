@@ -14,6 +14,7 @@ export enum ModalType {
   Sample,
   StaffTemporaryPassword,
   StaffStatus,
+  TableStatusAction,
 }
 
 /**

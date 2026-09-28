@@ -1,4 +1,4 @@
-import type { CreateStaffResponse, StaffAccount } from '@rms/api-contract';
+import type { CreateStaffResponse, StaffAccount, TableStatus } from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/modal';
@@ -49,6 +49,17 @@ export function useShowStaffStatusModal(): (account: StaffAccount) => void {
   const showModal = useShowModal();
   return (account) => {
     showModal(ModalType.StaffStatus, { account });
+  };
+}
+
+/** Ask to activate, deactivate, or delete a table status. */
+export function useShowTableStatusActionModal(): (
+  status: TableStatus,
+  action: 'status' | 'delete',
+) => void {
+  const showModal = useShowModal();
+  return (status, action) => {
+    showModal(ModalType.TableStatusAction, { status, action });
   };
 }
 

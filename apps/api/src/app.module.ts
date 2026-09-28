@@ -6,6 +6,7 @@ import { validateEnv } from './config/env.validation';
 import { ProfileModule } from './profile/profile.module';
 import { StaffModule } from './staff/staff.module';
 import { StatusModule } from './status/status.module';
+import { TableStatusesModule } from './table-statuses/table-statuses.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { StatusModule } from './status/status.module';
     AuthModule,
     ProfileModule,
     StaffModule,
+    TableStatusesModule,
   ],
 })
 export class AppModule {}
