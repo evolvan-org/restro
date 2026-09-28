@@ -54,28 +54,22 @@ Every error passes through a global exception filter and conforms to:
 
 ## Endpoints
 
-| Method | Path                         | Auth / permission  | Description                                                                                                                                                |
-| ------ | ---------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/status`                    | Public             | Reports the API is online (`StatusResponse`)                                                                                                               |
-| POST   | `/auth/login`                | Public             | Exchanges email + password for an access token (`LoginResponse`)                                                                                           |
-| GET    | `/profile`                   | Bearer             | Returns the caller's own profile, including role, read-only (`ProfileResponse`)                                                                            |
-| PATCH  | `/profile`                   | Bearer             | Updates the caller's name, email and phone (`UpdateProfileRequest` → `ProfileResponse`); `409` if the email is taken within the restaurant                 |
-| PATCH  | `/profile/password`          | Bearer             | Changes the caller's password (`ChangePasswordRequest` → `ChangePasswordResponse`); `400` if the current password is wrong                                 |
-| GET    | `/staff`                     | `user:read`        | Lists the restaurant's staff, active and inactive (`StaffListQuery` → `StaffListResponse`); `search` matches name or email, `status` filters               |
-| GET    | `/staff/roles`               | `user:write`       | Roles the caller may assign (`StaffRolesResponse`)                                                                                                         |
-| POST   | `/staff`                     | `user:write`       | Creates an active account with a generated temporary password, returned only once (`CreateStaffRequest` → `CreateStaffResponse`); `409` on duplicate email |
-| PATCH  | `/staff/:id`                 | `user:write`       | Updates name, email, phone and role (`UpdateStaffRequest` → `StaffAccount`); you cannot change your own role                                               |
-| PATCH  | `/staff/:id/status`          | `user:write`       | Activates or deactivates an account (`UpdateStaffStatusRequest` → `StaffAccount`); inactive accounts cannot log in; you cannot change your own status      |
-| GET    | `/table-statuses`            | `restaurant:read`  | Lists active and inactive table statuses in display order (`TableStatusListQuery` → `TableStatusListResponse`)                                             |
-| POST   | `/table-statuses`            | `restaurant:write` | Creates an active custom status (`CreateTableStatusRequest` → `TableStatus`); omitted display order places it last; `409` on duplicate code                |
-| PATCH  | `/table-statuses/reorder`    | `restaurant:write` | Reorders the complete tenant status list (`ReorderTableStatusesRequest` → `TableStatus[]`)                                                                 |
-| PATCH  | `/table-statuses/:id`        | `restaurant:write` | Updates code, name and display order (`UpdateTableStatusRequest` → `TableStatus`); system codes are immutable                                              |
-| PATCH  | `/table-statuses/:id/status` | `restaurant:write` | Activates or deactivates a table status (`UpdateTableStatusActiveRequest` → `TableStatus`)                                                                 |
-| DELETE | `/table-statuses/:id`        | `restaurant:write` | Deletes an unused custom status; `409` for system statuses or statuses assigned to a table                                                                 |
+| Method | Path                | Auth / permission | Description                                                                                                                                                |
+| ------ | ------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/status`           | Public            | Reports the API is online (`StatusResponse`)                                                                                                               |
+| POST   | `/auth/login`       | Public            | Exchanges email + password for an access token (`LoginResponse`)                                                                                           |
+| GET    | `/profile`          | Bearer            | Returns the caller's own profile, including role, read-only (`ProfileResponse`)                                                                            |
+| PATCH  | `/profile`          | Bearer            | Updates the caller's name, email and phone (`UpdateProfileRequest` → `ProfileResponse`); `409` if the email is taken within the restaurant                 |
+| PATCH  | `/profile/password` | Bearer            | Changes the caller's password (`ChangePasswordRequest` → `ChangePasswordResponse`); `400` if the current password is wrong                                 |
+| GET    | `/staff`            | `user:read`       | Lists the restaurant's staff, active and inactive (`StaffListQuery` → `StaffListResponse`); `search` matches name or email, `status` filters               |
+| GET    | `/staff/roles`      | `user:write`      | Roles the caller may assign (`StaffRolesResponse`)                                                                                                         |
+| POST   | `/staff`            | `user:write`      | Creates an active account with a generated temporary password, returned only once (`CreateStaffRequest` → `CreateStaffResponse`); `409` on duplicate email |
+| PATCH  | `/staff/:id`        | `user:write`      | Updates name, email, phone and role (`UpdateStaffRequest` → `StaffAccount`); you cannot change your own role                                               |
+| PATCH  | `/staff/:id/status` | `user:write`      | Activates or deactivates an account (`UpdateStaffStatusRequest` → `StaffAccount`); inactive accounts cannot log in; you cannot change your own status      |
 
 Request and response examples, field rules and the error messages of every endpoint are in the [API Reference](04-api-reference.md).
 
-Profile endpoints act only on the authenticated user (taken from the token); there is no route that addresses another user's profile. Staff and table-status endpoints act only on records in the caller's restaurant; other ids return `404`.
+Profile endpoints act only on the authenticated user (taken from the token); there is no route that addresses another user's profile. Staff endpoints act only on accounts in the caller's restaurant; other ids return `404`.
 
 `GET /status` returns the shared `StatusResponse` contract:
 
