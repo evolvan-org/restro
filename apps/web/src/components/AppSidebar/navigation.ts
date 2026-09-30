@@ -36,5 +36,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Kitchen', icon: ChefHat, permission: Permission.KOT_READ },
   { label: 'Billing', icon: Receipt, permission: Permission.BILL_READ },
   { label: 'Reservations', icon: CalendarCheck, permission: Permission.RESERVATION_READ },
-  { label: 'Restaurant', icon: Store, permission: Permission.RESTAURANT_READ },
+  {
+    label: 'Restaurant',
+    icon: Store,
+    href: '/restaurant/settings',
+    permission: Permission.RESTAURANT_READ,
+  },
 ];
