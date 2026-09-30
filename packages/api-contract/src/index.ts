@@ -10,3 +10,4 @@ export * from './auth';
 export * from './profile';
 export * from './staff';
 export * from './user-fields';
+export * from './restaurant-settings';

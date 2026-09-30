@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { ProfileModule } from './profile/profile.module';
+import { RestaurantSettingsModule } from './restaurant-settings/restaurant-settings.module';
 import { StaffModule } from './staff/staff.module';
 import { StatusModule } from './status/status.module';
 
@@ -19,6 +20,7 @@ import { StatusModule } from './status/status.module';
     AuthModule,
     ProfileModule,
     StaffModule,
+    RestaurantSettingsModule,
   ],
 })
 export class AppModule {}
