@@ -15,6 +15,11 @@ function isValidTimezone(value: string): boolean {
   }
 }
 
+/** The database column is Decimal(5,2), so at most two decimal places are stored. */
+function hasAtMostTwoDecimals(value: number): boolean {
+  return Math.abs(value * 100 - Math.round(value * 100)) < 1e-9;
+}
+
 const nameSchema = z
   .string()
   .trim()
@@ -42,6 +47,7 @@ const gstRateSchema = z
   .number({ invalid_type_error: 'GST rate must be a number' })
   .min(GST_RATE_MIN, `GST rate must be between ${GST_RATE_MIN} and ${GST_RATE_MAX}`)
   .max(GST_RATE_MAX, `GST rate must be between ${GST_RATE_MIN} and ${GST_RATE_MAX}`)
+  .refine(hasAtMostTwoDecimals, 'GST rate can have at most 2 decimal places')
   .describe('Default GST rate in percent (0-100, up to 2 decimal places)');
 
 export const restaurantSettingsSchema = z
