@@ -13,6 +13,7 @@ export enum SidePaneType {
   None,
   Sample,
   StaffForm,
+  DiningSectionForm,
 }
 
 /**

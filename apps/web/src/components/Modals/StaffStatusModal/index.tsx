@@ -75,7 +75,7 @@ export default function StaffStatusModal({ account }: StaffStatusModalProps): Re
           </Button>
           <Button
             type="button"
-            variant={deactivate ? 'destructive' : 'default'}
+            variant={deactivate ? 'warning' : 'success'}
             onClick={confirm}
             disabled={updateStatus.isPending}
           >

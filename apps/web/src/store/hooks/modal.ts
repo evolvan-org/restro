@@ -1,4 +1,4 @@
-import type { CreateStaffResponse, StaffAccount } from '@rms/api-contract';
+import type { CreateStaffResponse, DiningSection, StaffAccount } from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/modal';
@@ -49,6 +49,17 @@ export function useShowStaffStatusModal(): (account: StaffAccount) => void {
   const showModal = useShowModal();
   return (account) => {
     showModal(ModalType.StaffStatus, { account });
+  };
+}
+
+/** Confirm archiving or reactivating a dining section. */
+export function useShowDiningSectionActionModal(): (
+  section: DiningSection,
+  action: 'archive' | 'activate',
+) => void {
+  const showModal = useShowModal();
+  return (section, action) => {
+    showModal(ModalType.DiningSectionAction, { section, action });
   };
 }
 

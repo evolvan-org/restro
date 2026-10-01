@@ -37,10 +37,10 @@ const STATUS_FILTERS: { value: StaffStatus | ''; label: string }[] = [
 
 const STATUS_BADGES: Record<
   UserStatus,
-  { label: string; variant: 'default' | 'outline' | 'destructive' }
+  { label: string; variant: 'active' | 'inactive' | 'destructive' }
 > = {
-  ACTIVE: { label: 'Active', variant: 'default' },
-  INACTIVE: { label: 'Inactive', variant: 'outline' },
+  ACTIVE: { label: 'Active', variant: 'active' },
+  INACTIVE: { label: 'Inactive', variant: 'inactive' },
   SUSPENDED: { label: 'Suspended', variant: 'destructive' },
 };
 

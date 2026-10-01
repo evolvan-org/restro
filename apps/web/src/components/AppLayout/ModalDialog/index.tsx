@@ -2,6 +2,7 @@
 
 import { type ComponentType, Fragment } from 'react';
 
+import DiningSectionActionModal from '@/components/Modals/DiningSectionActionModal';
 import SampleModal from '@/components/Modals/SampleModal';
 import StaffStatusModal from '@/components/Modals/StaffStatusModal';
 import StaffTemporaryPasswordModal from '@/components/Modals/StaffTemporaryPasswordModal';
@@ -20,6 +21,7 @@ const MODALS: Partial<Record<ModalType, ComponentType<any>>> = {
   [ModalType.Sample]: SampleModal,
   [ModalType.StaffTemporaryPassword]: StaffTemporaryPasswordModal,
   [ModalType.StaffStatus]: StaffStatusModal,
+  [ModalType.DiningSectionAction]: DiningSectionActionModal,
 };
 
 /** Single mount point for every modal, driven by the `modal` slice. */
