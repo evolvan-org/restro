@@ -1,7 +1,7 @@
 'use client';
 
 import type { TableStatus } from '@rms/api-contract';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -12,16 +12,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { getApiErrorMessage } from '@/lib/api-error';
 import {
-  useDeleteTableStatus,
+  useArchiveTableStatus,
   useUpdateTableStatusActive,
 } from '@/services/api/requests/table-statuses';
 import { useHideModal } from '@/store/hooks/modal';
 
 export type TableStatusActionModalProps = {
   status: TableStatus;
-  action: 'status' | 'delete';
+  action: 'status' | 'archive';
 };
 
 export default function TableStatusActionModal({
@@ -30,35 +29,26 @@ export default function TableStatusActionModal({
 }: TableStatusActionModalProps): ReactElement {
   const hideModal = useHideModal();
   const updateActive = useUpdateTableStatusActive();
-  const deleteStatus = useDeleteTableStatus();
-  const [error, setError] = useState<string | null>(null);
-  const deleting = action === 'delete';
+  const archiveStatus = useArchiveTableStatus();
+  const archiving = action === 'archive';
   const deactivating = status.isActive;
-  const isPending = updateActive.isPending || deleteStatus.isPending;
+  const isPending = updateActive.isPending || archiveStatus.isPending;
 
-  const confirm = async (): Promise<void> => {
-    setError(null);
-    try {
-      if (deleting) {
-        await deleteStatus.mutateAsync(status.id);
-      } else {
-        await updateActive.mutateAsync({
-          id: status.id,
-          input: { isActive: !status.isActive },
-        });
-      }
+  useEffect(() => {
+    if (updateActive.isSuccess || archiveStatus.isSuccess) {
       hideModal();
-    } catch (mutationError) {
-      setError(
-        getApiErrorMessage(
-          mutationError,
-          deleting ? 'Unable to delete the table status.' : 'Unable to change the status.',
-        ),
-      );
+    }
+  }, [updateActive.isSuccess, archiveStatus.isSuccess, hideModal]);
+
+  const confirm = (): void => {
+    if (archiving) {
+      archiveStatus.mutate(status.id);
+    } else {
+      updateActive.mutate({ id: status.id, input: { isActive: !status.isActive } });
     }
   };
 
-  const verb = deleting ? 'Delete' : deactivating ? 'Deactivate' : 'Activate';
+  const verb = archiving ? 'Archive' : deactivating ? 'Deactivate' : 'Activate';
 
   return (
     <Dialog
@@ -73,33 +63,19 @@ export default function TableStatusActionModal({
             {verb} {status.name}?
           </DialogTitle>
           <DialogDescription>
-            {deleting
-              ? 'This permanently removes the custom status. A status assigned to a table cannot be deleted.'
+            {archiving
+              ? 'The custom status will become inactive but remain available for later reactivation.'
               : deactivating
                 ? 'The status will no longer be available for use, but it will not be deleted.'
                 : 'The status will become available for use again.'}
           </DialogDescription>
         </DialogHeader>
 
-        {error ? (
-          <p
-            role="alert"
-            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {error}
-          </p>
-        ) : null}
-
         <DialogFooter>
           <Button type="button" variant="outline" onClick={hideModal}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            variant={deleting ? 'destructive' : 'default'}
-            onClick={() => void confirm()}
-            disabled={isPending}
-          >
+          <Button type="button" variant="default" onClick={confirm} disabled={isPending}>
             {isPending ? 'Saving…' : verb}
           </Button>
         </DialogFooter>

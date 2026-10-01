@@ -1,10 +1,7 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  HttpCode,
-  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -19,7 +16,6 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
-  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -29,9 +25,6 @@ import {
 import {
   type CreateTableStatusRequest,
   createTableStatusRequestSchema,
-  type ReorderTableStatusesRequest,
-  reorderTableStatusesRequestSchema,
-  reorderTableStatusesResponseSchema,
   type TableStatus,
   type TableStatusListQuery,
   tableStatusListQuerySchema,
@@ -68,7 +61,7 @@ export class TableStatusesController {
   @ApiOperation({
     summary: 'List table statuses',
     description:
-      "Lists active and inactive statuses for the caller's restaurant in display order. Requires `restaurant:read`.",
+      "Lists active and inactive statuses for the caller's restaurant. Requires `restaurant:read`.",
   })
   @ApiZodQuery(tableStatusListQuerySchema)
   @ApiOkResponse({
@@ -87,8 +80,7 @@ export class TableStatusesController {
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Create a custom table status',
-    description:
-      'Creates an active custom status. Omit display order to place it at the end. Requires `restaurant:write`.',
+    description: 'Creates an active custom status. Requires `restaurant:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(createTableStatusRequestSchema) })
   @ApiCreatedResponse({
@@ -104,33 +96,12 @@ export class TableStatusesController {
     return this.tableStatusesService.create(actor, input);
   }
 
-  @Patch('reorder')
-  @RequirePermissions(Permission.RESTAURANT_WRITE)
-  @ApiOperation({
-    summary: 'Reorder table statuses',
-    description:
-      'Persists the full status list in the requested display order. Requires `restaurant:write`.',
-  })
-  @ApiBody({ schema: zodOpenApiSchema(reorderTableStatusesRequestSchema) })
-  @ApiOkResponse({
-    description: 'All table statuses in their updated order',
-    schema: zodOpenApiSchema(reorderTableStatusesResponseSchema),
-  })
-  @ApiBadRequestResponse(apiError('Invalid, duplicate, incomplete, or stale status list'))
-  reorder(
-    @CurrentActor() actor: Actor,
-    @Body(new ZodValidationPipe(reorderTableStatusesRequestSchema))
-    input: ReorderTableStatusesRequest,
-  ): Promise<TableStatus[]> {
-    return this.tableStatusesService.reorder(actor, input);
-  }
-
   @Patch(':id')
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Update a table status',
     description:
-      'Updates name, code and display order. A system status code is immutable. Requires `restaurant:write`.',
+      'Updates name and code. A system status code is immutable. Requires `restaurant:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateTableStatusRequestSchema) })
   @ApiOkResponse({
@@ -170,18 +141,21 @@ export class TableStatusesController {
     return this.tableStatusesService.updateActive(actor, id, input);
   }
 
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @Patch(':id/archive')
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
-    summary: 'Delete a custom table status',
+    summary: 'Archive a custom table status',
     description:
-      'Deletes an unused custom status. System and assigned statuses cannot be deleted. Requires `restaurant:write`.',
+      'Makes a custom status inactive without deleting it. System statuses cannot be archived. Requires `restaurant:write`.',
   })
-  @ApiNoContentResponse({ description: 'The custom status was deleted' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(tableStatusSchema) })
+  @ApiBadRequestResponse(apiError('Invalid table status id'))
   @ApiNotFoundResponse(apiError('No table status with this id in your restaurant'))
-  @ApiConflictResponse(apiError('The status is system-defined or assigned to a table'))
-  delete(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.tableStatusesService.delete(actor, id);
+  @ApiConflictResponse(apiError('System statuses cannot be archived'))
+  archive(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TableStatus> {
+    return this.tableStatusesService.archive(actor, id);
   }
 }

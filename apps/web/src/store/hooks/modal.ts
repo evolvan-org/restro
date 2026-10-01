@@ -52,10 +52,10 @@ export function useShowStaffStatusModal(): (account: StaffAccount) => void {
   };
 }
 
-/** Ask to activate, deactivate, or delete a table status. */
+/** Ask to activate, deactivate, or archive a table status. */
 export function useShowTableStatusActionModal(): (
   status: TableStatus,
-  action: 'status' | 'delete',
+  action: 'status' | 'archive',
 ) => void {
   const showModal = useShowModal();
   return (status, action) => {

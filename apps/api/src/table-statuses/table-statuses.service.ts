@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import {
   type CreateTableStatusRequest,
-  type ReorderTableStatusesRequest,
   type TableStatus,
   type TableStatusListQuery,
   type TableStatusListResponse,
@@ -20,7 +19,6 @@ import {
   TableStatusCodeConflictError,
   type TableStatusDetails,
   TableStatusesRepository,
-  TableStatusInUseError,
   type TableStatusRecord,
 } from './table-statuses.repository';
 
@@ -44,9 +42,8 @@ export class TableStatusesService {
   }
 
   async create(actor: Actor, input: CreateTableStatusRequest): Promise<TableStatus> {
-    const sortOrder = input.sortOrder ?? (await this.repository.nextSortOrder(actor.restaurantId));
     const created = await this.mapCodeConflict(() =>
-      this.repository.create(actor.restaurantId, toDetails(input, sortOrder)),
+      this.repository.create(actor.restaurantId, toDetails(input)),
     );
     return toTableStatus(created);
   }
@@ -62,7 +59,7 @@ export class TableStatusesService {
     }
 
     const updated = await this.mapCodeConflict(() =>
-      this.repository.update(actor.restaurantId, statusId, toDetails(input, input.sortOrder)),
+      this.repository.update(actor.restaurantId, statusId, toDetails(input)),
     );
     if (!updated) throw new NotFoundException('Table status not found');
     return toTableStatus(updated);
@@ -85,44 +82,16 @@ export class TableStatusesService {
     return toTableStatus(updated);
   }
 
-  async reorder(actor: Actor, input: ReorderTableStatusesRequest): Promise<TableStatus[]> {
-    const existingIds = await this.repository.findIds(actor.restaurantId);
-    if (
-      existingIds.length !== input.orderedIds.length ||
-      existingIds.some((id) => !input.orderedIds.includes(id))
-    ) {
-      throw new BadRequestException(
-        'The table status list has changed. Refresh the page before reordering.',
-      );
-    }
-
-    await this.repository.reorder(actor.restaurantId, input.orderedIds);
-    const { items } = await this.repository.findPage(
-      actor.restaurantId,
-      0,
-      input.orderedIds.length,
-    );
-    return items.map(toTableStatus);
-  }
-
-  async delete(actor: Actor, statusId: string): Promise<void> {
+  async archive(actor: Actor, statusId: string): Promise<TableStatus> {
     const existing = await this.assertExists(actor.restaurantId, statusId);
     if (existing.isSystem) {
-      throw new ConflictException('System table statuses cannot be deleted');
+      throw new ConflictException('System table statuses cannot be archived');
     }
+    if (!existing.isActive) return toTableStatus(existing);
 
-    try {
-      if (!(await this.repository.delete(actor.restaurantId, statusId))) {
-        throw new NotFoundException('Table status not found');
-      }
-    } catch (error) {
-      if (error instanceof TableStatusInUseError) {
-        throw new ConflictException(
-          'This table status is assigned to one or more tables. Deactivate it instead.',
-        );
-      }
-      throw error;
-    }
+    const updated = await this.repository.updateActive(actor.restaurantId, statusId, false);
+    if (!updated) throw new NotFoundException('Table status not found');
+    return toTableStatus(updated);
   }
 
   private async assertExists(restaurantId: string, statusId: string): Promise<TableStatusRecord> {
@@ -143,11 +112,8 @@ export class TableStatusesService {
   }
 }
 
-function toDetails(
-  input: CreateTableStatusRequest | UpdateTableStatusRequest,
-  sortOrder: number,
-): TableStatusDetails {
-  return { code: input.code, name: input.name, sortOrder };
+function toDetails(input: CreateTableStatusRequest | UpdateTableStatusRequest): TableStatusDetails {
+  return { code: input.code, name: input.name };
 }
 
 function toTableStatus(record: TableStatusRecord): TableStatus {

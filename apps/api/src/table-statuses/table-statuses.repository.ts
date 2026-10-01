@@ -7,7 +7,6 @@ const tableStatusSelect = {
   id: true,
   code: true,
   name: true,
-  sortOrder: true,
   isSystem: true,
   isActive: true,
   createdAt: true,
@@ -18,23 +17,12 @@ export type TableStatusRecord = Prisma.TableStatusGetPayload<{
   select: typeof tableStatusSelect;
 }>;
 
-export type TableStatusDetails = {
-  code: string;
-  name: string;
-  sortOrder: number;
-};
+export type TableStatusDetails = Pick<TableStatusRecord, 'code' | 'name'>;
 
 export class TableStatusCodeConflictError extends Error {
   constructor() {
     super('Table status code is already in use');
     this.name = TableStatusCodeConflictError.name;
-  }
-}
-
-export class TableStatusInUseError extends Error {
-  constructor() {
-    super('Table status is assigned to one or more tables');
-    this.name = TableStatusInUseError.name;
   }
 }
 
@@ -56,7 +44,7 @@ export class TableStatusesRepository {
       this.prisma.tableStatus.findMany({
         where,
         select: tableStatusSelect,
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         skip,
         take,
       }),
@@ -70,22 +58,6 @@ export class TableStatusesRepository {
       where: { id: statusId, restaurantId },
       select: tableStatusSelect,
     });
-  }
-
-  async findIds(restaurantId: string): Promise<string[]> {
-    const statuses = await this.prisma.tableStatus.findMany({
-      where: { restaurantId },
-      select: { id: true },
-    });
-    return statuses.map(({ id }) => id);
-  }
-
-  async nextSortOrder(restaurantId: string): Promise<number> {
-    const result = await this.prisma.tableStatus.aggregate({
-      where: { restaurantId },
-      _max: { sortOrder: true },
-    });
-    return (result._max.sortOrder ?? -1) + 1;
   }
 
   async create(restaurantId: string, details: TableStatusDetails): Promise<TableStatusRecord> {
@@ -127,28 +99,5 @@ export class TableStatusesRepository {
       data: { isActive },
     });
     return count === 0 ? null : this.findById(restaurantId, statusId);
-  }
-
-  async reorder(restaurantId: string, orderedIds: string[]): Promise<void> {
-    await this.prisma.$transaction(
-      orderedIds.map((id, sortOrder) =>
-        this.prisma.tableStatus.updateMany({
-          where: { id, restaurantId },
-          data: { sortOrder },
-        }),
-      ),
-    );
-  }
-
-  async delete(restaurantId: string, statusId: string): Promise<boolean> {
-    try {
-      const { count } = await this.prisma.tableStatus.deleteMany({
-        where: { id: statusId, restaurantId },
-      });
-      return count > 0;
-    } catch (error) {
-      if (isPrismaError(error, 'P2003')) throw new TableStatusInUseError();
-      throw error;
-    }
   }
 }
