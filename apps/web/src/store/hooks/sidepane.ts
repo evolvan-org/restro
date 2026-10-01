@@ -1,4 +1,4 @@
-import type { StaffAccount } from '@rms/api-contract';
+import type { StaffAccount, TableStatus } from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/sidepane';
@@ -31,6 +31,14 @@ export function useShowStaffFormSidePane(): (account?: StaffAccount) => void {
   const showSidePane = useShowSidePane();
   return (account) => {
     showSidePane(SidePaneType.StaffForm, account ? { account } : {});
+  };
+}
+
+/** Open the table-status form: pass a status to edit it, or nothing to create one. */
+export function useShowTableStatusFormSidePane(): (status?: TableStatus) => void {
+  const showSidePane = useShowSidePane();
+  return (status) => {
+    showSidePane(SidePaneType.TableStatusForm, status ? { status } : {});
   };
 }
 
