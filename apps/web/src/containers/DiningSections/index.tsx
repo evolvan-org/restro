@@ -1,8 +1,8 @@
 'use client';
 
 import { Permission } from '@rms/permissions';
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
-import { type ReactElement, useState } from 'react';
+import { Archive, ArrowDown, ArrowUp, Pencil, Plus } from 'lucide-react';
+import type { ReactElement } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,23 +33,17 @@ export default function DiningSections(): ReactElement | null {
   const reorder = useReorderDiningSections();
   const showForm = useShowDiningSectionFormSidePane();
   const showAction = useShowDiningSectionActionModal();
-  const [reorderError, setReorderError] = useState<string | null>(null);
 
   if (!isAllowed) return null;
 
   const rows = sections.data ?? [];
 
-  const move = async (from: number, to: number): Promise<void> => {
+  const move = (from: number, to: number): void => {
     const reordered = [...rows];
     const [moved] = reordered.splice(from, 1);
     if (!moved) return;
     reordered.splice(to, 0, moved);
-    setReorderError(null);
-    try {
-      await reorder.mutateAsync({ orderedIds: reordered.map(({ id }) => id) });
-    } catch (error) {
-      setReorderError(getApiErrorMessage(error, 'Unable to save the new section order.'));
-    }
+    reorder.mutate({ orderedIds: reordered.map(({ id }) => id) });
   };
 
   return (
@@ -64,22 +58,13 @@ export default function DiningSections(): ReactElement | null {
               : 'The active and inactive areas configured for your restaurant.'}
           </p>
         </div>
-        {canWrite ? (
+        {canWrite && (
           <Button type="button" onClick={() => showForm()}>
             <Plus aria-hidden />
             Add section
           </Button>
-        ) : null}
+        )}
       </div>
-
-      {reorderError ? (
-        <p
-          role="alert"
-          className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          {reorderError}
-        </p>
-      ) : null}
 
       {sections.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
@@ -99,7 +84,7 @@ export default function DiningSections(): ReactElement | null {
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Status</TableHead>
-                {canWrite ? <TableHead className="text-right">Actions</TableHead> : null}
+                {canWrite && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,7 +128,7 @@ export default function DiningSections(): ReactElement | null {
                       {section.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  {canWrite ? (
+                  {canWrite && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -159,26 +144,20 @@ export default function DiningSections(): ReactElement | null {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => showAction(section, 'status')}
+                          onClick={() =>
+                            showAction(section, section.isActive ? 'archive' : 'activate')
+                          }
                         >
-                          {section.isActive ? 'Deactivate' : 'Activate'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Delete ${section.name}`}
-                          onClick={() => showAction(section, 'delete')}
-                        >
-                          <Trash2 aria-hidden />
+                          {section.isActive && <Archive aria-hidden />}
+                          {section.isActive ? 'Archive' : 'Activate'}
                         </Button>
                       </div>
                     </TableCell>
-                  ) : null}
+                  )}
                 </TableRow>
               ))}
 
-              {rows.length === 0 ? (
+              {rows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={canWrite ? 5 : 4}
@@ -187,7 +166,7 @@ export default function DiningSections(): ReactElement | null {
                     {sections.isPending ? 'Loading dining sections…' : 'No dining sections yet.'}
                   </TableCell>
                 </TableRow>
-              ) : null}
+              )}
             </TableBody>
           </Table>
         </div>

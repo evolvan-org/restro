@@ -18,7 +18,6 @@ import { buildPageMeta } from '@rms/shared';
 import type { Actor } from '../common/auth/authenticated-request';
 import {
   type DiningSectionDetails,
-  DiningSectionInUseError,
   type DiningSectionRecord,
   DiningSectionsRepository,
 } from './dining-sections.repository';
@@ -82,6 +81,10 @@ export class DiningSectionsService {
     return toDiningSection(updated);
   }
 
+  archive(actor: Actor, sectionId: string): Promise<DiningSection> {
+    return this.updateStatus(actor, sectionId, { isActive: false });
+  }
+
   async reorder(actor: Actor, input: ReorderDiningSectionsRequest): Promise<DiningSection[]> {
     const existingIds = await this.repository.findIds(actor.restaurantId);
     if (
@@ -100,22 +103,6 @@ export class DiningSectionsService {
       input.orderedIds.length,
     );
     return items.map(toDiningSection);
-  }
-
-  async delete(actor: Actor, sectionId: string): Promise<void> {
-    await this.assertExists(actor.restaurantId, sectionId);
-    try {
-      if (!(await this.repository.delete(actor.restaurantId, sectionId))) {
-        throw new NotFoundException('Dining section not found');
-      }
-    } catch (error) {
-      if (error instanceof DiningSectionInUseError) {
-        throw new ConflictException(
-          'This dining section is assigned to one or more tables. Deactivate it instead.',
-        );
-      }
-      throw error;
-    }
   }
 
   private async assertExists(

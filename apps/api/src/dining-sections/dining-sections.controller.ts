@@ -1,10 +1,7 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  HttpCode,
-  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -19,7 +16,6 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
-  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -137,15 +133,16 @@ export class DiningSectionsController {
     return this.service.updateStatus(actor, id, input);
   }
 
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @Patch(':id/archive')
   @RequirePermissions(Permission.RESTAURANT_WRITE)
-  @ApiOperation({ summary: 'Delete an unused dining section' })
-  @ApiNoContentResponse({ description: 'Section deleted' })
+  @ApiOperation({ summary: 'Archive a dining section without deleting it' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(diningSectionSchema) })
   @ApiBadRequestResponse(apiError('Invalid section id'))
   @ApiNotFoundResponse(apiError('No section with this id in the caller restaurant'))
-  @ApiConflictResponse(apiError('The section is assigned to one or more tables'))
-  delete(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.service.delete(actor, id);
+  archive(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<DiningSection> {
+    return this.service.archive(actor, id);
   }
 }

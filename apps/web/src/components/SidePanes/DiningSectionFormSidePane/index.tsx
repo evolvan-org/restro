@@ -8,14 +8,13 @@ import {
   type UpdateDiningSectionRequest,
   updateDiningSectionRequestSchema,
 } from '@rms/api-contract';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { getApiErrorMessage } from '@/lib/api-error';
 import {
   useCreateDiningSection,
   useUpdateDiningSection,
@@ -29,51 +28,71 @@ export type DiningSectionFormSidePaneProps = {
 
 const FORM_ID = 'dining-section-form';
 
+type DiningSectionFormConfig = {
+  title: string;
+  submitLabel: string;
+  orderHint: string;
+  schema: typeof createDiningSectionRequestSchema | typeof updateDiningSectionRequestSchema;
+  defaultValues: CreateDiningSectionRequest;
+};
+
+function mapDiningSectionForm(section?: DiningSection): DiningSectionFormConfig {
+  if (section) {
+    return {
+      title: 'Edit dining section',
+      submitLabel: 'Save changes',
+      orderHint: 'Zero appears first.',
+      schema: updateDiningSectionRequestSchema,
+      defaultValues: {
+        name: section.name,
+        description: section.description ?? '',
+        sortOrder: section.sortOrder,
+      },
+    };
+  }
+
+  return {
+    title: 'Add dining section',
+    submitLabel: 'Create section',
+    orderHint: 'Optional. Leave blank to add it at the end.',
+    schema: createDiningSectionRequestSchema,
+    defaultValues: { name: '', description: '' },
+  };
+}
+
 export default function DiningSectionFormSidePane({
   section,
   onCancel,
 }: DiningSectionFormSidePaneProps): ReactElement {
-  const isEdit = section !== undefined;
+  const config = mapDiningSectionForm(section);
   const createSection = useCreateDiningSection();
   const updateSection = useUpdateDiningSection();
   const hideSidePane = useHideSidePane();
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<CreateDiningSectionRequest>({
-    resolver: zodResolver(
-      isEdit ? updateDiningSectionRequestSchema : createDiningSectionRequestSchema,
-    ),
-    defaultValues: {
-      name: section?.name ?? '',
-      description: section?.description ?? '',
-      sortOrder: section?.sortOrder,
-    },
+    resolver: zodResolver(config.schema),
+    defaultValues: config.defaultValues,
   });
   const { errors } = form.formState;
   const sortOrderField = form.register('sortOrder', {
     setValueAs: (value: string) => (value === '' ? undefined : Number(value)),
   });
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setSubmitError(null);
-    try {
-      if (section) {
-        const input: UpdateDiningSectionRequest = {
-          ...values,
-          sortOrder: values.sortOrder ?? section.sortOrder,
-        };
-        await updateSection.mutateAsync({ id: section.id, input });
-      } else {
-        await createSection.mutateAsync(values);
-      }
+  useEffect(() => {
+    if (createSection.isSuccess || updateSection.isSuccess) {
       hideSidePane();
-    } catch (error) {
-      setSubmitError(
-        getApiErrorMessage(
-          error,
-          isEdit ? 'Unable to update the dining section.' : 'Unable to create the dining section.',
-        ),
-      );
+    }
+  }, [createSection.isSuccess, updateSection.isSuccess, hideSidePane]);
+
+  const onSubmit = form.handleSubmit((values) => {
+    if (section) {
+      const input: UpdateDiningSectionRequest = {
+        ...values,
+        sortOrder: values.sortOrder ?? section.sortOrder,
+      };
+      updateSection.mutate({ id: section.id, input });
+    } else {
+      createSection.mutate(values);
     }
   });
 
@@ -82,7 +101,7 @@ export default function DiningSectionFormSidePane({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>{isEdit ? 'Edit dining section' : 'Add dining section'}</SheetTitle>
+        <SheetTitle>{config.title}</SheetTitle>
         <SheetDescription>
           Organize tables into areas such as Indoor, Patio, Rooftop, or Bar.
         </SheetDescription>
@@ -128,26 +147,15 @@ export default function DiningSectionFormSidePane({
                 void sortOrderField.onChange(event);
               }}
             />
-            <FieldDescription>
-              {isEdit ? 'Zero appears first.' : 'Optional. Leave blank to add it at the end.'}
-            </FieldDescription>
+            <FieldDescription>{config.orderHint}</FieldDescription>
             <FieldError>{errors.sortOrder?.message}</FieldError>
           </Field>
-
-          {submitError ? (
-            <p
-              role="alert"
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-              {submitError}
-            </p>
-          ) : null}
         </FieldGroup>
       </form>
 
       <SheetFooter>
         <Button type="submit" form={FORM_ID} disabled={isSaving}>
-          {isSaving ? 'Saving…' : isEdit ? 'Save changes' : 'Create section'}
+          {isSaving ? 'Saving…' : config.submitLabel}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel

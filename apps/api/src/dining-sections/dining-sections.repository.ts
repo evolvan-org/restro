@@ -23,17 +23,6 @@ export type DiningSectionDetails = {
   sortOrder: number;
 };
 
-export class DiningSectionInUseError extends Error {
-  constructor() {
-    super('Dining section is assigned to one or more tables');
-    this.name = DiningSectionInUseError.name;
-  }
-}
-
-function isForeignKeyViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003';
-}
-
 @Injectable()
 export class DiningSectionsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -137,19 +126,5 @@ export class DiningSectionsRepository {
         }),
       ),
     );
-  }
-
-  async delete(restaurantId: string, sectionId: string): Promise<boolean> {
-    try {
-      const { count } = await this.prisma.diningSection.deleteMany({
-        where: { id: sectionId, restaurantId },
-      });
-      return count > 0;
-    } catch (error) {
-      if (isForeignKeyViolation(error)) {
-        throw new DiningSectionInUseError();
-      }
-      throw error;
-    }
   }
 }

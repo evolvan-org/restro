@@ -52,10 +52,10 @@ export function useShowStaffStatusModal(): (account: StaffAccount) => void {
   };
 }
 
-/** Confirm status changes and permanent deletion for a dining section. */
+/** Confirm archiving or reactivating a dining section. */
 export function useShowDiningSectionActionModal(): (
   section: DiningSection,
-  action: 'status' | 'delete',
+  action: 'archive' | 'activate',
 ) => void {
   const showModal = useShowModal();
   return (section, action) => {
