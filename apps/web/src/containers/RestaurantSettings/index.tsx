@@ -110,7 +110,7 @@ export default function RestaurantSettings(): ReactElement {
           </Button>
         </div>
       </div>
-    ); 
+    );
   }
 
   return (
@@ -118,9 +118,7 @@ export default function RestaurantSettings(): ReactElement {
       <div className="mb-8">
         <p className="text-sm font-medium text-muted-foreground">Restaurant</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Restaurant settings</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Manage Basic Restaurant Settings 
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">Manage Basic Restaurant Settings</p>
       </div>
 
       <Card>

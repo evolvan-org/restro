@@ -34,7 +34,7 @@ import { RestaurantSettingsService } from './restaurant-settings.service';
 @ApiForbiddenResponse(apiError('Missing the required restaurant permission'))
 @Controller('restaurant/settings')
 export class RestaurantSettingsController {
-  constructor(private readonly restaurantSettingsService: RestaurantSettingsService) { }
+  constructor(private readonly restaurantSettingsService: RestaurantSettingsService) {}
 
   @Get()
   @RequirePermissions(Permission.RESTAURANT_READ)
@@ -50,7 +50,6 @@ export class RestaurantSettingsController {
   get(@CurrentActor() actor: Actor): Promise<RestaurantSettingsResponse> {
     return this.restaurantSettingsService.get(actor);
   }
-
 
   @Patch()
   @RequirePermissions(Permission.RESTAURANT_WRITE)

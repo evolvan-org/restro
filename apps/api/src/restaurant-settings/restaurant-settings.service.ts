@@ -10,7 +10,6 @@ import {
   RestaurantSettingsRepository,
 } from './restaurant-settings.repository';
 
-
 @Injectable()
 export class RestaurantSettingsService {
   constructor(private readonly repository: RestaurantSettingsRepository) {}
