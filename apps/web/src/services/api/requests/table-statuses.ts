@@ -13,22 +13,14 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import axios from 'axios';
-import { toast } from 'sonner';
+import { useEffect } from 'react';
 
+import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api-error';
 
 import { TableStatusQueryKey } from '../types/TableStatusQueryKey';
 
 const PAGE_SIZE = 100;
-
-function showMutationError(error: Error, fallback: string): void {
-  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-  // The shared interceptor already handles authentication, forbidden, and server errors.
-  if (status === 401 || status === 403 || (status !== undefined && status >= 500)) return;
-  toast.error(getApiErrorMessage(error, fallback));
-}
 
 type UpdateTableStatusVariables = { id: string; input: UpdateTableStatusRequest };
 type UpdateTableStatusActiveVariables = {
@@ -38,7 +30,8 @@ type UpdateTableStatusActiveVariables = {
 
 /** All table statuses, fetched page-by-page for the management list. */
 export function useTableStatuses(enabled: boolean): UseQueryResult<TableStatus[]> {
-  return useQuery({
+  const showApiError = useShowApiError('Unable to load table statuses.');
+  const query = useQuery({
     queryKey: [TableStatusQueryKey.TableStatuses],
     queryFn: async (): Promise<TableStatus[]> => {
       const firstResponse = await api.get('/table-statuses', {
@@ -58,6 +51,12 @@ export function useTableStatuses(enabled: boolean): UseQueryResult<TableStatus[]
     },
     enabled,
   });
+
+  useEffect(() => {
+    if (query.error) showApiError(query.error);
+  }, [query.error, query.errorUpdatedAt, showApiError]);
+
+  return query;
 }
 
 export function useCreateTableStatus(): UseMutationResult<
@@ -66,14 +65,15 @@ export function useCreateTableStatus(): UseMutationResult<
   CreateTableStatusRequest
 > {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to create the table status.');
+  return useMutation<TableStatus, Error, CreateTableStatusRequest>({
     mutationFn: async (input): Promise<TableStatus> => {
       const response = await api.post('/table-statuses', input);
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
-    onError: (error) => showMutationError(error, 'Unable to create the table status.'),
+    onError: showApiError,
   });
 }
 
@@ -83,14 +83,15 @@ export function useUpdateTableStatus(): UseMutationResult<
   UpdateTableStatusVariables
 > {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to update the table status.');
+  return useMutation<TableStatus, Error, UpdateTableStatusVariables>({
     mutationFn: async ({ id, input }): Promise<TableStatus> => {
       const response = await api.patch(`/table-statuses/${id}`, input);
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
-    onError: (error) => showMutationError(error, 'Unable to update the table status.'),
+    onError: showApiError,
   });
 }
 
@@ -100,26 +101,28 @@ export function useUpdateTableStatusActive(): UseMutationResult<
   UpdateTableStatusActiveVariables
 > {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to change the status.');
+  return useMutation<TableStatus, Error, UpdateTableStatusActiveVariables>({
     mutationFn: async ({ id, input }): Promise<TableStatus> => {
       const response = await api.patch(`/table-statuses/${id}/status`, input);
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
-    onError: (error) => showMutationError(error, 'Unable to change the status.'),
+    onError: showApiError,
   });
 }
 
 export function useArchiveTableStatus(): UseMutationResult<TableStatus, Error, string> {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to archive the table status.');
+  return useMutation<TableStatus, Error, string>({
     mutationFn: async (id): Promise<TableStatus> => {
       const response = await api.patch(`/table-statuses/${id}/archive`);
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
-    onError: (error) => showMutationError(error, 'Unable to archive the table status.'),
+    onError: showApiError,
   });
 }

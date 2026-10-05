@@ -62,8 +62,16 @@ export default function TableStatusFormSidePane({
   onCancel,
 }: TableStatusFormSidePaneProps): ReactElement {
   const config = mapTableStatusForm(status);
-  const createStatus = useCreateTableStatus();
-  const updateStatus = useUpdateTableStatus();
+  const {
+    mutateAsync: createStatus,
+    isPending: isCreating,
+    isSuccess: isCreated,
+  } = useCreateTableStatus();
+  const {
+    mutateAsync: updateStatus,
+    isPending: isUpdating,
+    isSuccess: isUpdated,
+  } = useUpdateTableStatus();
   const hideSidePane = useHideSidePane();
   const form = useForm<CreateTableStatusRequest>({
     resolver: zodResolver(config.schema),
@@ -72,20 +80,24 @@ export default function TableStatusFormSidePane({
   const { errors } = form.formState;
 
   useEffect(() => {
-    if (createStatus.isSuccess || updateStatus.isSuccess) {
+    if (isCreated || isUpdated) {
       hideSidePane();
     }
-  }, [createStatus.isSuccess, updateStatus.isSuccess, hideSidePane]);
+  }, [isCreated, isUpdated, hideSidePane]);
 
-  const onSubmit = form.handleSubmit((values) => {
-    if (status) {
-      updateStatus.mutate({ id: status.id, input: values });
-    } else {
-      createStatus.mutate(values);
+  const onSubmit = form.handleSubmit(async (values) => {
+    try {
+      if (status) {
+        await updateStatus({ id: status.id, input: values });
+      } else {
+        await createStatus(values);
+      }
+    } catch {
+      // The request hook reports the error; keep the form open for correction or retry.
     }
   });
 
-  const isSaving = createStatus.isPending || updateStatus.isPending;
+  const isSaving = isCreating || isUpdating;
 
   return (
     <>
@@ -106,7 +118,9 @@ export default function TableStatusFormSidePane({
               aria-invalid={Boolean(errors.code)}
               {...form.register('code', {
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                  event.target.value = event.target.value.toUpperCase();
+                  form.setValue('code', event.target.value.toUpperCase(), {
+                    shouldValidate: Boolean(errors.code),
+                  });
                 },
               })}
             />

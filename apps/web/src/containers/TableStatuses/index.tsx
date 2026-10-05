@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/table';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
-import { getApiErrorMessage } from '@/lib/api-error';
 import { useTableStatuses } from '@/services/api/requests/table-statuses';
 import { useShowTableStatusActionModal } from '@/store/hooks/modal';
 import { useShowTableStatusFormSidePane } from '@/store/hooks/sidepane';
@@ -57,7 +56,7 @@ export default function TableStatuses(): ReactElement | null {
       {statuses.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
           <p role="alert" className="text-sm text-destructive">
-            {getApiErrorMessage(statuses.error, 'Unable to load table statuses.')}
+            Unable to load table statuses.
           </p>
           <Button type="button" variant="outline" onClick={() => statuses.refetch()}>
             Try again

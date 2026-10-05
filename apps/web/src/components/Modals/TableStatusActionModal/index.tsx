@@ -28,23 +28,35 @@ export default function TableStatusActionModal({
   action,
 }: TableStatusActionModalProps): ReactElement {
   const hideModal = useHideModal();
-  const updateActive = useUpdateTableStatusActive();
-  const archiveStatus = useArchiveTableStatus();
+  const {
+    mutateAsync: updateActive,
+    isPending: isUpdating,
+    isSuccess: isUpdated,
+  } = useUpdateTableStatusActive();
+  const {
+    mutateAsync: archiveStatus,
+    isPending: isArchiving,
+    isSuccess: isArchived,
+  } = useArchiveTableStatus();
   const archiving = action === 'archive';
   const deactivating = status.isActive;
-  const isPending = updateActive.isPending || archiveStatus.isPending;
+  const isPending = isUpdating || isArchiving;
 
   useEffect(() => {
-    if (updateActive.isSuccess || archiveStatus.isSuccess) {
+    if (isUpdated || isArchived) {
       hideModal();
     }
-  }, [updateActive.isSuccess, archiveStatus.isSuccess, hideModal]);
+  }, [isUpdated, isArchived, hideModal]);
 
-  const confirm = (): void => {
-    if (archiving) {
-      archiveStatus.mutate(status.id);
-    } else {
-      updateActive.mutate({ id: status.id, input: { isActive: !status.isActive } });
+  const confirm = async (): Promise<void> => {
+    try {
+      if (archiving) {
+        await archiveStatus(status.id);
+      } else {
+        await updateActive({ id: status.id, input: { isActive: !status.isActive } });
+      }
+    } catch {
+      // The request hook reports the error; keep the dialog open for retry.
     }
   };
 
