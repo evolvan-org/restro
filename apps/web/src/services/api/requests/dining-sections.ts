@@ -16,11 +16,9 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import axios from 'axios';
-import { toast } from 'sonner';
 
+import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api-error';
 
 import { DiningSectionQueryKey } from '../types/DiningSectionQueryKey';
 
@@ -28,13 +26,6 @@ const PAGE_SIZE = 100;
 
 type UpdateVariables = { id: string; input: UpdateDiningSectionRequest };
 type UpdateStatusVariables = { id: string; input: UpdateDiningSectionStatusRequest };
-
-function showMutationError(error: Error, fallback: string): void {
-  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-  // The shared interceptor already handles authentication, forbidden, and server errors.
-  if (status === 401 || status === 403 || (status !== undefined && status >= 500)) return;
-  toast.error(getApiErrorMessage(error, fallback));
-}
 
 /** Loads every page so ordering controls always operate on the complete restaurant list. */
 export function useDiningSections(enabled: boolean): UseQueryResult<DiningSection[]> {
@@ -67,25 +58,27 @@ export function useCreateDiningSection(): UseMutationResult<
   CreateDiningSectionRequest
 > {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to create the dining section.');
+  return useMutation<DiningSection, Error, CreateDiningSectionRequest>({
     mutationFn: async (input): Promise<DiningSection> => {
       const response = await api.post('/dining-sections', input);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
-    onError: (error) => showMutationError(error, 'Unable to create the dining section.'),
+    onError: showApiError,
   });
 }
 
 export function useUpdateDiningSection(): UseMutationResult<DiningSection, Error, UpdateVariables> {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to update the dining section.');
+  return useMutation<DiningSection, Error, UpdateVariables>({
     mutationFn: async ({ id, input }): Promise<DiningSection> => {
       const response = await api.patch(`/dining-sections/${id}`, input);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
-    onError: (error) => showMutationError(error, 'Unable to update the dining section.'),
+    onError: showApiError,
   });
 }
 
@@ -95,13 +88,14 @@ export function useUpdateDiningSectionStatus(): UseMutationResult<
   UpdateStatusVariables
 > {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to change the section status.');
+  return useMutation<DiningSection, Error, UpdateStatusVariables>({
     mutationFn: async ({ id, input }): Promise<DiningSection> => {
       const response = await api.patch(`/dining-sections/${id}/status`, input);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
-    onError: (error) => showMutationError(error, 'Unable to change the section status.'),
+    onError: showApiError,
   });
 }
 
@@ -111,7 +105,8 @@ export function useReorderDiningSections(): UseMutationResult<
   ReorderDiningSectionsRequest
 > {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to save the new section order.');
+  return useMutation<ReorderDiningSectionsResponse, Error, ReorderDiningSectionsRequest>({
     mutationFn: async (input): Promise<ReorderDiningSectionsResponse> => {
       const response = await api.patch('/dining-sections/reorder', input);
       return reorderDiningSectionsResponseSchema.parse(response.data);
@@ -119,18 +114,19 @@ export function useReorderDiningSections(): UseMutationResult<
     onSuccess: (sections) => {
       queryClient.setQueryData([DiningSectionQueryKey.Sections], sections);
     },
-    onError: (error) => showMutationError(error, 'Unable to save the new section order.'),
+    onError: showApiError,
   });
 }
 
 export function useArchiveDiningSection(): UseMutationResult<DiningSection, Error, string> {
   const queryClient = useQueryClient();
-  return useMutation({
+  const showApiError = useShowApiError('Unable to archive the dining section.');
+  return useMutation<DiningSection, Error, string>({
     mutationFn: async (id): Promise<DiningSection> => {
       const response = await api.patch(`/dining-sections/${id}/archive`);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
-    onError: (error) => showMutationError(error, 'Unable to archive the dining section.'),
+    onError: showApiError,
   });
 }

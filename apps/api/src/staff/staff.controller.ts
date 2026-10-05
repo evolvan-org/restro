@@ -2,6 +2,9 @@ import {
   Body,
   Controller,
   Get,
+  Header,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -27,6 +30,8 @@ import {
   createStaffRequestSchema,
   type CreateStaffResponse,
   createStaffResponseSchema,
+  type RegenerateStaffPasswordResponse,
+  regenerateStaffPasswordResponseSchema,
   type StaffAccount,
   staffAccountSchema,
   type StaffListQuery,
@@ -162,5 +167,27 @@ export class StaffController {
     @Body(new ZodValidationPipe(updateStaffStatusRequestSchema)) input: UpdateStaffStatusRequest,
   ): Promise<StaffAccount> {
     return this.staffService.updateStatus(actor, id, input);
+  }
+
+  @Post(':id/password')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.USER_WRITE)
+  @ApiOperation({
+    summary: 'Regenerate a staff password',
+    description:
+      'Replaces the password of a staff account you may manage and returns the new temporary password once. The old password no longer works. Account status is unchanged. Requires `user:write`; use your profile to change your own password.',
+  })
+  @ApiOkResponse({
+    description: 'The account and its new temporary password',
+    schema: zodOpenApiSchema(regenerateStaffPasswordResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid staff account id'))
+  @ApiNotFoundResponse(apiError('No staff account with this id in your restaurant'))
+  regeneratePassword(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<RegenerateStaffPasswordResponse> {
+    return this.staffService.regeneratePassword(actor, id);
   }
 }

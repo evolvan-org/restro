@@ -3,8 +3,9 @@
 import type { StaffStatus, UserStatus } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
-import { Pencil, Plus, Search } from 'lucide-react';
-import { type ReactElement, useState } from 'react';
+import { KeyRound, Pencil, Plus, Search } from 'lucide-react';
+import { type ReactElement, useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,16 +19,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import useShowApiError from '@/hooks/api/useShowApiError';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
-import { getApiErrorMessage } from '@/lib/api-error';
+import { formatRoleLabel } from '@/lib/utils';
 import { useProfile } from '@/services/api/requests/profile';
 import { useStaffList, useStaffRoles } from '@/services/api/requests/staff';
-import { useShowStaffStatusModal } from '@/store/hooks/modal';
+import {
+  useShowStaffPasswordRegenerationModal,
+  useShowStaffStatusModal,
+} from '@/store/hooks/modal';
 import { useShowStaffFormSidePane } from '@/store/hooks/sidepane';
 
 const SEARCH_DEBOUNCE_MS = 300;
+
+type StaffFilters = { search: string; status: StaffStatus | ''; page: number };
 
 const STATUS_FILTERS: { value: StaffStatus | ''; label: string }[] = [
   { value: '', label: 'All statuses' },
@@ -51,9 +58,12 @@ export default function Staff(): ReactElement | null {
   const canRead = can(Permission.USER_READ);
   const canWrite = can(Permission.USER_WRITE);
 
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<StaffStatus | ''>('');
-  const [page, setPage] = useState(1);
+  const filters = useForm<StaffFilters>({
+    defaultValues: { search: '', status: '', page: 1 },
+  });
+  const search = useWatch({ control: filters.control, name: 'search' });
+  const status = useWatch({ control: filters.control, name: 'status' });
+  const page = useWatch({ control: filters.control, name: 'page' });
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
   const staff = useStaffList(
@@ -71,6 +81,17 @@ export default function Staff(): ReactElement | null {
   const manageableRoleIds = new Set((assignableRoles.data ?? []).map((role) => role.id));
   const showStaffForm = useShowStaffFormSidePane();
   const showStatusModal = useShowStaffStatusModal();
+  const showPasswordRegeneration = useShowStaffPasswordRegenerationModal();
+  const showStaffError = useShowApiError('Unable to load staff accounts.');
+  const showRolesError = useShowApiError('Unable to load staff roles.');
+
+  useEffect(() => {
+    if (staff.error) showStaffError(staff.error);
+  }, [staff.error, staff.errorUpdatedAt, showStaffError]);
+
+  useEffect(() => {
+    if (assignableRoles.error) showRolesError(assignableRoles.error);
+  }, [assignableRoles.error, assignableRoles.errorUpdatedAt, showRolesError]);
 
   // The guard redirects users without `user:read` to /forbidden; render nothing until allowed.
   if (!isAllowed) {
@@ -93,15 +114,19 @@ export default function Staff(): ReactElement | null {
               : 'Everyone with an account in your restaurant.'}
           </p>
         </div>
-        {canWrite ? (
+        {canWrite && (
           <Button type="button" onClick={() => showStaffForm()}>
             <Plus aria-hidden />
             Add staff
           </Button>
-        ) : null}
+        )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <form
+        aria-label="Staff filters"
+        onSubmit={(event) => event.preventDefault()}
+        className="mb-4 flex flex-wrap items-center gap-3"
+      >
         <div className="relative w-full sm:w-72">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -112,20 +137,16 @@ export default function Staff(): ReactElement | null {
             className="pl-8"
             placeholder="Search by name or email"
             aria-label="Search staff by name or email"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
+            {...filters.register('search', {
+              onChange: () => filters.setValue('page', 1),
+            })}
           />
         </div>
         <NativeSelect
           aria-label="Filter by status"
-          value={status}
-          onChange={(event) => {
-            setStatus(event.target.value as StaffStatus | '');
-            setPage(1);
-          }}
+          {...filters.register('status', {
+            onChange: () => filters.setValue('page', 1),
+          })}
         >
           {STATUS_FILTERS.map((filter) => (
             <NativeSelectOption key={filter.value} value={filter.value}>
@@ -133,12 +154,12 @@ export default function Staff(): ReactElement | null {
             </NativeSelectOption>
           ))}
         </NativeSelect>
-      </div>
+      </form>
 
       {staff.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
           <p role="alert" className="text-sm text-destructive">
-            {getApiErrorMessage(staff.error, 'Unable to load staff accounts.')}
+            Unable to load staff accounts.
           </p>
           <Button type="button" variant="outline" onClick={() => staff.refetch()}>
             Try again
@@ -154,7 +175,7 @@ export default function Staff(): ReactElement | null {
                 <TableHead>Phone</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
-                {canWrite ? <TableHead className="text-right">Actions</TableHead> : null}
+                {canWrite && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -167,18 +188,28 @@ export default function Staff(): ReactElement | null {
                   <TableRow key={account.id}>
                     <TableCell className="font-medium">
                       {account.name}
-                      {isSelf ? <span className="ml-2 text-muted-foreground">(you)</span> : null}
+                      {isSelf && <span className="ml-2 text-muted-foreground">(you)</span>}
                     </TableCell>
                     <TableCell>{account.email}</TableCell>
                     <TableCell>{account.phone ?? '—'}</TableCell>
-                    <TableCell>{account.role.name}</TableCell>
+                    <TableCell>{formatRoleLabel(account.role.name)}</TableCell>
                     <TableCell>
                       <Badge variant={badge.variant}>{badge.label}</Badge>
                     </TableCell>
-                    {canWrite ? (
+                    {canWrite && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {canManage ? (
+                          {canManage && !isSelf && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => showStatusModal(account)}
+                            >
+                              {account.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                            </Button>
+                          )}
+                          {canManage && (
                             <Button
                               type="button"
                               variant="ghost"
@@ -189,25 +220,27 @@ export default function Staff(): ReactElement | null {
                               <Pencil aria-hidden />
                               Edit
                             </Button>
-                          ) : null}
-                          {!canManage || isSelf ? null : (
+                          )}
+                          {canManage && !isSelf && (
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => showStatusModal(account)}
+                              onClick={() => showPasswordRegeneration(account)}
+                              aria-label={`Regenerate password for ${account.name}`}
                             >
-                              {account.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                              <KeyRound aria-hidden />
+                              Regenerate password
                             </Button>
                           )}
                         </div>
                       </TableCell>
-                    ) : null}
+                    )}
                   </TableRow>
                 );
               })}
 
-              {rows.length === 0 ? (
+              {rows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={canWrite ? 6 : 5}
@@ -220,13 +253,13 @@ export default function Staff(): ReactElement | null {
                         : 'No staff accounts yet.'}
                   </TableCell>
                 </TableRow>
-              ) : null}
+              )}
             </TableBody>
           </Table>
         </div>
       )}
 
-      {meta && meta.total > 0 ? (
+      {meta && meta.total > 0 && (
         <div className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <p>
             {meta.total} {meta.total === 1 ? 'account' : 'accounts'} · Page {meta.page} of{' '}
@@ -238,7 +271,7 @@ export default function Staff(): ReactElement | null {
               variant="outline"
               size="sm"
               disabled={meta.page <= 1 || staff.isFetching}
-              onClick={() => setPage((current) => current - 1)}
+              onClick={() => filters.setValue('page', page - 1)}
             >
               Previous
             </Button>
@@ -247,13 +280,13 @@ export default function Staff(): ReactElement | null {
               variant="outline"
               size="sm"
               disabled={meta.page >= meta.totalPages || staff.isFetching}
-              onClick={() => setPage((current) => current + 1)}
+              onClick={() => filters.setValue('page', page + 1)}
             >
               Next
             </Button>
           </div>
         </div>
-      ) : null}
+      )}
     </main>
   );
 }

@@ -65,8 +65,16 @@ export default function DiningSectionFormSidePane({
   onCancel,
 }: DiningSectionFormSidePaneProps): ReactElement {
   const config = mapDiningSectionForm(section);
-  const createSection = useCreateDiningSection();
-  const updateSection = useUpdateDiningSection();
+  const {
+    mutateAsync: createSection,
+    isPending: isCreating,
+    isSuccess: isCreated,
+  } = useCreateDiningSection();
+  const {
+    mutateAsync: updateSection,
+    isPending: isUpdating,
+    isSuccess: isUpdated,
+  } = useUpdateDiningSection();
   const hideSidePane = useHideSidePane();
 
   const form = useForm<CreateDiningSectionRequest>({
@@ -79,24 +87,28 @@ export default function DiningSectionFormSidePane({
   });
 
   useEffect(() => {
-    if (createSection.isSuccess || updateSection.isSuccess) {
+    if (isCreated || isUpdated) {
       hideSidePane();
     }
-  }, [createSection.isSuccess, updateSection.isSuccess, hideSidePane]);
+  }, [isCreated, isUpdated, hideSidePane]);
 
-  const onSubmit = form.handleSubmit((values) => {
-    if (section) {
-      const input: UpdateDiningSectionRequest = {
-        ...values,
-        sortOrder: values.sortOrder ?? section.sortOrder,
-      };
-      updateSection.mutate({ id: section.id, input });
-    } else {
-      createSection.mutate(values);
+  const onSubmit = form.handleSubmit(async (values) => {
+    try {
+      if (section) {
+        const input: UpdateDiningSectionRequest = {
+          ...values,
+          sortOrder: values.sortOrder ?? section.sortOrder,
+        };
+        await updateSection({ id: section.id, input });
+      } else {
+        await createSection(values);
+      }
+    } catch {
+      // The mutation hook reports the error through useShowApiError; keep the form open.
     }
   });
 
-  const isSaving = createSection.isPending || updateSection.isPending;
+  const isSaving = isCreating || isUpdating;
 
   return (
     <>

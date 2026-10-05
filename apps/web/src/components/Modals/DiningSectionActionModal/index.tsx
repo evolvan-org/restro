@@ -28,25 +28,37 @@ export default function DiningSectionActionModal({
   action,
 }: DiningSectionActionModalProps): ReactElement {
   const hideModal = useHideModal();
-  const updateStatus = useUpdateDiningSectionStatus();
-  const archiveSection = useArchiveDiningSection();
+  const {
+    mutateAsync: updateStatus,
+    isPending: isUpdating,
+    isSuccess: isUpdated,
+  } = useUpdateDiningSectionStatus();
+  const {
+    mutateAsync: archiveSection,
+    isPending: isArchiving,
+    isSuccess: isArchived,
+  } = useArchiveDiningSection();
   const isArchive = action === 'archive';
 
   useEffect(() => {
-    if (archiveSection.isSuccess || updateStatus.isSuccess) {
+    if (isArchived || isUpdated) {
       hideModal();
     }
-  }, [archiveSection.isSuccess, updateStatus.isSuccess, hideModal]);
+  }, [isArchived, isUpdated, hideModal]);
 
-  const confirm = (): void => {
-    if (isArchive) {
-      archiveSection.mutate(section.id);
-    } else {
-      updateStatus.mutate({ id: section.id, input: { isActive: true } });
+  const confirm = async (): Promise<void> => {
+    try {
+      if (isArchive) {
+        await archiveSection(section.id);
+      } else {
+        await updateStatus({ id: section.id, input: { isActive: true } });
+      }
+    } catch {
+      // The mutation hook reports the error through useShowApiError; keep the dialog open.
     }
   };
 
-  const pending = archiveSection.isPending || updateStatus.isPending;
+  const pending = isArchiving || isUpdating;
 
   return (
     <Dialog open onOpenChange={(open) => !open && hideModal()}>

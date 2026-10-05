@@ -2,7 +2,7 @@
 
 import { Permission } from '@rms/permissions';
 import { Archive, ArrowDown, ArrowUp, Pencil, Plus } from 'lucide-react';
-import type { ReactElement } from 'react';
+import { type ReactElement, useEffect } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import useShowApiError from '@/hooks/api/useShowApiError';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
-import { getApiErrorMessage } from '@/lib/api-error';
 import {
   useDiningSections,
   useReorderDiningSections,
@@ -30,20 +30,29 @@ export default function DiningSections(): ReactElement | null {
   const canRead = can(Permission.RESTAURANT_READ);
   const canWrite = can(Permission.RESTAURANT_WRITE);
   const sections = useDiningSections(canRead);
-  const reorder = useReorderDiningSections();
+  const { mutateAsync: reorderSections, isPending: isReordering } = useReorderDiningSections();
   const showForm = useShowDiningSectionFormSidePane();
   const showAction = useShowDiningSectionActionModal();
+  const showApiError = useShowApiError('Unable to load dining sections.');
+
+  useEffect(() => {
+    if (sections.error) showApiError(sections.error);
+  }, [sections.error, sections.errorUpdatedAt, showApiError]);
 
   if (!isAllowed) return null;
 
   const rows = sections.data ?? [];
 
-  const move = (from: number, to: number): void => {
+  const move = async (from: number, to: number): Promise<void> => {
     const reordered = [...rows];
     const [moved] = reordered.splice(from, 1);
     if (!moved) return;
     reordered.splice(to, 0, moved);
-    reorder.mutate({ orderedIds: reordered.map(({ id }) => id) });
+    try {
+      await reorderSections({ orderedIds: reordered.map(({ id }) => id) });
+    } catch {
+      // The mutation hook reports the error through useShowApiError; preserve the current order.
+    }
   };
 
   return (
@@ -69,7 +78,7 @@ export default function DiningSections(): ReactElement | null {
       {sections.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
           <p role="alert" className="text-sm text-destructive">
-            {getApiErrorMessage(sections.error, 'Unable to load dining sections.')}
+            Unable to load dining sections.
           </p>
           <Button type="button" variant="outline" onClick={() => sections.refetch()}>
             Try again
@@ -97,7 +106,7 @@ export default function DiningSections(): ReactElement | null {
                           type="button"
                           variant="ghost"
                           size="icon-xs"
-                          disabled={index === 0 || reorder.isPending}
+                          disabled={index === 0 || isReordering}
                           aria-label={`Move ${section.name} up`}
                           onClick={() => move(index, index - 1)}
                         >
@@ -107,7 +116,7 @@ export default function DiningSections(): ReactElement | null {
                           type="button"
                           variant="ghost"
                           size="icon-xs"
-                          disabled={index === rows.length - 1 || reorder.isPending}
+                          disabled={index === rows.length - 1 || isReordering}
                           aria-label={`Move ${section.name} down`}
                           onClick={() => move(index, index + 1)}
                         >

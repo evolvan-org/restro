@@ -14,6 +14,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 
+import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 import { useAccessToken } from '@/store/hooks/auth';
 
@@ -38,8 +39,9 @@ export function useUpdateProfile(): UseMutationResult<
   UpdateProfileRequest
 > {
   const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update the profile.');
 
-  return useMutation({
+  return useMutation<ProfileResponse, Error, UpdateProfileRequest>({
     mutationFn: async (input: UpdateProfileRequest): Promise<ProfileResponse> => {
       const response = await api.patch('/profile', input);
       return profileResponseSchema.parse(response.data);
@@ -47,6 +49,7 @@ export function useUpdateProfile(): UseMutationResult<
     onSuccess: (profile) => {
       queryClient.setQueryData([ProfileQueryKey.Profile], profile);
     },
+    onError: showApiError,
   });
 }
 
@@ -55,10 +58,13 @@ export function useChangePassword(): UseMutationResult<
   Error,
   ChangePasswordRequest
 > {
-  return useMutation({
+  const showApiError = useShowApiError('Unable to change the password.');
+
+  return useMutation<ChangePasswordResponse, Error, ChangePasswordRequest>({
     mutationFn: async (input: ChangePasswordRequest): Promise<ChangePasswordResponse> => {
       const response = await api.patch('/profile/password', input);
       return changePasswordResponseSchema.parse(response.data);
     },
+    onError: showApiError,
   });
 }

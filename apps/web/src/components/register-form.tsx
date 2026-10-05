@@ -93,7 +93,7 @@ export function RegisterForm({
                 />
                 <FieldError>{errors?.confirmPassword}</FieldError>
               </Field>
-              {submitError ? <FieldError>{submitError}</FieldError> : null}
+              {submitError && <FieldError>{submitError}</FieldError>}
               <Field>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? 'Creating account...' : 'Create account'}

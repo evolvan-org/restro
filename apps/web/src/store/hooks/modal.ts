@@ -32,15 +32,27 @@ export function useModalPayload() {
   return useStoreSelector(({ modal }) => modal.payload);
 }
 
-/** Show a newly created staff account's one-time temporary password. */
-export function useShowStaffTemporaryPasswordModal(): (created: CreateStaffResponse) => void {
+/** Show the one-time temporary password after account creation or password regeneration. */
+export function useShowStaffTemporaryPasswordModal(): (
+  created: CreateStaffResponse,
+  mode?: 'created' | 'regenerated',
+) => void {
   const showModal = useShowModal();
-  return (created) => {
+  return (created, mode = 'created') => {
     showModal(ModalType.StaffTemporaryPassword, {
       name: created.account.name,
       email: created.account.email,
       temporaryPassword: created.temporaryPassword,
+      mode,
     });
+  };
+}
+
+/** Ask to confirm replacing a staff account's password. */
+export function useShowStaffPasswordRegenerationModal(): (account: StaffAccount) => void {
+  const showModal = useShowModal();
+  return (account) => {
+    showModal(ModalType.StaffPasswordRegeneration, { account });
   };
 }
 

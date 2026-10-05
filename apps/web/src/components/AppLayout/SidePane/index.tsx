@@ -39,9 +39,9 @@ export default function SidePane() {
       }}
     >
       <SheetContent side="right" className="w-screen sm:max-w-xl">
-        {SelectedSidePane !== Fragment ? (
+        {SelectedSidePane !== Fragment && (
           <SelectedSidePane {...sidePanePayload} onCancel={hideSidePane} />
-        ) : null}
+        )}
       </SheetContent>
     </Sheet>
   );
