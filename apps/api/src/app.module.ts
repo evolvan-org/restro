@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { DiningSectionsModule } from './dining-sections/dining-sections.module';
 import { ProfileModule } from './profile/profile.module';
+import { RestaurantSettingsModule } from './restaurant-settings/restaurant-settings.module';
 import { StaffModule } from './staff/staff.module';
 import { StatusModule } from './status/status.module';
 import { TableStatusesModule } from './table-statuses/table-statuses.module';
@@ -23,6 +24,7 @@ import { TableStatusesModule } from './table-statuses/table-statuses.module';
     StaffModule,
     DiningSectionsModule,
     TableStatusesModule,
+    RestaurantSettingsModule,
   ],
 })
 export class AppModule {}

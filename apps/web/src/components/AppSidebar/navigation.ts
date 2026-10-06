@@ -49,5 +49,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/table-statuses',
     permission: Permission.RESTAURANT_READ,
   },
-  { label: 'Restaurant', icon: Store, permission: Permission.RESTAURANT_READ },
+  {
+    label: 'Restaurant',
+    icon: Store,
+    href: '/restaurant/settings',
+    permission: Permission.RESTAURANT_READ,
+  },
 ];
