@@ -26,7 +26,7 @@ export function useProfile(): UseQueryResult<ProfileResponse> {
   return useQuery({
     queryKey: [ProfileQueryKey.Profile],
     queryFn: async (): Promise<ProfileResponse> => {
-      const response = await api.get('/profile');
+      const response = await api.get('/users/profile');
       return profileResponseSchema.parse(response.data);
     },
     enabled: Boolean(accessToken),
@@ -43,7 +43,7 @@ export function useUpdateProfile(): UseMutationResult<
 
   return useMutation<ProfileResponse, Error, UpdateProfileRequest>({
     mutationFn: async (input: UpdateProfileRequest): Promise<ProfileResponse> => {
-      const response = await api.patch('/profile', input);
+      const response = await api.patch('/users/profile', input);
       return profileResponseSchema.parse(response.data);
     },
     onSuccess: (profile) => {
@@ -62,7 +62,7 @@ export function useChangePassword(): UseMutationResult<
 
   return useMutation<ChangePasswordResponse, Error, ChangePasswordRequest>({
     mutationFn: async (input: ChangePasswordRequest): Promise<ChangePasswordResponse> => {
-      const response = await api.patch('/profile/password', input);
+      const response = await api.patch('/users/profile/password', input);
       return changePasswordResponseSchema.parse(response.data);
     },
     onError: showApiError,

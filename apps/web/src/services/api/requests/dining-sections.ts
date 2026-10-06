@@ -37,7 +37,7 @@ export function useDiningSections(enabled: boolean): UseQueryResult<DiningSectio
       let totalPages = 1;
 
       do {
-        const response = await api.get('/dining-sections', {
+        const response = await api.get('/table/dining-sections', {
           params: { page, pageSize: PAGE_SIZE },
         });
         const parsed = diningSectionListResponseSchema.parse(response.data);
@@ -61,7 +61,7 @@ export function useCreateDiningSection(): UseMutationResult<
   const showApiError = useShowApiError('Unable to create the dining section.');
   return useMutation<DiningSection, Error, CreateDiningSectionRequest>({
     mutationFn: async (input): Promise<DiningSection> => {
-      const response = await api.post('/dining-sections', input);
+      const response = await api.post('/table/dining-sections', input);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
@@ -74,7 +74,7 @@ export function useUpdateDiningSection(): UseMutationResult<DiningSection, Error
   const showApiError = useShowApiError('Unable to update the dining section.');
   return useMutation<DiningSection, Error, UpdateVariables>({
     mutationFn: async ({ id, input }): Promise<DiningSection> => {
-      const response = await api.patch(`/dining-sections/${id}`, input);
+      const response = await api.patch(`/table/dining-sections/${id}`, input);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
@@ -91,7 +91,7 @@ export function useUpdateDiningSectionStatus(): UseMutationResult<
   const showApiError = useShowApiError('Unable to change the section status.');
   return useMutation<DiningSection, Error, UpdateStatusVariables>({
     mutationFn: async ({ id, input }): Promise<DiningSection> => {
-      const response = await api.patch(`/dining-sections/${id}/status`, input);
+      const response = await api.patch(`/table/dining-sections/${id}/status`, input);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),
@@ -108,7 +108,7 @@ export function useReorderDiningSections(): UseMutationResult<
   const showApiError = useShowApiError('Unable to save the new section order.');
   return useMutation<ReorderDiningSectionsResponse, Error, ReorderDiningSectionsRequest>({
     mutationFn: async (input): Promise<ReorderDiningSectionsResponse> => {
-      const response = await api.patch('/dining-sections/reorder', input);
+      const response = await api.patch('/table/dining-sections/reorder', input);
       return reorderDiningSectionsResponseSchema.parse(response.data);
     },
     onSuccess: (sections) => {
@@ -123,7 +123,7 @@ export function useArchiveDiningSection(): UseMutationResult<DiningSection, Erro
   const showApiError = useShowApiError('Unable to archive the dining section.');
   return useMutation<DiningSection, Error, string>({
     mutationFn: async (id): Promise<DiningSection> => {
-      const response = await api.patch(`/dining-sections/${id}/archive`);
+      const response = await api.patch(`/table/dining-sections/${id}/archive`);
       return diningSectionSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [DiningSectionQueryKey.Sections] }),

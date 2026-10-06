@@ -39,7 +39,7 @@ export function useStaffList(
   return useQuery({
     queryKey: [StaffQueryKey.Staff, query],
     queryFn: async (): Promise<StaffListResponse> => {
-      const response = await api.get('/staff', { params: query });
+      const response = await api.get('/users/staff', { params: query });
       return staffListResponseSchema.parse(response.data);
     },
     placeholderData: keepPreviousData,
@@ -52,7 +52,7 @@ export function useStaffRoles(enabled: boolean): UseQueryResult<StaffRolesRespon
   return useQuery({
     queryKey: [StaffQueryKey.Roles],
     queryFn: async (): Promise<StaffRolesResponse> => {
-      const response = await api.get('/staff/roles');
+      const response = await api.get('/users/staff/roles');
       return staffRolesResponseSchema.parse(response.data);
     },
     enabled,
@@ -69,7 +69,7 @@ export function useCreateStaff(): UseMutationResult<
 
   return useMutation<CreateStaffResponse, Error, CreateStaffRequest>({
     mutationFn: async (input: CreateStaffRequest): Promise<CreateStaffResponse> => {
-      const response = await api.post('/staff', input);
+      const response = await api.post('/users/staff', input);
       return createStaffResponseSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [StaffQueryKey.Staff] }),
@@ -83,7 +83,7 @@ export function useUpdateStaff(): UseMutationResult<StaffAccount, Error, UpdateS
 
   return useMutation<StaffAccount, Error, UpdateStaffVariables>({
     mutationFn: async ({ id, input }: UpdateStaffVariables): Promise<StaffAccount> => {
-      const response = await api.patch(`/staff/${id}`, input);
+      const response = await api.patch(`/users/staff/${id}`, input);
       return staffAccountSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [StaffQueryKey.Staff] }),
@@ -101,7 +101,7 @@ export function useUpdateStaffStatus(): UseMutationResult<
 
   return useMutation<StaffAccount, Error, UpdateStaffStatusVariables>({
     mutationFn: async ({ id, input }: UpdateStaffStatusVariables): Promise<StaffAccount> => {
-      const response = await api.patch(`/staff/${id}/status`, input);
+      const response = await api.patch(`/users/staff/${id}/status`, input);
       return staffAccountSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [StaffQueryKey.Staff] }),
@@ -118,7 +118,7 @@ export function useRegenerateStaffPassword(): UseMutationResult<
 
   return useMutation<RegenerateStaffPasswordResponse, Error, string>({
     mutationFn: async (id: string): Promise<RegenerateStaffPasswordResponse> => {
-      const response = await api.post(`/staff/${id}/password`);
+      const response = await api.post(`/users/staff/${id}/password`);
       return regenerateStaffPasswordResponseSchema.parse(response.data);
     },
     retry: false,
