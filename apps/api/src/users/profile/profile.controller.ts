@@ -20,16 +20,16 @@ import {
   updateProfileRequestSchema,
 } from '@rms/api-contract';
 
-import { CurrentUserId } from '../common/auth/current-user-id.decorator';
-import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
-import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { apiError, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import { CurrentUserId } from '../../common/auth/current-user-id.decorator';
+import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { apiError, zodOpenApiSchema } from '../../common/swagger/zod-openapi';
 import { ProfileService } from './profile.service';
 
 @ApiTags('profile')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('profile')
+@Controller('users/profile')
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
 

@@ -13,7 +13,7 @@ import {
 } from '@rms/api-contract';
 import { compare, hash } from 'bcrypt';
 
-import { BCRYPT_ROUNDS } from '../common/auth/password';
+import { BCRYPT_ROUNDS } from '../../common/auth/password';
 import {
   ProfileEmailConflictError,
   type ProfileRecord,

@@ -47,13 +47,13 @@ import {
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
-import type { Actor } from '../common/auth/authenticated-request';
-import { CurrentActor } from '../common/auth/current-actor.decorator';
-import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
-import { PermissionsGuard } from '../common/auth/permissions.guard';
-import { RequirePermissions } from '../common/auth/require-permissions.decorator';
-import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import type { Actor } from '../../common/auth/authenticated-request';
+import { CurrentActor } from '../../common/auth/current-actor.decorator';
+import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/auth/permissions.guard';
+import { RequirePermissions } from '../../common/auth/require-permissions.decorator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { apiError, ApiZodQuery, zodOpenApiSchema } from '../../common/swagger/zod-openapi';
 import { StaffService } from './staff.service';
 
 @ApiTags('staff')
@@ -65,7 +65,7 @@ import { StaffService } from './staff.service';
     'Missing permission, or not allowed on this account (your own role or status, or a role above yours)',
   ),
 )
-@Controller('staff')
+@Controller('users/staff')
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 

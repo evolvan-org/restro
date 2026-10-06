@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
 
-import { PrismaService } from '../common/database/prisma.service';
+import { PrismaService } from '../../common/database/prisma.service';
 
 const tableStatusSelect = {
   id: true,

@@ -40,13 +40,13 @@ import {
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
-import type { Actor } from '../common/auth/authenticated-request';
-import { CurrentActor } from '../common/auth/current-actor.decorator';
-import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
-import { PermissionsGuard } from '../common/auth/permissions.guard';
-import { RequirePermissions } from '../common/auth/require-permissions.decorator';
-import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import type { Actor } from '../../common/auth/authenticated-request';
+import { CurrentActor } from '../../common/auth/current-actor.decorator';
+import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/auth/permissions.guard';
+import { RequirePermissions } from '../../common/auth/require-permissions.decorator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { apiError, ApiZodQuery, zodOpenApiSchema } from '../../common/swagger/zod-openapi';
 import { DiningSectionsService } from './dining-sections.service';
 
 @ApiTags('dining sections')
@@ -54,7 +54,7 @@ import { DiningSectionsService } from './dining-sections.service';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
 @ApiForbiddenResponse(apiError('The caller lacks the required restaurant permission'))
-@Controller('dining-sections')
+@Controller('table/dining-sections')
 export class DiningSectionsController {
   constructor(private readonly service: DiningSectionsService) {}
 

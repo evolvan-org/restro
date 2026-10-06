@@ -15,7 +15,7 @@ import {
 } from '@rms/api-contract';
 import { buildPageMeta } from '@rms/shared';
 
-import type { Actor } from '../common/auth/authenticated-request';
+import type { Actor } from '../../common/auth/authenticated-request';
 import {
   type DiningSectionDetails,
   type DiningSectionRecord,

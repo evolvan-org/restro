@@ -20,8 +20,8 @@ import { isRole, Role, ROLE_PERMISSIONS, roleHasAll } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 import { hash } from 'bcrypt';
 
-import type { Actor } from '../common/auth/authenticated-request';
-import { BCRYPT_ROUNDS, generateTemporaryPassword } from '../common/auth/password';
+import type { Actor } from '../../common/auth/authenticated-request';
+import { BCRYPT_ROUNDS, generateTemporaryPassword } from '../../common/auth/password';
 import {
   type StaffDetails,
   StaffEmailConflictError,

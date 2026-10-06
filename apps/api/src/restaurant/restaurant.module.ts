@@ -11,4 +11,4 @@ import { RestaurantSettingsService } from './restaurant-settings.service';
   controllers: [RestaurantSettingsController],
   providers: [RestaurantSettingsService, RestaurantSettingsRepository],
 })
-export class RestaurantSettingsModule {}
+export class RestaurantModule {}
