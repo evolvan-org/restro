@@ -1,4 +1,4 @@
-import type { StaffAccount, TableStatus } from '@rms/api-contract';
+import type { DiningSection, StaffAccount, TableStatus } from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/sidepane';
@@ -31,6 +31,14 @@ export function useShowStaffFormSidePane(): (account?: StaffAccount) => void {
   const showSidePane = useShowSidePane();
   return (account) => {
     showSidePane(SidePaneType.StaffForm, account ? { account } : {});
+  };
+}
+
+/** Open the dining-section form: pass a section to edit it, or nothing to create one. */
+export function useShowDiningSectionFormSidePane(): (section?: DiningSection) => void {
+  const showSidePane = useShowSidePane();
+  return (section) => {
+    showSidePane(SidePaneType.DiningSectionForm, section ? { section } : {});
   };
 }
 

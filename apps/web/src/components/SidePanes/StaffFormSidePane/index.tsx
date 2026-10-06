@@ -6,7 +6,7 @@ import {
   createStaffRequestSchema,
   type StaffAccount,
 } from '@rms/api-contract';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/c
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { getApiErrorMessage } from '@/lib/api-error';
+import { formatRoleLabel } from '@/lib/utils';
 import { useProfile } from '@/services/api/requests/profile';
 import { useCreateStaff, useStaffRoles, useUpdateStaff } from '@/services/api/requests/staff';
 import { useShowStaffTemporaryPasswordModal } from '@/store/hooks/modal';
@@ -40,11 +40,19 @@ export default function StaffFormSidePane({
   const isSelf = isEdit && profile?.email === account.email;
 
   const roles = useStaffRoles(true);
-  const createStaff = useCreateStaff();
-  const updateStaff = useUpdateStaff();
+  const {
+    mutateAsync: createStaff,
+    data: createdStaff,
+    isPending: isCreating,
+    isSuccess: isCreated,
+  } = useCreateStaff();
+  const {
+    mutateAsync: updateStaff,
+    isPending: isUpdating,
+    isSuccess: isUpdated,
+  } = useUpdateStaff();
   const hideSidePane = useHideSidePane();
   const showTemporaryPassword = useShowStaffTemporaryPasswordModal();
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<CreateStaffRequest>({
     resolver: zodResolver(createStaffRequestSchema),
@@ -57,34 +65,35 @@ export default function StaffFormSidePane({
   });
   const { errors } = form.formState;
 
+  useEffect(() => {
+    if (isUpdated) hideSidePane();
+  }, [isUpdated, hideSidePane]);
+
+  useEffect(() => {
+    if (isCreated && createdStaff) {
+      hideSidePane();
+      showTemporaryPassword(createdStaff);
+    }
+  }, [isCreated, createdStaff, hideSidePane, showTemporaryPassword]);
+
   const roleOptions = [...(roles.data ?? [])];
   if (account && !roleOptions.some((role) => role.id === account.role.id)) {
     roleOptions.push(account.role);
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
-    setSubmitError(null);
-
     try {
       if (account) {
-        await updateStaff.mutateAsync({ id: account.id, input: values });
-        hideSidePane();
+        await updateStaff({ id: account.id, input: values });
       } else {
-        const created = await createStaff.mutateAsync(values);
-        hideSidePane();
-        showTemporaryPassword(created);
+        await createStaff(values);
       }
-    } catch (error) {
-      setSubmitError(
-        getApiErrorMessage(
-          error,
-          isEdit ? 'Unable to update the staff account.' : 'Unable to create the staff account.',
-        ),
-      );
+    } catch {
+      // The mutation hook reports the error through useShowApiError; keep the form open.
     }
   });
 
-  const isSaving = createStaff.isPending || updateStaff.isPending;
+  const isSaving = isCreating || isUpdating;
 
   return (
     <>
@@ -141,7 +150,12 @@ export default function StaffFormSidePane({
             <FieldLabel htmlFor="staff-role">Role</FieldLabel>
             {isSelf ? (
               <>
-                <Input id="staff-role" value={account.role.name} readOnly aria-readonly="true" />
+                <Input
+                  id="staff-role"
+                  value={formatRoleLabel(account.role.name)}
+                  readOnly
+                  aria-readonly="true"
+                />
                 <FieldDescription>You can&apos;t change your own role.</FieldDescription>
               </>
             ) : (
@@ -158,26 +172,17 @@ export default function StaffFormSidePane({
                   </NativeSelectOption>
                   {roleOptions.map((role) => (
                     <NativeSelectOption key={role.id} value={role.id}>
-                      {role.name}
+                      {formatRoleLabel(role.name)}
                     </NativeSelectOption>
                   ))}
                 </NativeSelect>
-                {roles.isError ? (
+                {roles.isError && (
                   <FieldDescription>Unable to load roles. Close and try again.</FieldDescription>
-                ) : null}
+                )}
               </>
             )}
             <FieldError>{errors.roleId?.message}</FieldError>
           </Field>
-
-          {submitError ? (
-            <p
-              role="alert"
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-              {submitError}
-            </p>
-          ) : null}
         </FieldGroup>
       </form>
 

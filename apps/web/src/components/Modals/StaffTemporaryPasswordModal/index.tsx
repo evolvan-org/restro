@@ -19,18 +19,20 @@ export type StaffTemporaryPasswordModalProps = {
   name: string;
   email: string;
   temporaryPassword: string;
+  mode?: 'created' | 'regenerated';
 };
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
 /**
- * Shown once after a staff account is created. The API never returns the password again,
- * so the admin must share it now.
+ * Shown after account creation or password regeneration. This password is returned once,
+ * so the manager must share it now or generate a replacement later.
  */
 export default function StaffTemporaryPasswordModal({
   name,
   email,
   temporaryPassword,
+  mode = 'created',
 }: StaffTemporaryPasswordModalProps): ReactElement {
   const hideModal = useHideModal();
   const [copyState, setCopyState] = useState<CopyState>('idle');
@@ -53,7 +55,9 @@ export default function StaffTemporaryPasswordModal({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Staff account created</DialogTitle>
+          <DialogTitle>
+            {mode === 'regenerated' ? 'Staff password regenerated' : 'Staff account created'}
+          </DialogTitle>
           <DialogDescription>
             Share these login details with {name}. The temporary password is shown only once.
           </DialogDescription>
@@ -75,11 +79,11 @@ export default function StaffTemporaryPasswordModal({
                 {copyState === 'copied' ? 'Copied' : 'Copy'}
               </Button>
             </dd>
-            {copyState === 'failed' ? (
+            {copyState === 'failed' && (
               <p role="alert" className="mt-1 text-destructive">
                 Couldn&apos;t copy automatically. Select the password and copy it manually.
               </p>
-            ) : null}
+            )}
           </div>
         </dl>
 

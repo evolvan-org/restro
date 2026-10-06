@@ -1,7 +1,7 @@
 'use client';
 
 import type { StaffAccount } from '@rms/api-contract';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { getApiErrorMessage } from '@/lib/api-error';
 import { useUpdateStaffStatus } from '@/services/api/requests/staff';
 import { useHideModal } from '@/store/hooks/modal';
 
@@ -24,21 +23,22 @@ export type StaffStatusModalProps = {
 /** Confirms activating or deactivating a staff account. */
 export default function StaffStatusModal({ account }: StaffStatusModalProps): ReactElement {
   const hideModal = useHideModal();
-  const updateStatus = useUpdateStaffStatus();
-  const [error, setError] = useState<string | null>(null);
+  const { mutateAsync: updateStatus, isPending, isSuccess } = useUpdateStaffStatus();
   const deactivate = account.status === 'ACTIVE';
 
-  const confirm = (): void => {
-    setError(null);
-    updateStatus.mutate(
-      { id: account.id, input: { status: deactivate ? 'INACTIVE' : 'ACTIVE' } },
-      {
-        onSuccess: hideModal,
-        onError: (mutationError) => {
-          setError(getApiErrorMessage(mutationError, 'Unable to change the account status.'));
-        },
-      },
-    );
+  useEffect(() => {
+    if (isSuccess) hideModal();
+  }, [isSuccess, hideModal]);
+
+  const confirm = async (): Promise<void> => {
+    try {
+      await updateStatus({
+        id: account.id,
+        input: { status: deactivate ? 'INACTIVE' : 'ACTIVE' },
+      });
+    } catch {
+      // The mutation hook reports the error through useShowApiError; keep the dialog open.
+    }
   };
 
   return (
@@ -60,26 +60,17 @@ export default function StaffStatusModal({ account }: StaffStatusModalProps): Re
           </DialogDescription>
         </DialogHeader>
 
-        {error ? (
-          <p
-            role="alert"
-            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {error}
-          </p>
-        ) : null}
-
         <DialogFooter>
           <Button type="button" variant="outline" onClick={hideModal}>
             Cancel
           </Button>
           <Button
             type="button"
-            variant={deactivate ? 'destructive' : 'default'}
+            variant={deactivate ? 'warning' : 'success'}
             onClick={confirm}
-            disabled={updateStatus.isPending}
+            disabled={isPending}
           >
-            {updateStatus.isPending ? 'Saving…' : deactivate ? 'Deactivate' : 'Activate'}
+            {isPending ? 'Saving…' : deactivate ? 'Deactivate' : 'Activate'}
           </Button>
         </DialogFooter>
       </DialogContent>

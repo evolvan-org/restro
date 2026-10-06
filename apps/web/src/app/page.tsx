@@ -27,11 +27,11 @@ export default function HomePage() {
         <span className="text-sm font-medium">{label}</span>
       </div>
 
-      {online && data ? (
+      {online && data && (
         <p className="text-xs text-muted-foreground">
           {data.service} · v{data.version}
         </p>
-      ) : null}
+      )}
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         <Button variant="outline" onClick={showSampleModal}>

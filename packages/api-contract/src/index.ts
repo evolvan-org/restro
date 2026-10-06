@@ -5,6 +5,7 @@
  */
 
 export * from './common';
+export * from './dining-sections';
 export * from './status';
 export * from './auth';
 export * from './profile';
