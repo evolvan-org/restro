@@ -62,6 +62,9 @@ export const createStaffResponseSchema = z
   })
   .strict();
 
+/** Replaces the staff account's password and returns the new password only in this response. */
+export const regenerateStaffPasswordResponseSchema = createStaffResponseSchema;
+
 export const updateStaffStatusRequestSchema = z
   .object({
     status: staffStatusSchema,
@@ -78,6 +81,7 @@ export type StaffListQuery = z.infer<typeof staffListQuerySchema>;
 export type StaffListResponse = z.infer<typeof staffListResponseSchema>;
 export type CreateStaffRequest = z.infer<typeof createStaffRequestSchema>;
 export type CreateStaffResponse = z.infer<typeof createStaffResponseSchema>;
+export type RegenerateStaffPasswordResponse = z.infer<typeof regenerateStaffPasswordResponseSchema>;
 export type UpdateStaffRequest = z.infer<typeof updateStaffRequestSchema>;
 export type UpdateStaffStatusRequest = z.infer<typeof updateStaffStatusRequestSchema>;
 export type StaffRolesResponse = z.infer<typeof staffRolesResponseSchema>;

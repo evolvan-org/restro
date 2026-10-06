@@ -10,44 +10,31 @@ import {
   updateProfileRequestSchema,
 } from '@rms/api-contract';
 import { KeyRound, ShieldCheck, UserRound } from 'lucide-react';
-import { type ReactElement, useEffect, useState } from 'react';
+import { type ReactElement, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { getApiErrorMessage } from '@/lib/api-error';
+import useShowApiError from '@/hooks/api/useShowApiError';
+import { formatRoleLabel } from '@/lib/utils';
 import { useChangePassword, useProfile, useUpdateProfile } from '@/services/api/requests/profile';
-
-type Notice = { kind: 'success' | 'error'; message: string } | null;
-
-function NoticeMessage({ notice }: { notice: Notice }): ReactElement | null {
-  if (!notice) {
-    return null;
-  }
-
-  const isError = notice.kind === 'error';
-  return (
-    <p
-      className={
-        isError
-          ? 'rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive'
-          : 'rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800'
-      }
-      role={isError ? 'alert' : 'status'}
-    >
-      {notice.message}
-    </p>
-  );
-}
 
 export default function Profile(): ReactElement {
   const profile = useProfile();
-  const updateProfile = useUpdateProfile();
-  const changePassword = useChangePassword();
-  const [profileNotice, setProfileNotice] = useState<Notice>(null);
-  const [passwordNotice, setPasswordNotice] = useState<Notice>(null);
+  const {
+    mutateAsync: updateProfile,
+    isPending: isUpdatingProfile,
+    isSuccess: isProfileUpdated,
+  } = useUpdateProfile();
+  const {
+    mutateAsync: changePassword,
+    data: passwordResponse,
+    isPending: isChangingPassword,
+    isSuccess: isPasswordChanged,
+  } = useChangePassword();
+  const showApiError = useShowApiError('Unable to load your profile.');
 
   const profileForm = useForm<UpdateProfileRequest>({
     resolver: zodResolver(updateProfileRequestSchema),
@@ -76,41 +63,31 @@ export default function Profile(): ReactElement {
     }
   }, [profile.data, profileForm]);
 
-  const submitProfile = profileForm.handleSubmit(async (values) => {
-    setProfileNotice(null);
+  useEffect(() => {
+    if (profile.error) showApiError(profile.error);
+  }, [profile.error, profile.errorUpdatedAt, showApiError]);
 
+  useEffect(() => {
+    if (isPasswordChanged) passwordForm.reset();
+  }, [isPasswordChanged, passwordForm]);
+
+  const submitProfile = profileForm.handleSubmit(async (values) => {
     try {
-      const updated = await updateProfile.mutateAsync({
+      await updateProfile({
         name: values.name,
         email: values.email,
         phone: values.phone || null,
       });
-      profileForm.reset({
-        name: updated.name,
-        email: updated.email,
-        phone: updated.phone ?? '',
-      });
-      setProfileNotice({ kind: 'success', message: 'Profile updated successfully.' });
-    } catch (error) {
-      setProfileNotice({
-        kind: 'error',
-        message: getApiErrorMessage(error, 'Unable to update the profile.'),
-      });
+    } catch {
+      // The mutation hook reports the error through useShowApiError; preserve the form values.
     }
   });
 
   const submitPassword = passwordForm.handleSubmit(async (values) => {
-    setPasswordNotice(null);
-
     try {
-      const response = await changePassword.mutateAsync(values);
-      passwordForm.reset();
-      setPasswordNotice({ kind: 'success', message: `${response.message}.` });
-    } catch (error) {
-      setPasswordNotice({
-        kind: 'error',
-        message: getApiErrorMessage(error, 'Unable to change the password.'),
-      });
+      await changePassword(values);
+    } catch {
+      // The mutation hook reports the error through useShowApiError; preserve the form values.
     }
   });
 
@@ -127,7 +104,7 @@ export default function Profile(): ReactElement {
       <main className="mx-auto flex max-w-6xl items-center justify-center px-6 py-24">
         <div className="space-y-4 text-center">
           <p role="alert" className="text-sm text-destructive">
-            {getApiErrorMessage(profile.error, 'Unable to load your profile.')}
+            Unable to load your profile.
           </p>
           <Button type="button" variant="outline" onClick={() => profile.refetch()}>
             Try again
@@ -208,7 +185,7 @@ export default function Profile(): ReactElement {
                     <Input
                       id="profile-role"
                       className="pl-8"
-                      value={profile.data.role}
+                      value={formatRoleLabel(profile.data.role)}
                       readOnly
                       aria-readonly="true"
                     />
@@ -218,10 +195,17 @@ export default function Profile(): ReactElement {
                   </FieldDescription>
                 </Field>
 
-                <NoticeMessage notice={profileNotice} />
+                {isProfileUpdated && (
+                  <p
+                    role="status"
+                    className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                  >
+                    Profile updated successfully.
+                  </p>
+                )}
 
-                <Button type="submit" disabled={updateProfile.isPending}>
-                  {updateProfile.isPending ? 'Saving…' : 'Save changes'}
+                <Button type="submit" disabled={isUpdatingProfile}>
+                  {isUpdatingProfile ? 'Saving…' : 'Save changes'}
                 </Button>
               </FieldGroup>
             </form>
@@ -269,10 +253,17 @@ export default function Profile(): ReactElement {
                   <FieldError>{passwordForm.formState.errors.newPassword?.message}</FieldError>
                 </Field>
 
-                <NoticeMessage notice={passwordNotice} />
+                {isPasswordChanged && passwordResponse && (
+                  <p
+                    role="status"
+                    className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                  >
+                    {passwordResponse.message}.
+                  </p>
+                )}
 
-                <Button type="submit" disabled={changePassword.isPending}>
-                  {changePassword.isPending ? 'Updating…' : 'Update password'}
+                <Button type="submit" disabled={isChangingPassword}>
+                  {isChangingPassword ? 'Updating…' : 'Update password'}
                 </Button>
               </FieldGroup>
             </form>

@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   Receipt,
+  Rows3,
   Store,
   Users,
 } from 'lucide-react';
@@ -32,10 +33,22 @@ export const NAV_ITEMS: readonly NavItem[] = [
     permission: Permission.DASHBOARD_READ,
   },
   { label: 'Staff', icon: Users, href: '/staff', permission: Permission.USER_READ },
+  {
+    label: 'Dining sections',
+    icon: Store,
+    href: '/dining-sections',
+    permission: Permission.RESTAURANT_READ,
+  },
   { label: 'Orders', icon: ClipboardList, permission: Permission.ORDER_READ },
   { label: 'Kitchen', icon: ChefHat, permission: Permission.KOT_READ },
   { label: 'Billing', icon: Receipt, permission: Permission.BILL_READ },
   { label: 'Reservations', icon: CalendarCheck, permission: Permission.RESERVATION_READ },
+  {
+    label: 'Table statuses',
+    icon: Rows3,
+    href: '/table-statuses',
+    permission: Permission.RESTAURANT_READ,
+  },
   {
     label: 'Restaurant',
     icon: Store,

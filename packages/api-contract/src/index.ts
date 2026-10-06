@@ -5,9 +5,11 @@
  */
 
 export * from './common';
+export * from './dining-sections';
 export * from './status';
 export * from './auth';
 export * from './profile';
 export * from './staff';
 export * from './user-fields';
+export * from './table-statuses';
 export * from './restaurant-settings';

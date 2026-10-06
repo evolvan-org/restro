@@ -1,4 +1,9 @@
-import type { CreateStaffResponse, StaffAccount } from '@rms/api-contract';
+import type {
+  CreateStaffResponse,
+  DiningSection,
+  StaffAccount,
+  TableStatus,
+} from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/modal';
@@ -32,15 +37,27 @@ export function useModalPayload() {
   return useStoreSelector(({ modal }) => modal.payload);
 }
 
-/** Show a newly created staff account's one-time temporary password. */
-export function useShowStaffTemporaryPasswordModal(): (created: CreateStaffResponse) => void {
+/** Show the one-time temporary password after account creation or password regeneration. */
+export function useShowStaffTemporaryPasswordModal(): (
+  created: CreateStaffResponse,
+  mode?: 'created' | 'regenerated',
+) => void {
   const showModal = useShowModal();
-  return (created) => {
+  return (created, mode = 'created') => {
     showModal(ModalType.StaffTemporaryPassword, {
       name: created.account.name,
       email: created.account.email,
       temporaryPassword: created.temporaryPassword,
+      mode,
     });
+  };
+}
+
+/** Ask to confirm replacing a staff account's password. */
+export function useShowStaffPasswordRegenerationModal(): (account: StaffAccount) => void {
+  const showModal = useShowModal();
+  return (account) => {
+    showModal(ModalType.StaffPasswordRegeneration, { account });
   };
 }
 
@@ -49,6 +66,28 @@ export function useShowStaffStatusModal(): (account: StaffAccount) => void {
   const showModal = useShowModal();
   return (account) => {
     showModal(ModalType.StaffStatus, { account });
+  };
+}
+
+/** Confirm archiving or reactivating a dining section. */
+export function useShowDiningSectionActionModal(): (
+  section: DiningSection,
+  action: 'archive' | 'activate',
+) => void {
+  const showModal = useShowModal();
+  return (section, action) => {
+    showModal(ModalType.DiningSectionAction, { section, action });
+  };
+}
+
+/** Ask to activate, deactivate, or archive a table status. */
+export function useShowTableStatusActionModal(): (
+  status: TableStatus,
+  action: 'status' | 'archive',
+) => void {
+  const showModal = useShowModal();
+  return (status, action) => {
+    showModal(ModalType.TableStatusAction, { status, action });
   };
 }
 
