@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 
@@ -33,6 +34,12 @@ const DEFAULT_FALLBACK = 'Something went wrong. Please try again.';
 export default function useShowApiError(fallback: string = DEFAULT_FALLBACK) {
   return useCallback(
     (error: unknown): void => {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        if (status === 401 || status === 403 || (status !== undefined && status >= 500)) {
+          return;
+        }
+      }
       toast.error(getApiErrorMessage(error, fallback));
     },
     [fallback],

@@ -159,6 +159,18 @@ export class StaffRepository {
     return count === 0 ? null : this.findById(restaurantId, userId);
   }
 
+  async updatePassword(
+    restaurantId: string,
+    userId: string,
+    passwordHash: string,
+  ): Promise<StaffRecord | null> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { id: userId, ...staffWhere(restaurantId) },
+      data: { passwordHash },
+    });
+    return count === 0 ? null : this.findById(restaurantId, userId);
+  }
+
   findRoles(restaurantId: string): Promise<RoleRecord[]> {
     return this.prisma.role.findMany({
       where: { restaurantId },

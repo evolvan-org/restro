@@ -8,6 +8,7 @@ import {
 import {
   type CreateStaffRequest,
   type CreateStaffResponse,
+  type RegenerateStaffPasswordResponse,
   type StaffAccount,
   type StaffListQuery,
   type StaffListResponse,
@@ -119,6 +120,26 @@ export class StaffService {
       throw new NotFoundException('Staff account not found');
     }
     return toStaffAccount(updated);
+  }
+
+  async regeneratePassword(actor: Actor, userId: string): Promise<RegenerateStaffPasswordResponse> {
+    if (userId === actor.userId) {
+      throw new ForbiddenException('Use your profile to change your own password');
+    }
+
+    await this.findManageable(actor, userId);
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await hash(temporaryPassword, BCRYPT_ROUNDS);
+    const updated = await this.staffRepository.updatePassword(
+      actor.restaurantId,
+      userId,
+      passwordHash,
+    );
+    if (!updated) {
+      throw new NotFoundException('Staff account not found');
+    }
+
+    return { account: toStaffAccount(updated), temporaryPassword };
   }
 
   /** Loads a staff account in the actor's restaurant that the actor is allowed to manage. */

@@ -2,6 +2,7 @@
 
 import { type ComponentType, Fragment } from 'react';
 
+import DiningSectionFormSidePane from '@/components/SidePanes/DiningSectionFormSidePane';
 import SampleSidePane from '@/components/SidePanes/SampleSidePane';
 import StaffFormSidePane from '@/components/SidePanes/StaffFormSidePane';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -19,6 +20,7 @@ const SIDE_PANES: Partial<Record<SidePaneType, ComponentType<any>>> = {
   [SidePaneType.None]: Fragment,
   [SidePaneType.Sample]: SampleSidePane,
   [SidePaneType.StaffForm]: StaffFormSidePane,
+  [SidePaneType.DiningSectionForm]: DiningSectionFormSidePane,
 };
 
 /** Single mount point for every side pane — a right-hand slide-in drawer. */
@@ -36,10 +38,10 @@ export default function SidePane() {
         if (!open) hideSidePane();
       }}
     >
-      <SheetContent side="right" className="w-screen sm:max-w-md">
-        {SelectedSidePane !== Fragment ? (
+      <SheetContent side="right" className="w-screen sm:max-w-xl">
+        {SelectedSidePane !== Fragment && (
           <SelectedSidePane {...sidePanePayload} onCancel={hideSidePane} />
-        ) : null}
+        )}
       </SheetContent>
     </Sheet>
   );

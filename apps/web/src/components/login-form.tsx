@@ -58,7 +58,7 @@ export function LoginForm({
                 />
                 <FieldError>{errors?.password}</FieldError>
               </Field>
-              {submitError ? <FieldError>{submitError}</FieldError> : null}
+              {submitError && <FieldError>{submitError}</FieldError>}
               <Field>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? 'Logging in...' : 'Login'}
