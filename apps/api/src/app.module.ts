@@ -7,6 +7,7 @@ import { DiningSectionsModule } from './dining-sections/dining-sections.module';
 import { ProfileModule } from './profile/profile.module';
 import { StaffModule } from './staff/staff.module';
 import { StatusModule } from './status/status.module';
+import { TableStatusesModule } from './table-statuses/table-statuses.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { StatusModule } from './status/status.module';
     ProfileModule,
     StaffModule,
     DiningSectionsModule,
+    TableStatusesModule,
   ],
 })
 export class AppModule {}

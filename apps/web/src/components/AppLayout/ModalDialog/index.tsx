@@ -7,6 +7,7 @@ import SampleModal from '@/components/Modals/SampleModal';
 import StaffPasswordRegenerationModal from '@/components/Modals/StaffPasswordRegenerationModal';
 import StaffStatusModal from '@/components/Modals/StaffStatusModal';
 import StaffTemporaryPasswordModal from '@/components/Modals/StaffTemporaryPasswordModal';
+import TableStatusActionModal from '@/components/Modals/TableStatusActionModal';
 import { useModalPayload, useModalType } from '@/store/hooks/modal';
 import { ModalType } from '@/store/types/modal';
 
@@ -24,6 +25,7 @@ const MODALS: Partial<Record<ModalType, ComponentType<any>>> = {
   [ModalType.StaffStatus]: StaffStatusModal,
   [ModalType.StaffPasswordRegeneration]: StaffPasswordRegenerationModal,
   [ModalType.DiningSectionAction]: DiningSectionActionModal,
+  [ModalType.TableStatusAction]: TableStatusActionModal,
 };
 
 /** Single mount point for every modal, driven by the `modal` slice. */

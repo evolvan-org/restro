@@ -1,4 +1,9 @@
-import type { CreateStaffResponse, DiningSection, StaffAccount } from '@rms/api-contract';
+import type {
+  CreateStaffResponse,
+  DiningSection,
+  StaffAccount,
+  TableStatus,
+} from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/modal';
@@ -72,6 +77,17 @@ export function useShowDiningSectionActionModal(): (
   const showModal = useShowModal();
   return (section, action) => {
     showModal(ModalType.DiningSectionAction, { section, action });
+  };
+}
+
+/** Ask to activate, deactivate, or archive a table status. */
+export function useShowTableStatusActionModal(): (
+  status: TableStatus,
+  action: 'status' | 'archive',
+) => void {
+  const showModal = useShowModal();
+  return (status, action) => {
+    showModal(ModalType.TableStatusAction, { status, action });
   };
 }
 
