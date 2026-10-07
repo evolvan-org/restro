@@ -1,10 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import {
-  type CreateWalkInRequest,
-  createWalkInRequestSchema,
-} from '@rms/api-contract';
+import { type CreateWalkInRequest, createWalkInRequestSchema } from '@rms/api-contract';
 import { type ReactElement, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -23,9 +20,7 @@ export type WalkInFormSidePaneProps = {
 
 const FORM_ID = 'walk-in-form';
 
-export default function WalkInFormSidePane({
-  onCancel,
-}: WalkInFormSidePaneProps): ReactElement {
+export default function WalkInFormSidePane({ onCancel }: WalkInFormSidePaneProps): ReactElement {
   const { mutateAsync: createWalkIn, isPending } = useCreateWalkIn();
   const hideSidePane = useHideSidePane();
   const form = useForm<CreateWalkInRequest>({

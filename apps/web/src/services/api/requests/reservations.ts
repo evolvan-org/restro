@@ -52,11 +52,7 @@ export function useReservations(enabled: boolean): UseQueryResult<Reservation[]>
   return query;
 }
 
-export function useCreateWalkIn(): UseMutationResult<
-  Reservation,
-  Error,
-  CreateWalkInRequest
-> {
+export function useCreateWalkIn(): UseMutationResult<Reservation, Error, CreateWalkInRequest> {
   const queryClient = useQueryClient();
   const showApiError = useShowApiError('Unable to register the walk-in.');
   return useMutation<Reservation, Error, CreateWalkInRequest>({
@@ -64,7 +60,8 @@ export function useCreateWalkIn(): UseMutationResult<
       const response = await api.post('/walk-ins', input);
       return reservationSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
     onError: showApiError,
   });
 }

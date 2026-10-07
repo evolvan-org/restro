@@ -48,8 +48,7 @@ export class ReservationsController {
   @RequirePermissions(Permission.RESERVATION_READ)
   @ApiOperation({
     summary: 'List reservations',
-    description:
-      "Lists reservations for the caller's restaurant. Requires `reservation:read`.",
+    description: "Lists reservations for the caller's restaurant. Requires `reservation:read`.",
   })
   @ApiZodQuery(reservationListQuerySchema)
   @ApiOkResponse({
