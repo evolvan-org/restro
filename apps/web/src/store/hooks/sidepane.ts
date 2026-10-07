@@ -50,6 +50,14 @@ export function useShowTableStatusFormSidePane(): (status?: TableStatus) => void
   };
 }
 
+/** Open the walk-in intake form. */
+export function useShowWalkInFormSidePane(): () => void {
+  const showSidePane = useShowSidePane();
+  return () => {
+    showSidePane(SidePaneType.WalkInForm);
+  };
+}
+
 /** Open the sample pane — the template for per-pane convenience hooks. */
 export function useShowSampleSidePane() {
   const showSidePane = useShowSidePane();
