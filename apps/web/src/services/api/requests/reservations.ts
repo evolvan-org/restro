@@ -1,4 +1,5 @@
 import {
+  type CreateReservationRequest,
   type CreateWalkInRequest,
   type GuestLookupResponse,
   guestLookupResponseSchema,
@@ -52,11 +53,25 @@ export function useReservations(enabled: boolean): UseQueryResult<Reservation[]>
   return query;
 }
 
-export function useCreateWalkIn(): UseMutationResult<
+export function useCreateReservation(): UseMutationResult<
   Reservation,
   Error,
-  CreateWalkInRequest
+  CreateReservationRequest
 > {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to create the reservation.');
+  return useMutation<Reservation, Error, CreateReservationRequest>({
+    mutationFn: async (input): Promise<Reservation> => {
+      const response = await api.post('/reservations', input);
+      return reservationSchema.parse(response.data);
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+    onError: showApiError,
+  });
+}
+
+export function useCreateWalkIn(): UseMutationResult<Reservation, Error, CreateWalkInRequest> {
   const queryClient = useQueryClient();
   const showApiError = useShowApiError('Unable to register the walk-in.');
   return useMutation<Reservation, Error, CreateWalkInRequest>({
@@ -64,7 +79,8 @@ export function useCreateWalkIn(): UseMutationResult<
       const response = await api.post('/walk-ins', input);
       return reservationSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
     onError: showApiError,
   });
 }

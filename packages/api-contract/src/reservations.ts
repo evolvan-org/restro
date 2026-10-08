@@ -82,6 +82,27 @@ export const createWalkInRequestSchema = z
   })
   .strict();
 
+export const RESERVATION_DURATION_MINUTES = 90;
+
+export const createReservationRequestSchema = z
+  .object({
+    guestName: guestNameSchema,
+    phoneNumber: guestPhoneSchema,
+    partySize: partySizeSchema,
+    reservationAt: z
+      .string({ required_error: 'Reservation date and time is required' })
+      .datetime({
+        offset: true,
+        message: 'Reservation date and time must be a valid ISO-8601 datetime',
+      })
+      .refine((value) => new Date(value).getTime() > Date.now(), {
+        message: 'Reservation date and time must be in the future',
+      }),
+    tableId: z.string().uuid('Table id must be a valid UUID').optional(),
+    notes: reservationNotesSchema,
+  })
+  .strict();
+
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
 export type Guest = z.infer<typeof guestSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
@@ -90,3 +111,4 @@ export type ReservationListResponse = z.infer<typeof reservationListResponseSche
 export type GuestLookupQuery = z.infer<typeof guestLookupQuerySchema>;
 export type GuestLookupResponse = z.infer<typeof guestLookupResponseSchema>;
 export type CreateWalkInRequest = z.infer<typeof createWalkInRequestSchema>;
+export type CreateReservationRequest = z.infer<typeof createReservationRequestSchema>;

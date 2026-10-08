@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import {
+  type CreateReservationRequest,
   type CreateWalkInRequest,
   type Guest,
   type GuestLookupQuery,
   type GuestLookupResponse,
   type Reservation,
+  RESERVATION_DURATION_MINUTES,
   type ReservationListQuery,
   type ReservationListResponse,
 } from '@rms/api-contract';
@@ -48,6 +50,37 @@ export class ReservationsService {
       toWalkInDetails(input),
     );
     return toReservation(created);
+  }
+
+  async create(actor: Actor, input: CreateReservationRequest): Promise<Reservation> {
+    const result = await this.repository.createBooking(
+      actor.restaurantId,
+      actor.userId,
+      {
+        guestName: input.guestName,
+        phoneNumber: input.phoneNumber,
+        partySize: input.partySize,
+        notes: input.notes || null,
+        reservationAt: new Date(input.reservationAt),
+        tableId: input.tableId ?? null,
+      },
+      RESERVATION_DURATION_MINUTES,
+    );
+
+    switch (result.outcome) {
+      case 'CREATED':
+        return toReservation(result.reservation);
+      case 'TABLE_NOT_FOUND':
+        throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
+      case 'OVER_CAPACITY':
+        throw new BadRequestException({
+          message: ['partySize: Party size exceeds the capacity of the selected table'],
+        });
+      case 'CONFLICT':
+        throw new ConflictException(
+          `This table is already reserved within ${RESERVATION_DURATION_MINUTES} minutes of the requested time`,
+        );
+    }
   }
 }
 

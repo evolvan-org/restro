@@ -58,6 +58,14 @@ export function useShowWalkInFormSidePane(): () => void {
   };
 }
 
+/** Open the booking form for a future reservation. */
+export function useShowReservationFormSidePane(): () => void {
+  const showSidePane = useShowSidePane();
+  return () => {
+    showSidePane(SidePaneType.ReservationForm);
+  };
+}
+
 /** Open the sample pane — the template for per-pane convenience hooks. */
 export function useShowSampleSidePane() {
   const showSidePane = useShowSidePane();

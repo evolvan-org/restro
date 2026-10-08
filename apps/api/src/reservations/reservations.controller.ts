@@ -3,6 +3,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -11,6 +12,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type CreateReservationRequest,
+  createReservationRequestSchema,
   type CreateWalkInRequest,
   createWalkInRequestSchema,
   type GuestLookupQuery,
@@ -18,6 +21,7 @@ import {
   type GuestLookupResponse,
   guestLookupResponseSchema,
   type Reservation,
+  RESERVATION_DURATION_MINUTES,
   type ReservationListQuery,
   reservationListQuerySchema,
   type ReservationListResponse,
@@ -48,8 +52,7 @@ export class ReservationsController {
   @RequirePermissions(Permission.RESERVATION_READ)
   @ApiOperation({
     summary: 'List reservations',
-    description:
-      "Lists reservations for the caller's restaurant. Requires `reservation:read`.",
+    description: "Lists reservations for the caller's restaurant. Requires `reservation:read`.",
   })
   @ApiZodQuery(reservationListQuerySchema)
   @ApiOkResponse({
@@ -62,6 +65,29 @@ export class ReservationsController {
     @Query(new ZodValidationPipe(reservationListQuerySchema)) query: ReservationListQuery,
   ): Promise<ReservationListResponse> {
     return this.service.list(actor, query);
+  }
+
+  @Post()
+  @RequirePermissions(Permission.RESERVATION_WRITE)
+  @ApiOperation({
+    summary: 'Create a reservation',
+    description:
+      'Creates or reuses a guest by phone number and books a future BOOKED reservation. ' +
+      `A table is held for ${RESERVATION_DURATION_MINUTES} minutes from the reservation time; ` +
+      'a conflicting active reservation on the same table returns 409. Requires `reservation:write`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(createReservationRequestSchema) })
+  @ApiCreatedResponse({
+    description: 'The created reservation with embedded guest',
+    schema: zodOpenApiSchema(reservationSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid reservation data'))
+  @ApiConflictResponse(apiError('The table is already reserved for an overlapping time'))
+  create(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(createReservationRequestSchema)) input: CreateReservationRequest,
+  ): Promise<Reservation> {
+    return this.service.create(actor, input);
   }
 }
 

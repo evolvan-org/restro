@@ -18,7 +18,7 @@ import {
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { useReservations } from '@/services/api/requests/reservations';
-import { useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
+import { useShowReservationFormSidePane, useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -46,6 +46,7 @@ export default function Reservations(): ReactElement | null {
   const canWrite = can(Permission.RESERVATION_WRITE);
   const reservations = useReservations(canRead);
   const showWalkInForm = useShowWalkInFormSidePane();
+  const showReservationForm = useShowReservationFormSidePane();
 
   if (!isAllowed) return null;
 
@@ -62,10 +63,16 @@ export default function Reservations(): ReactElement | null {
           </p>
         </div>
         {canWrite && (
-          <Button type="button" onClick={() => showWalkInForm()}>
-            <Plus aria-hidden />
-            Walk-in
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => showWalkInForm()}>
+              <Plus aria-hidden />
+              Walk-in
+            </Button>
+            <Button type="button" onClick={() => showReservationForm()}>
+              <Plus aria-hidden />
+              Reservation
+            </Button>
+          </div>
         )}
       </div>
 
