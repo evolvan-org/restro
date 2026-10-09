@@ -75,6 +75,13 @@ export default function TableFormSidePane({
   const isSaving = isCreating || isUpdating;
   const sections = options.data?.sections ?? [];
   const statuses = options.data?.statuses ?? [];
+  const firstStatusId = statuses[0]?.id;
+
+  useEffect(() => {
+    if (!isEdit && firstStatusId && !form.getValues('currentStatusId')) {
+      form.setValue('currentStatusId', firstStatusId);
+    }
+  }, [isEdit, firstStatusId, form]);
 
   return (
     <>
@@ -113,7 +120,7 @@ export default function TableFormSidePane({
           </Field>
 
           <Field data-invalid={Boolean(errors.sectionId)}>
-            <FieldLabel htmlFor="table-section">Section</FieldLabel>
+            <FieldLabel htmlFor="table-section">Dining Section</FieldLabel>
             <NativeSelect
               id="table-section"
               className="w-full"
@@ -122,7 +129,7 @@ export default function TableFormSidePane({
               {...form.register('sectionId')}
             >
               <NativeSelectOption value="" disabled>
-                {options.isPending ? 'Loading sections...' : 'Select a section'}
+                {options.isPending ? 'Loading sections...' : 'Select Dining Section'}
               </NativeSelectOption>
               {sections.map((section) => (
                 <NativeSelectOption key={section.id} value={section.id}>
