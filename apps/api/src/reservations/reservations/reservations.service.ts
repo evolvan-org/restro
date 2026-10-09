@@ -1,10 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import {
   type CreateReservationRequest,
-  type CreateWalkInRequest,
-  type Guest,
-  type GuestLookupQuery,
-  type GuestLookupResponse,
   type Reservation,
   RESERVATION_DURATION_MINUTES,
   type ReservationListQuery,
@@ -12,13 +8,9 @@ import {
 } from '@rms/api-contract';
 import { buildPageMeta } from '@rms/shared';
 
-import type { Actor } from '../common/auth/authenticated-request';
-import {
-  type GuestRecord,
-  type ReservationRecord,
-  ReservationsRepository,
-  type WalkInDetails,
-} from './reservations.repository';
+import type { Actor } from '../../common/auth/authenticated-request';
+import { toReservation } from './reservations.mapper';
+import { ReservationsRepository } from './reservations.repository';
 
 @Injectable()
 export class ReservationsService {
@@ -36,20 +28,6 @@ export class ReservationsService {
       data: items.map(toReservation),
       meta: buildPageMeta(page, pageSize, total),
     };
-  }
-
-  async lookupGuest(actor: Actor, query: GuestLookupQuery): Promise<GuestLookupResponse> {
-    const guest = await this.repository.findGuestByPhone(actor.restaurantId, query.phoneNumber);
-    return guest ? toGuest(guest) : null;
-  }
-
-  async createWalkIn(actor: Actor, input: CreateWalkInRequest): Promise<Reservation> {
-    const created = await this.repository.createWalkIn(
-      actor.restaurantId,
-      actor.userId,
-      toWalkInDetails(input),
-    );
-    return toReservation(created);
   }
 
   async create(actor: Actor, input: CreateReservationRequest): Promise<Reservation> {
@@ -82,38 +60,4 @@ export class ReservationsService {
         );
     }
   }
-}
-
-function toWalkInDetails(input: CreateWalkInRequest): WalkInDetails {
-  return {
-    guestName: input.guestName,
-    phoneNumber: input.phoneNumber,
-    partySize: input.partySize,
-    notes: input.notes || null,
-    reservationAt: new Date(),
-  };
-}
-
-function toGuest(record: GuestRecord): Guest {
-  return {
-    ...record,
-    createdAt: record.createdAt.toISOString(),
-    updatedAt: record.updatedAt.toISOString(),
-  };
-}
-
-function toReservation(record: ReservationRecord): Reservation {
-  return {
-    id: record.id,
-    guestId: record.guestId,
-    tableId: record.tableId,
-    createdByUserId: record.createdByUserId,
-    reservationAt: record.reservationAt.toISOString(),
-    partySize: record.partySize,
-    status: record.status,
-    notes: record.notes,
-    guest: toGuest(record.guest),
-    createdAt: record.createdAt.toISOString(),
-    updatedAt: record.updatedAt.toISOString(),
-  };
 }

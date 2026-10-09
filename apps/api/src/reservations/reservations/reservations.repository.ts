@@ -1,15 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, ReservationStatus } from '@rms/db';
 
-import { PrismaService } from '../common/database/prisma.service';
-
-const guestSelect = {
-  id: true,
-  guestName: true,
-  phoneNumber: true,
-  createdAt: true,
-  updatedAt: true,
-} satisfies Prisma.GuestSelect;
+import { PrismaService } from '../../common/database/prisma.service';
+import { guestSelect, GuestsRepository } from '../guests/guests.repository';
 
 const reservationSelect = {
   id: true,
@@ -27,7 +20,6 @@ const reservationSelect = {
   updatedAt: true,
 } satisfies Prisma.ReservationSelect;
 
-export type GuestRecord = Prisma.GuestGetPayload<{ select: typeof guestSelect }>;
 export type ReservationRecord = Prisma.ReservationGetPayload<{ select: typeof reservationSelect }>;
 
 export type ReservationPageFilters = {
@@ -56,7 +48,10 @@ const ACTIVE_STATUSES = [ReservationStatus.BOOKED, ReservationStatus.SEATED];
 
 @Injectable()
 export class ReservationsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly guests: GuestsRepository,
+  ) {}
 
   async findPage(
     restaurantId: string,
@@ -81,36 +76,18 @@ export class ReservationsRepository {
     return { items, total };
   }
 
-  findGuestByPhone(restaurantId: string, phoneNumber: string): Promise<GuestRecord | null> {
-    return this.prisma.guest.findFirst({
-      where: { restaurantId, phoneNumber },
-      select: guestSelect,
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    });
-  }
-
   createWalkIn(
     restaurantId: string,
     createdByUserId: string,
     details: WalkInDetails,
   ): Promise<ReservationRecord> {
     return this.prisma.$transaction(async (tx) => {
-      const existingGuest = await tx.guest.findFirst({
-        where: { restaurantId, phoneNumber: details.phoneNumber },
-        select: guestSelect,
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      });
-
-      const guest =
-        existingGuest ??
-        (await tx.guest.create({
-          data: {
-            restaurantId,
-            guestName: details.guestName,
-            phoneNumber: details.phoneNumber,
-          },
-          select: guestSelect,
-        }));
+      const guest = await this.guests.findOrCreate(
+        tx,
+        restaurantId,
+        details.guestName,
+        details.phoneNumber,
+      );
 
       return tx.reservation.create({
         data: {
@@ -165,17 +142,12 @@ export class ReservationsRepository {
         if (conflict) return { outcome: 'CONFLICT' };
       }
 
-      const existingGuest = await tx.guest.findFirst({
-        where: { restaurantId, phoneNumber: details.phoneNumber },
-        select: guestSelect,
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      });
-      const guest =
-        existingGuest ??
-        (await tx.guest.create({
-          data: { restaurantId, guestName: details.guestName, phoneNumber: details.phoneNumber },
-          select: guestSelect,
-        }));
+      const guest = await this.guests.findOrCreate(
+        tx,
+        restaurantId,
+        details.guestName,
+        details.phoneNumber,
+      );
 
       const reservation = await tx.reservation.create({
         data: {

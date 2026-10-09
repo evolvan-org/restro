@@ -76,7 +76,7 @@ export function useCreateWalkIn(): UseMutationResult<Reservation, Error, CreateW
   const showApiError = useShowApiError('Unable to register the walk-in.');
   return useMutation<Reservation, Error, CreateWalkInRequest>({
     mutationFn: async (input): Promise<Reservation> => {
-      const response = await api.post('/walk-ins', input);
+      const response = await api.post('/reservations/walk-ins', input);
       return reservationSchema.parse(response.data);
     },
     onSuccess: () =>
@@ -92,7 +92,7 @@ export function useGuestLookup(
   return useQuery({
     queryKey: [ReservationQueryKey.GuestLookup, phoneNumber],
     queryFn: async (): Promise<GuestLookupResponse> => {
-      const response = await api.get('/guests/lookup', {
+      const response = await api.get('/reservations/guests/lookup', {
         params: { phoneNumber },
       });
       return guestLookupResponseSchema.parse(response.data);
