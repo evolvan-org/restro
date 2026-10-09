@@ -1,7 +1,11 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { type CreateWalkInRequest, createWalkInRequestSchema } from '@rms/api-contract';
+import {
+  type CreateWalkInRequest,
+  createWalkInRequestSchema,
+  MAX_PARTY_SIZE,
+} from '@rms/api-contract';
 import { type ReactElement, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -127,6 +131,7 @@ export default function WalkInFormSidePane({ onCancel }: WalkInFormSidePaneProps
               id="walk-in-party-size"
               type="text"
               inputMode="numeric"
+              maxLength={String(MAX_PARTY_SIZE).length}
               pattern="[0-9]*"
               aria-invalid={Boolean(errors.partySize)}
               {...partySizeField}
