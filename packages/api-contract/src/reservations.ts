@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
 
+/** Upper bound for a single party; also keeps the value inside Postgres INT4. */
+export const MAX_PARTY_SIZE = 1000;
+
 const guestNameSchema = z
   .string()
   .trim()
@@ -17,7 +20,8 @@ const guestPhoneSchema = z
 const partySizeSchema = z.coerce
   .number({ invalid_type_error: 'Party size is required' })
   .int('Party size must be a whole number')
-  .min(1, 'Party size must be at least 1');
+  .min(1, 'Party size must be at least 1')
+  .max(MAX_PARTY_SIZE, `Party size must be ${MAX_PARTY_SIZE} or fewer`);
 
 const reservationNotesSchema = z
   .string()
