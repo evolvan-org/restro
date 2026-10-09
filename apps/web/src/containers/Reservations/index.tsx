@@ -2,11 +2,14 @@
 
 import type { ReservationStatus } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
+import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Plus } from 'lucide-react';
 import type { ReactElement } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import {
   Table,
   TableBody,
@@ -19,6 +22,17 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { useReservations } from '@/services/api/requests/reservations';
 import { useShowReservationFormSidePane, useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
+
+type ReservationFilters = { status: ReservationStatus | ''; page: number };
+
+const STATUS_FILTERS: { value: ReservationStatus | ''; label: string }[] = [
+  { value: '', label: 'All statuses' },
+  { value: 'BOOKED', label: 'Booked' },
+  { value: 'SEATED', label: 'Seated' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'NO_SHOW', label: 'No show' },
+];
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -44,13 +58,20 @@ export default function Reservations(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.RESERVATION_READ);
   const canWrite = can(Permission.RESERVATION_WRITE);
-  const reservations = useReservations(canRead);
+  const filters = useForm<ReservationFilters>({ defaultValues: { status: '', page: 1 } });
+  const status = useWatch({ control: filters.control, name: 'status' });
+  const page = useWatch({ control: filters.control, name: 'page' });
+  const reservations = useReservations(
+    { page, pageSize: DEFAULT_PAGE_SIZE, status: status || undefined },
+    canRead,
+  );
   const showWalkInForm = useShowWalkInFormSidePane();
   const showReservationForm = useShowReservationFormSidePane();
 
   if (!isAllowed) return null;
 
-  const rows = reservations.data ?? [];
+  const rows = reservations.data?.data ?? [];
+  const meta = reservations.data?.meta;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
@@ -75,6 +96,25 @@ export default function Reservations(): ReactElement | null {
           </div>
         )}
       </div>
+
+      <form
+        aria-label="Reservation filters"
+        onSubmit={(event) => event.preventDefault()}
+        className="mb-4 flex flex-wrap items-center gap-3"
+      >
+        <NativeSelect
+          aria-label="Filter by status"
+          {...filters.register('status', {
+            onChange: () => filters.setValue('page', 1),
+          })}
+        >
+          {STATUS_FILTERS.map((filter) => (
+            <NativeSelectOption key={filter.value} value={filter.value}>
+              {filter.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </form>
 
       {reservations.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
@@ -121,12 +161,43 @@ export default function Reservations(): ReactElement | null {
                   <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                     {reservations.isPending
                       ? 'Loading reservations...'
-                      : 'No reservations are in the flow yet.'}
+                      : status
+                        ? 'No reservations match this status.'
+                        : 'No reservations are in the flow yet.'}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {meta && meta.total > 0 && (
+        <div className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
+          <p>
+            {meta.total} {meta.total === 1 ? 'reservation' : 'reservations'} · Page {meta.page} of{' '}
+            {meta.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={meta.page <= 1 || reservations.isFetching}
+              onClick={() => filters.setValue('page', page - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={meta.page >= meta.totalPages || reservations.isFetching}
+              onClick={() => filters.setValue('page', page + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </main>

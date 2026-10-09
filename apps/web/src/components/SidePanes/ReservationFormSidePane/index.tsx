@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createReservationRequestSchema, MAX_PARTY_SIZE } from '@rms/api-contract';
-import { type ReactElement, useEffect, useRef } from 'react';
+import { type ReactElement, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -41,38 +41,28 @@ export default function ReservationFormSidePane({
 }: ReservationFormSidePaneProps): ReactElement {
   const { mutateAsync: createReservation, isPending } = useCreateReservation();
   const hideSidePane = useHideSidePane();
+  const existingGuestRef = useRef<{ guestName: string } | null>(null);
   const form = useForm<ReservationFormValues>({
-    resolver: zodResolver(formSchema),
+    // An existing guest's stored name stands in for the name field, which is never overwritten.
+    resolver: (values, context, options) =>
+      zodResolver(formSchema)(
+        { ...values, guestName: existingGuestRef.current?.guestName ?? values.guestName },
+        context,
+        options,
+      ),
     defaultValues: { guestName: '', phoneNumber: '', partySize: 2, reservationAt: '', notes: '' },
   });
   const { errors } = form.formState;
   const phoneNumber = form.watch('phoneNumber');
   const debouncedPhoneNumber = useDebouncedValue(phoneNumber.trim(), 700);
-  const guestLookup = useGuestLookup(debouncedPhoneNumber, debouncedPhoneNumber.length > 0);
+  const guestLookup = useGuestLookup(debouncedPhoneNumber);
   const existingGuest = guestLookup.data ?? null;
-  const autoFilledGuestName = useRef<string | null>(null);
+  const typedGuestName = form.watch('guestName').trim();
+  existingGuestRef.current = existingGuest;
 
   const partySizeField = form.register('partySize', {
     setValueAs: (value: string) => (value === '' ? value : Number(value)),
   });
-
-  useEffect(() => {
-    if (existingGuest) {
-      autoFilledGuestName.current = existingGuest.guestName;
-      form.setValue('guestName', existingGuest.guestName, {
-        shouldValidate: Boolean(errors.guestName),
-      });
-      return;
-    }
-
-    if (
-      autoFilledGuestName.current &&
-      form.getValues('guestName') === autoFilledGuestName.current
-    ) {
-      form.setValue('guestName', '', { shouldValidate: Boolean(errors.guestName) });
-      autoFilledGuestName.current = null;
-    }
-  }, [errors.guestName, existingGuest, form]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     const parsed = createReservationRequestSchema.safeParse({
@@ -131,18 +121,33 @@ export default function ReservationFormSidePane({
             <FieldError>{errors.phoneNumber?.message}</FieldError>
           </Field>
 
-          {!existingGuest && (
-            <Field data-invalid={Boolean(errors.guestName)}>
-              <FieldLabel htmlFor="reservation-name">Guest name</FieldLabel>
+          <Field data-invalid={Boolean(errors.guestName)}>
+            <FieldLabel htmlFor="reservation-name">Guest name</FieldLabel>
+            {existingGuest ? (
               <Input
+                key="existing-guest-name"
+                id="reservation-name"
+                value={existingGuest.guestName}
+                readOnly
+                aria-readonly
+              />
+            ) : (
+              <Input
+                key="typed-guest-name"
                 id="reservation-name"
                 autoComplete="name"
                 aria-invalid={Boolean(errors.guestName)}
                 {...form.register('guestName')}
               />
-              <FieldError>{errors.guestName?.message}</FieldError>
-            </Field>
-          )}
+            )}
+            {existingGuest && typedGuestName && typedGuestName !== existingGuest.guestName && (
+              <FieldDescription>
+                You typed &ldquo;{typedGuestName}&rdquo;, but this phone number belongs to an
+                existing guest, so their name is used. Change the phone number to use your entry.
+              </FieldDescription>
+            )}
+            <FieldError>{errors.guestName?.message}</FieldError>
+          </Field>
 
           <Field data-invalid={Boolean(errors.partySize)}>
             <FieldLabel htmlFor="reservation-party-size">Party size</FieldLabel>
