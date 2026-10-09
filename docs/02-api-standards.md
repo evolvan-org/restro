@@ -59,12 +59,12 @@ Every error passes through a global exception filter and conforms to:
 | GET    | `/status`           | Public            | Reports the API is online (`StatusResponse`)                                                                                                               |
 | POST   | `/auth/login`       | Public            | Exchanges email + password for an access token (`LoginResponse`)                                                                                           |
 | GET    | `/profile`          | Bearer            | Returns the caller's own profile, including role, read-only (`ProfileResponse`)                                                                            |
-| PATCH  | `/profile`          | Bearer            | Updates the caller's name, email and phone (`UpdateProfileRequest` → `ProfileResponse`); `409` if the email is taken within the restaurant                 |
+| PATCH  | `/profile`          | Bearer            | Updates the caller's name and phone (`UpdateProfileRequest` → `ProfileResponse`); email is immutable, sending it returns `400`                             |
 | PATCH  | `/profile/password` | Bearer            | Changes the caller's password (`ChangePasswordRequest` → `ChangePasswordResponse`); `400` if the current password is wrong                                 |
 | GET    | `/staff`            | `user:read`       | Lists the restaurant's staff, active and inactive (`StaffListQuery` → `StaffListResponse`); `search` matches name or email, `status` filters               |
 | GET    | `/staff/roles`      | `user:write`      | Roles the caller may assign (`StaffRolesResponse`)                                                                                                         |
 | POST   | `/staff`            | `user:write`      | Creates an active account with a generated temporary password, returned only once (`CreateStaffRequest` → `CreateStaffResponse`); `409` on duplicate email |
-| PATCH  | `/staff/:id`        | `user:write`      | Updates name, email, phone and role (`UpdateStaffRequest` → `StaffAccount`); you cannot change your own role                                               |
+| PATCH  | `/staff/:id`        | `user:write`      | Updates name, phone and role (`UpdateStaffRequest` → `StaffAccount`); email is immutable (`400` if sent); you cannot change your own role                  |
 | PATCH  | `/staff/:id/status` | `user:write`      | Activates or deactivates an account (`UpdateStaffStatusRequest` → `StaffAccount`); inactive accounts cannot log in; you cannot change your own status      |
 
 Request and response examples, field rules and the error messages of every endpoint are in the [API Reference](04-api-reference.md).

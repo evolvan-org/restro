@@ -129,7 +129,7 @@ export class StaffController {
   @ApiOperation({
     summary: 'Update a staff account',
     description:
-      'Updates name, email, phone and role. You cannot change your own role. Requires `user:write`.',
+      'Updates name, phone and role; email cannot be changed. You cannot change your own role. Requires `user:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateStaffRequestSchema) })
   @ApiOkResponse({
@@ -138,7 +138,6 @@ export class StaffController {
   })
   @ApiBadRequestResponse(apiError('Invalid data, or the role cannot be assigned'))
   @ApiNotFoundResponse(apiError('No staff account with this id in your restaurant'))
-  @ApiConflictResponse(apiError('The email address is already in use'))
   update(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,
