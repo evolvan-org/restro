@@ -21,7 +21,12 @@ export class GuestsRepository {
     return this.findByPhoneIn(this.prisma, restaurantId, phoneNumber);
   }
 
-  /** Reuses the guest registered under this phone number or creates one, inside the caller's transaction. */
+  /**
+   * Reuses the guest registered under this phone number or creates one, inside the caller's
+   * transaction. Backed by the unique (restaurant_id, phone_number) index: the insert is
+   * `ON CONFLICT DO NOTHING`, so a concurrent request creating the same guest can't produce a
+   * duplicate row or abort this transaction; whichever row won is then read back.
+   */
   async findOrCreate(
     tx: Prisma.TransactionClient,
     restaurantId: string,
@@ -29,13 +34,16 @@ export class GuestsRepository {
     phoneNumber: string,
   ): Promise<GuestRecord> {
     const existing = await this.findByPhoneIn(tx, restaurantId, phoneNumber);
-    return (
-      existing ??
-      tx.guest.create({
-        data: { restaurantId, guestName, phoneNumber },
-        select: guestSelect,
-      })
-    );
+    if (existing) return existing;
+
+    await tx.guest.createMany({
+      data: [{ restaurantId, guestName, phoneNumber }],
+      skipDuplicates: true,
+    });
+    return tx.guest.findUniqueOrThrow({
+      where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
+      select: guestSelect,
+    });
   }
 
   private findByPhoneIn(
@@ -43,10 +51,9 @@ export class GuestsRepository {
     restaurantId: string,
     phoneNumber: string,
   ): Promise<GuestRecord | null> {
-    return client.guest.findFirst({
-      where: { restaurantId, phoneNumber },
+    return client.guest.findUnique({
+      where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
       select: guestSelect,
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   }
 }
