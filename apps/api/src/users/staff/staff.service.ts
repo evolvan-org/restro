@@ -83,13 +83,11 @@ export class StaffService {
       await this.assertRoleAssignable(actor, input.roleId);
     }
 
-    if (input.email !== existing.email.toLowerCase()) {
-      await this.assertEmailAvailable(actor.restaurantId, input.email, userId);
-    }
-
-    const updated = await this.mapEmailConflict(() =>
-      this.staffRepository.update(actor.restaurantId, userId, toStaffDetails(input)),
-    );
+    const updated = await this.staffRepository.update(actor.restaurantId, userId, {
+      name: input.name,
+      phone: input.phone || null,
+      roleId: input.roleId,
+    });
     if (!updated) {
       throw new NotFoundException('Staff account not found');
     }
@@ -163,12 +161,8 @@ export class StaffService {
     }
   }
 
-  private async assertEmailAvailable(
-    restaurantId: string,
-    email: string,
-    excludeUserId?: string,
-  ): Promise<void> {
-    if (await this.staffRepository.isEmailTaken(restaurantId, email, excludeUserId)) {
+  private async assertEmailAvailable(restaurantId: string, email: string): Promise<void> {
+    if (await this.staffRepository.isEmailTaken(restaurantId, email)) {
       throw new ConflictException(EMAIL_IN_USE_MESSAGE);
     }
   }
@@ -199,7 +193,7 @@ function canAssignRole(actor: Actor, roleName: string): boolean {
   );
 }
 
-function toStaffDetails(input: CreateStaffRequest | UpdateStaffRequest): StaffDetails {
+function toStaffDetails(input: CreateStaffRequest): StaffDetails {
   return {
     name: input.name,
     email: input.email,

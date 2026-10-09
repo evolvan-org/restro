@@ -5,6 +5,8 @@ import {
   type CreateStaffRequest,
   createStaffRequestSchema,
   type StaffAccount,
+  type UpdateStaffRequest,
+  updateStaffRequestSchema,
 } from '@rms/api-contract';
 import { type ReactElement, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -28,6 +30,9 @@ export type StaffFormSidePaneProps = {
 };
 
 const FORM_ID = 'staff-form';
+
+/** Email is only part of the form when creating: it is fixed once the account exists. */
+type StaffFormValues = UpdateStaffRequest & Partial<Pick<CreateStaffRequest, 'email'>>;
 
 /** Create or edit a staff account. Creating one shows its temporary password afterwards. */
 export default function StaffFormSidePane({
@@ -54,11 +59,12 @@ export default function StaffFormSidePane({
   const hideSidePane = useHideSidePane();
   const showTemporaryPassword = useShowStaffTemporaryPasswordModal();
 
-  const form = useForm<CreateStaffRequest>({
-    resolver: zodResolver(createStaffRequestSchema),
+  const form = useForm<StaffFormValues>({
+    // Editing never validates or sends an email: it is fixed at creation.
+    resolver: zodResolver(isEdit ? updateStaffRequestSchema : createStaffRequestSchema),
     defaultValues: {
       name: account?.name ?? '',
-      email: account?.email ?? '',
+      ...(!isEdit && { email: '' }),
       phone: account?.phone ?? '',
       roleId: account?.role.id ?? '',
     },
@@ -84,9 +90,14 @@ export default function StaffFormSidePane({
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       if (account) {
-        await updateStaff({ id: account.id, input: values });
-      } else {
-        await createStaff(values);
+        // Email is fixed at creation; the API rejects it on edit.
+        await updateStaff({
+          id: account.id,
+          input: { name: values.name, phone: values.phone, roleId: values.roleId },
+        });
+      } else if (values.email !== undefined) {
+        // The create schema requires an email, so the resolver only gets here with one.
+        await createStaff({ ...values, email: values.email });
       }
     } catch {
       // The mutation hook reports the error through useShowApiError; keep the form open.
@@ -121,14 +132,22 @@ export default function StaffFormSidePane({
 
           <Field data-invalid={Boolean(errors.email)}>
             <FieldLabel htmlFor="staff-email">Email address</FieldLabel>
-            <Input
-              id="staff-email"
-              type="email"
-              autoComplete="off"
-              aria-invalid={Boolean(errors.email)}
-              {...form.register('email')}
-            />
-            <FieldDescription>Used to log in; must be unique in your restaurant.</FieldDescription>
+            {isEdit ? (
+              <Input id="staff-email" type="email" value={account.email} disabled readOnly />
+            ) : (
+              <Input
+                id="staff-email"
+                type="email"
+                autoComplete="off"
+                aria-invalid={Boolean(errors.email)}
+                {...form.register('email')}
+              />
+            )}
+            <FieldDescription>
+              {isEdit
+                ? 'Email cannot be changed after the account is created.'
+                : 'Used to log in; must be unique in your restaurant.'}
+            </FieldDescription>
             <FieldError>{errors.email?.message}</FieldError>
           </Field>
 

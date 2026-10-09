@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { userEmailSchema, userNameSchema, userPhoneSchema } from './user-fields';
+import { userNameSchema, userPhoneSchema } from './user-fields';
 
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_BYTES = 72;
@@ -19,7 +19,6 @@ export const profileResponseSchema = z
 export const updateProfileRequestSchema = z
   .object({
     name: userNameSchema,
-    email: userEmailSchema,
     phone: userPhoneSchema,
   })
   .strict();
