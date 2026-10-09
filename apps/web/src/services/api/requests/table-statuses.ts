@@ -1,6 +1,7 @@
 import {
   type CreateTableStatusRequest,
   type TableStatus,
+  type TableStatusListResponse,
   tableStatusListResponseSchema,
   tableStatusSchema,
   type UpdateTableStatusActiveRequest,
@@ -13,7 +14,6 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import { useEffect } from 'react';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
@@ -28,35 +28,32 @@ type UpdateTableStatusActiveVariables = {
   input: UpdateTableStatusActiveRequest;
 };
 
-/** All table statuses, fetched page-by-page for the management list. */
+/**
+ * All table statuses for the management list. Statuses are a small, bounded configuration set, so
+ * the whole list is loaded: page 1 first, then any remaining pages in parallel.
+ */
 export function useTableStatuses(enabled: boolean): UseQueryResult<TableStatus[]> {
-  const showApiError = useShowApiError('Unable to load table statuses.');
-  const query = useQuery({
+  return useQuery({
     queryKey: [TableStatusQueryKey.TableStatuses],
     queryFn: async (): Promise<TableStatus[]> => {
-      const firstResponse = await api.get('/table/statuses', {
-        params: { page: 1, pageSize: PAGE_SIZE },
-      });
-      const firstPage = tableStatusListResponseSchema.parse(firstResponse.data);
-      const statuses = [...firstPage.data];
-
-      for (let page = 2; page <= firstPage.meta.totalPages; page += 1) {
+      const fetchPage = async (page: number): Promise<TableStatusListResponse> => {
         const response = await api.get('/table/statuses', {
           params: { page, pageSize: PAGE_SIZE },
         });
-        statuses.push(...tableStatusListResponseSchema.parse(response.data).data);
-      }
+        return tableStatusListResponseSchema.parse(response.data);
+      };
 
-      return statuses;
+      const firstPage = await fetchPage(1);
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(firstPage.meta.totalPages - 1, 0) }, (_, index) =>
+          fetchPage(index + 2),
+        ),
+      );
+
+      return [firstPage, ...remainingPages].flatMap((page) => page.data);
     },
     enabled,
   });
-
-  useEffect(() => {
-    if (query.error) showApiError(query.error);
-  }, [query.error, query.errorUpdatedAt, showApiError]);
-
-  return query;
 }
 
 export function useCreateTableStatus(): UseMutationResult<
