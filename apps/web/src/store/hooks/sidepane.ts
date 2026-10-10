@@ -1,4 +1,4 @@
-import type { DiningSection, StaffAccount, TableStatus } from '@rms/api-contract';
+import type { DiningSection, RestaurantTable, StaffAccount, TableStatus } from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/sidepane';
@@ -47,6 +47,14 @@ export function useShowTableStatusFormSidePane(): (status?: TableStatus) => void
   const showSidePane = useShowSidePane();
   return (status) => {
     showSidePane(SidePaneType.TableStatusForm, status ? { status } : {});
+  };
+}
+
+/** Open the restaurant table form: pass a table to edit it, or nothing to create one. */
+export function useShowTableFormSidePane(): (table?: RestaurantTable) => void {
+  const showSidePane = useShowSidePane();
+  return (table) => {
+    showSidePane(SidePaneType.TableForm, table ? { table } : {});
   };
 }
 

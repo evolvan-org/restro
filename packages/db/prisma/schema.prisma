@@ -259,6 +259,8 @@ model RestaurantTable {
   reservations  Reservation[]
   orders        Order[]
 
+  // Case-insensitive uniqueness is enforced by a raw index on lower(table_number)
+  // (20261010120000_tables_number_case_insensitive_unique); Prisma can't express it.
   @@unique([restaurantId, tableNumber])
   @@index([restaurantId])
   @@index([sectionId])

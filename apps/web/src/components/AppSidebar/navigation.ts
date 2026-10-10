@@ -8,6 +8,7 @@ import {
   Receipt,
   Rows3,
   Store,
+  Table2,
   Users,
 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/dining-sections',
     permission: Permission.RESTAURANT_READ,
   },
+  { label: 'Tables', icon: Table2, href: '/tables', permission: Permission.RESTAURANT_READ },
   { label: 'Orders', icon: ClipboardList, permission: Permission.ORDER_READ },
   { label: 'Kitchen', icon: ChefHat, permission: Permission.KOT_READ },
   { label: 'Billing', icon: Receipt, permission: Permission.BILL_READ },

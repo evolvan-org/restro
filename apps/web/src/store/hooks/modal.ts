@@ -1,6 +1,7 @@
 import type {
   CreateStaffResponse,
   DiningSection,
+  RestaurantTable,
   StaffAccount,
   TableStatus,
 } from '@rms/api-contract';
@@ -88,6 +89,14 @@ export function useShowTableStatusActionModal(): (
   const showModal = useShowModal();
   return (status, action) => {
     showModal(ModalType.TableStatusAction, { status, action });
+  };
+}
+
+/** Ask to confirm activating or deactivating a restaurant table. */
+export function useShowTableActiveModal(): (table: RestaurantTable) => void {
+  const showModal = useShowModal();
+  return (table) => {
+    showModal(ModalType.TableActive, { table });
   };
 }
 
