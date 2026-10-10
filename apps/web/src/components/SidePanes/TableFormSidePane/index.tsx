@@ -5,9 +5,10 @@ import {
   type CreateTableRequest,
   createTableRequestSchema,
   type RestaurantTable,
+  updateTableRequestSchema,
 } from '@rms/api-contract';
 import { type ReactElement, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { type Resolver, useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -44,7 +45,10 @@ export default function TableFormSidePane({
   const hideSidePane = useHideSidePane();
 
   const form = useForm<CreateTableRequest>({
-    resolver: zodResolver(createTableRequestSchema),
+    // Edit is validated against the update contract, create against the create contract.
+    resolver: zodResolver(
+      isEdit ? updateTableRequestSchema : createTableRequestSchema,
+    ) as Resolver<CreateTableRequest>,
     defaultValues: {
       tableNumber: table?.tableNumber ?? '',
       capacity: table?.capacity ?? 2,
@@ -75,13 +79,6 @@ export default function TableFormSidePane({
   const isSaving = isCreating || isUpdating;
   const sections = options.data?.sections ?? [];
   const statuses = options.data?.statuses ?? [];
-  const firstStatusId = statuses[0]?.id;
-
-  useEffect(() => {
-    if (!isEdit && firstStatusId && !form.getValues('currentStatusId')) {
-      form.setValue('currentStatusId', firstStatusId);
-    }
-  }, [isEdit, firstStatusId, form]);
 
   return (
     <>
@@ -112,6 +109,7 @@ export default function TableFormSidePane({
               id="table-capacity"
               type="number"
               min={1}
+              max={100}
               step={1}
               aria-invalid={Boolean(errors.capacity)}
               {...form.register('capacity', { valueAsNumber: true })}
@@ -149,8 +147,8 @@ export default function TableFormSidePane({
               aria-invalid={Boolean(errors.currentStatusId)}
               {...form.register('currentStatusId')}
             >
-              <NativeSelectOption value="" disabled>
-                {options.isPending ? 'Loading statuses...' : 'Select a status'}
+              <NativeSelectOption value="" disabled={isEdit}>
+                {options.isPending ? 'Loading statuses...' : 'Use default status'}
               </NativeSelectOption>
               {statuses.map((status) => (
                 <NativeSelectOption key={status.id} value={status.id}>

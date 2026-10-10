@@ -68,7 +68,11 @@ export const tableListQuerySchema = paginationQuerySchema.extend({
 const tableDetailsSchema = z
   .object({
     tableNumber: tableNumberSchema,
-    capacity: z.number().int().positive('Capacity must be greater than zero'),
+    capacity: z
+      .number()
+      .int()
+      .positive('Capacity must be greater than zero')
+      .max(100, 'Capacity must not exceed 100'),
     sectionId: z.string().uuid('Select a section'),
     currentStatusId: optionalUuidSchema,
   })
