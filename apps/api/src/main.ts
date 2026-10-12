@@ -33,6 +33,9 @@ async function bootstrap() {
     .addTag('authentication', 'Log in to get an access token')
     .addTag('profile', "The signed-in user's own account: details and password")
     .addTag('staff', "Manage the restaurant's staff accounts (owners and managers)")
+    .addTag('guests', 'Look up guest profiles')
+    .addTag('reservations', 'Manage reservation records')
+    .addTag('walk-ins', 'Register walk-in guests')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
