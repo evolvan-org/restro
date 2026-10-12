@@ -51,6 +51,7 @@ const MODULES: readonly Module[] = [
     description: 'Manage bookings and table availability.',
     icon: CalendarCheck,
     permission: Permission.RESERVATION_READ,
+    href: '/reservations',
   },
   {
     title: 'Orders',

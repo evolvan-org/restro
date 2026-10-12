@@ -15,6 +15,8 @@ export enum SidePaneType {
   StaffForm,
   DiningSectionForm,
   TableStatusForm,
+  WalkInForm,
+  ReservationForm,
 }
 
 /**
