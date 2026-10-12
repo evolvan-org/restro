@@ -41,6 +41,9 @@ export type StaffDetails = {
   roleId: string;
 };
 
+/** Email is fixed at creation, so edits never carry one. */
+export type StaffUpdateDetails = Omit<StaffDetails, 'email'>;
+
 export class StaffEmailConflictError extends Error {
   constructor() {
     super('Email address is already in use');
@@ -97,17 +100,9 @@ export class StaffRepository {
     });
   }
 
-  async isEmailTaken(
-    restaurantId: string,
-    email: string,
-    excludeUserId?: string,
-  ): Promise<boolean> {
+  async isEmailTaken(email: string): Promise<boolean> {
     const user = await this.prisma.user.findFirst({
-      where: {
-        restaurantId,
-        email: { equals: email, mode: 'insensitive' },
-        ...(excludeUserId && { id: { not: excludeUserId } }),
-      },
+      where: { email: { equals: email, mode: 'insensitive' } },
       select: { id: true },
     });
 
@@ -130,21 +125,14 @@ export class StaffRepository {
   async update(
     restaurantId: string,
     userId: string,
-    data: StaffDetails,
+    data: StaffUpdateDetails,
   ): Promise<StaffRecord | null> {
-    try {
-      // Tenant-scoped write: never touches a user outside this restaurant.
-      const { count } = await this.prisma.user.updateMany({
-        where: { id: userId, ...staffWhere(restaurantId) },
-        data,
-      });
-      return count === 0 ? null : this.findById(restaurantId, userId);
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new StaffEmailConflictError();
-      }
-      throw error;
-    }
+    // Tenant-scoped write: never touches a user outside this restaurant.
+    const { count } = await this.prisma.user.updateMany({
+      where: { id: userId, ...staffWhere(restaurantId) },
+      data,
+    });
+    return count === 0 ? null : this.findById(restaurantId, userId);
   }
 
   async updateStatus(

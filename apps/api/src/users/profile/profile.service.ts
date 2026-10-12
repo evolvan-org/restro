@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import {
   type ChangePasswordRequest,
   type ChangePasswordResponse,
@@ -14,11 +9,7 @@ import {
 import { compare, hash } from 'bcrypt';
 
 import { BCRYPT_ROUNDS } from '../../common/auth/password';
-import {
-  ProfileEmailConflictError,
-  type ProfileRecord,
-  ProfileRepository,
-} from './profile.repository';
+import { type ProfileRecord, ProfileRepository } from './profile.repository';
 
 @Injectable()
 export class ProfileService {
@@ -33,30 +24,10 @@ export class ProfileService {
     const existing = await this.profileRepository.findById(userId);
     this.assertActive(existing);
 
-    const emailChanged = existing.email.trim().toLowerCase() !== input.email;
-    if (emailChanged) {
-      const emailOwnerId = await this.profileRepository.findEmailOwnerId(
-        existing.restaurantId,
-        input.email,
-      );
-      if (emailOwnerId && emailOwnerId !== userId) {
-        throw new ConflictException('Email address is already in use');
-      }
-    }
-
-    let updated: ProfileRecord;
-    try {
-      updated = await this.profileRepository.updateById(userId, {
-        name: input.name,
-        email: input.email,
-        phone: input.phone?.trim() || null,
-      });
-    } catch (error) {
-      if (error instanceof ProfileEmailConflictError) {
-        throw new ConflictException('Email address is already in use');
-      }
-      throw error;
-    }
+    const updated = await this.profileRepository.updateById(userId, {
+      name: input.name,
+      phone: input.phone?.trim() || null,
+    });
 
     return this.toProfileResponse(updated);
   }

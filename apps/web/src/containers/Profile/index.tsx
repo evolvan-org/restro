@@ -40,7 +40,6 @@ export default function Profile(): ReactElement {
     resolver: zodResolver(updateProfileRequestSchema),
     defaultValues: {
       name: '',
-      email: '',
       phone: '',
     },
   });
@@ -57,7 +56,6 @@ export default function Profile(): ReactElement {
     if (profile.data) {
       profileForm.reset({
         name: profile.data.name,
-        email: profile.data.email,
         phone: profile.data.phone ?? '',
       });
     }
@@ -75,7 +73,6 @@ export default function Profile(): ReactElement {
     try {
       await updateProfile({
         name: values.name,
-        email: values.email,
         phone: values.phone || null,
       });
     } catch {
@@ -147,16 +144,15 @@ export default function Profile(): ReactElement {
                   <FieldError>{profileForm.formState.errors.name?.message}</FieldError>
                 </Field>
 
-                <Field data-invalid={Boolean(profileForm.formState.errors.email)}>
+                <Field>
                   <FieldLabel htmlFor="profile-email">Email address</FieldLabel>
                   <Input
                     id="profile-email"
                     type="email"
-                    autoComplete="email"
-                    aria-invalid={Boolean(profileForm.formState.errors.email)}
-                    {...profileForm.register('email')}
+                    value={profile.data.email}
+                    disabled
+                    readOnly
                   />
-                  <FieldError>{profileForm.formState.errors.email?.message}</FieldError>
                 </Field>
 
                 <Field data-invalid={Boolean(profileForm.formState.errors.phone)}>

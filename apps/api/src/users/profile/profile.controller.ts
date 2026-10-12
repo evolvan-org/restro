@@ -3,7 +3,6 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
-  ApiConflictResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -52,7 +51,6 @@ export class ProfileController {
     schema: zodOpenApiSchema(profileResponseSchema),
   })
   @ApiBadRequestResponse(apiError('The profile data is invalid'))
-  @ApiConflictResponse(apiError('The email address is already in use'))
   @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
   updateProfile(
     @CurrentUserId() userId: string,

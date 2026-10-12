@@ -24,13 +24,6 @@ const passwordSelect = {
 export type ProfileRecord = Prisma.UserGetPayload<{ select: typeof profileSelect }>;
 export type PasswordRecord = Prisma.UserGetPayload<{ select: typeof passwordSelect }>;
 
-export class ProfileEmailConflictError extends Error {
-  constructor() {
-    super('Email address is already in use');
-    this.name = ProfileEmailConflictError.name;
-  }
-}
-
 @Injectable()
 export class ProfileRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -42,37 +35,12 @@ export class ProfileRepository {
     });
   }
 
-  async updateById(
-    userId: string,
-    data: { name: string; email: string; phone: string | null },
-  ): Promise<ProfileRecord> {
-    try {
-      return await this.prisma.user.update({
-        where: { id: userId },
-        data,
-        select: profileSelect,
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ProfileEmailConflictError();
-      }
-      throw error;
-    }
-  }
-
-  async findEmailOwnerId(restaurantId: string, email: string): Promise<string | null> {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        restaurantId,
-        email: {
-          equals: email,
-          mode: 'insensitive',
-        },
-      },
-      select: { id: true },
+  updateById(userId: string, data: { name: string; phone: string | null }): Promise<ProfileRecord> {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: profileSelect,
     });
-
-    return user?.id ?? null;
   }
 
   findPasswordById(userId: string): Promise<PasswordRecord | null> {
