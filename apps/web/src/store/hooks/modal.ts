@@ -1,6 +1,7 @@
 import type {
   CreateStaffResponse,
   DiningSection,
+  MenuCategory,
   RestaurantTable,
   StaffAccount,
   TableStatus,
@@ -78,6 +79,17 @@ export function useShowDiningSectionActionModal(): (
   const showModal = useShowModal();
   return (section, action) => {
     showModal(ModalType.DiningSectionAction, { section, action });
+  };
+}
+
+/** Confirm deactivating or reactivating a menu category. */
+export function useShowMenuCategoryStatusModal(): (
+  category: MenuCategory,
+  action: 'deactivate' | 'activate',
+) => void {
+  const showModal = useShowModal();
+  return (category, action) => {
+    showModal(ModalType.MenuCategoryStatus, { category, action });
   };
 }
 

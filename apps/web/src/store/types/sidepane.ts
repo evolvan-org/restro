@@ -18,6 +18,7 @@ export enum SidePaneType {
   WalkInForm,
   ReservationForm,
   TableForm,
+  MenuCategoryForm,
 }
 
 /**

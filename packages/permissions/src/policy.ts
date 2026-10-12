@@ -17,6 +17,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   [Role.MANAGER]: ALL_PERMISSIONS.filter((permission) => permission !== Permission.USER_DELETE),
   [Role.CAPTAIN]: [
     Permission.DASHBOARD_READ,
+    Permission.MENU_READ,
     Permission.RESTAURANT_READ,
     Permission.RESERVATION_READ,
     Permission.RESERVATION_WRITE,
@@ -27,18 +28,21 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   [Role.KITCHEN_STAFF]: [
     Permission.DASHBOARD_READ,
+    Permission.MENU_READ,
     Permission.ORDER_READ,
     Permission.KOT_READ,
     Permission.KOT_WRITE,
   ],
   [Role.BAR_STAFF]: [
     Permission.DASHBOARD_READ,
+    Permission.MENU_READ,
     Permission.ORDER_READ,
     Permission.KOT_READ,
     Permission.KOT_WRITE,
   ],
   [Role.CASHIER]: [
     Permission.DASHBOARD_READ,
+    Permission.MENU_READ,
     Permission.RESTAURANT_READ,
     Permission.ORDER_READ,
     Permission.BILL_READ,

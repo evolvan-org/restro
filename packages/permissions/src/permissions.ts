@@ -20,6 +20,10 @@ export const Permission = {
   RESTAURANT_READ: 'restaurant:read',
   RESTAURANT_WRITE: 'restaurant:write',
 
+  // Menu
+  MENU_READ: 'menu:read',
+  MENU_WRITE: 'menu:write',
+
   // Reservations
   RESERVATION_READ: 'reservation:read',
   RESERVATION_WRITE: 'reservation:write',

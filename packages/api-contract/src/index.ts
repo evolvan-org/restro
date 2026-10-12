@@ -15,3 +15,4 @@ export * from './user-fields';
 export * from './table-statuses';
 export * from './restaurant-settings';
 export * from './reservations';
+export * from './menu-categories';

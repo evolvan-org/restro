@@ -10,6 +10,7 @@ import {
   Store,
   Table2,
   Users,
+  UtensilsCrossed,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -39,6 +40,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Store,
     href: '/dining-sections',
     permission: Permission.RESTAURANT_READ,
+  },
+  {
+    label: 'Menu categories',
+    icon: UtensilsCrossed,
+    href: '/menu/categories',
+    permission: Permission.MENU_READ,
   },
   { label: 'Tables', icon: Table2, href: '/tables', permission: Permission.RESTAURANT_READ },
   { label: 'Orders', icon: ClipboardList, permission: Permission.ORDER_READ },

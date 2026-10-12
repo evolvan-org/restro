@@ -1,4 +1,10 @@
-import type { DiningSection, RestaurantTable, StaffAccount, TableStatus } from '@rms/api-contract';
+import type {
+  DiningSection,
+  MenuCategory,
+  RestaurantTable,
+  StaffAccount,
+  TableStatus,
+} from '@rms/api-contract';
 import { useDispatch } from 'react-redux';
 
 import { actions } from '../slices/sidepane';
@@ -39,6 +45,14 @@ export function useShowDiningSectionFormSidePane(): (section?: DiningSection) =>
   const showSidePane = useShowSidePane();
   return (section) => {
     showSidePane(SidePaneType.DiningSectionForm, section ? { section } : {});
+  };
+}
+
+/** Open the menu-category form: pass a category to edit it, or nothing to create one. */
+export function useShowMenuCategoryFormSidePane(): (category?: MenuCategory) => void {
+  const showSidePane = useShowSidePane();
+  return (category) => {
+    showSidePane(SidePaneType.MenuCategoryForm, category ? { category } : {});
   };
 }
 
