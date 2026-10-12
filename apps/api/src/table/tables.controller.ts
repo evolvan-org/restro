@@ -29,12 +29,18 @@ import {
   createTableResponseSchema,
   type RestaurantTable,
   restaurantTableSchema,
+  type TableLifecycleStatusListResponse,
+  tableLifecycleStatusListResponseSchema,
   type TableListQuery,
   tableListQuerySchema,
   type TableListResponse,
   tableListResponseSchema,
   type TableOptionsResponse,
   tableOptionsResponseSchema,
+  type TransitionTableStatusRequest,
+  transitionTableStatusRequestSchema,
+  type TransitionTableStatusResponse,
+  transitionTableStatusResponseSchema,
   type UpdateTableActiveRequest,
   updateTableActiveRequestSchema,
   type UpdateTableActiveResponse,
@@ -99,6 +105,21 @@ export class TablesController {
     return this.tablesService.options(actor);
   }
 
+  @Get('table-statuses')
+  @RequirePermissions(Permission.RESTAURANT_READ)
+  @ApiOperation({
+    summary: 'List table lifecycle statuses',
+    description:
+      "Lists active lifecycle states for the caller's restaurant in display order. Requires `restaurant:read`.",
+  })
+  @ApiOkResponse({
+    description: 'Active table lifecycle statuses',
+    schema: zodOpenApiSchema(tableLifecycleStatusListResponseSchema),
+  })
+  listLifecycleStatuses(@CurrentActor() actor: Actor): Promise<TableLifecycleStatusListResponse> {
+    return this.tablesService.listLifecycleStatuses(actor);
+  }
+
   @Get('table/:id')
   @RequirePermissions(Permission.RESTAURANT_READ)
   @ApiOperation({
@@ -143,15 +164,14 @@ export class TablesController {
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Update a restaurant table',
-    description:
-      'Updates table number, capacity, section or current status. Requires `restaurant:write`.',
+    description: 'Updates table number, capacity or section. Requires `restaurant:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateTableRequestSchema) })
   @ApiOkResponse({
     description: 'The updated table',
     schema: zodOpenApiSchema(updateTableResponseSchema),
   })
-  @ApiBadRequestResponse(apiError('Invalid data, section or status'))
+  @ApiBadRequestResponse(apiError('Invalid data or section'))
   @ApiNotFoundResponse(apiError('No table with this id in your restaurant'))
   @ApiConflictResponse(apiError('The table number is already in use'))
   update(
@@ -182,5 +202,28 @@ export class TablesController {
     @Body(new ZodValidationPipe(updateTableActiveRequestSchema)) input: UpdateTableActiveRequest,
   ): Promise<UpdateTableActiveResponse> {
     return this.tablesService.updateActiveState(actor, id, input);
+  }
+
+  @Patch('tables/:id/status')
+  @RequirePermissions(Permission.TABLE_UPDATE_STATUS)
+  @ApiOperation({
+    summary: 'Transition a table lifecycle status',
+    description: 'Moves a table to a permitted lifecycle state. Requires `table:update-status`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(transitionTableStatusRequestSchema) })
+  @ApiOkResponse({
+    description: 'The table with its updated status',
+    schema: zodOpenApiSchema(transitionTableStatusResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid table id or status code'))
+  @ApiNotFoundResponse(apiError('The table or target status does not exist'))
+  @ApiConflictResponse(apiError('The requested status transition is not allowed'))
+  transitionStatus(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(transitionTableStatusRequestSchema))
+    input: TransitionTableStatusRequest,
+  ): Promise<TransitionTableStatusResponse> {
+    return this.tablesService.transitionStatus(actor, id, input);
   }
 }

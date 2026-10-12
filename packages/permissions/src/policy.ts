@@ -18,6 +18,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   [Role.CAPTAIN]: [
     Permission.DASHBOARD_READ,
     Permission.RESTAURANT_READ,
+    Permission.TABLE_UPDATE_STATUS,
     Permission.RESERVATION_READ,
     Permission.RESERVATION_WRITE,
     Permission.ORDER_READ,

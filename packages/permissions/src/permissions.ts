@@ -19,6 +19,7 @@ export const Permission = {
   // Restaurant configuration
   RESTAURANT_READ: 'restaurant:read',
   RESTAURANT_WRITE: 'restaurant:write',
+  TABLE_UPDATE_STATUS: 'table:update-status',
 
   // Reservations
   RESERVATION_READ: 'reservation:read',
