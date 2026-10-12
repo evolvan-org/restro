@@ -17,6 +17,7 @@ export enum ModalType {
   DiningSectionAction,
   StaffPasswordRegeneration,
   TableStatusAction,
+  TableActive,
 }
 
 /**
