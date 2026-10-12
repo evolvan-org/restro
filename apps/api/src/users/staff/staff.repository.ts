@@ -100,12 +100,9 @@ export class StaffRepository {
     });
   }
 
-  async isEmailTaken(restaurantId: string, email: string): Promise<boolean> {
+  async isEmailTaken(email: string): Promise<boolean> {
     const user = await this.prisma.user.findFirst({
-      where: {
-        restaurantId,
-        email: { equals: email, mode: 'insensitive' },
-      },
+      where: { email: { equals: email, mode: 'insensitive' } },
       select: { id: true },
     });
 

@@ -29,7 +29,7 @@ import {
   StaffRepository,
 } from './staff.repository';
 
-const EMAIL_IN_USE_MESSAGE = 'Email address is already in use';
+const EMAIL_IN_USE_MESSAGE = 'Email already taken. New-user invitations are coming soon.';
 
 @Injectable()
 export class StaffService {
@@ -57,7 +57,7 @@ export class StaffService {
 
   async create(actor: Actor, input: CreateStaffRequest): Promise<CreateStaffResponse> {
     await this.assertRoleAssignable(actor, input.roleId);
-    await this.assertEmailAvailable(actor.restaurantId, input.email);
+    await this.assertEmailAvailable(input.email);
 
     const temporaryPassword = generateTemporaryPassword();
     const passwordHash = await hash(temporaryPassword, BCRYPT_ROUNDS);
@@ -161,8 +161,8 @@ export class StaffService {
     }
   }
 
-  private async assertEmailAvailable(restaurantId: string, email: string): Promise<void> {
-    if (await this.staffRepository.isEmailTaken(restaurantId, email)) {
+  private async assertEmailAvailable(email: string): Promise<void> {
+    if (await this.staffRepository.isEmailTaken(email)) {
       throw new ConflictException(EMAIL_IN_USE_MESSAGE);
     }
   }

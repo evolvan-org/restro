@@ -130,7 +130,7 @@ export default function StaffFormSidePane({
             <FieldError>{errors.name?.message}</FieldError>
           </Field>
 
-          <Field data-invalid={Boolean(errors.email)}>
+          <Field data-invalid={!isEdit && Boolean(errors.email)}>
             <FieldLabel htmlFor="staff-email">Email address</FieldLabel>
             {isEdit ? (
               <Input id="staff-email" type="email" value={account.email} disabled readOnly />
@@ -146,9 +146,9 @@ export default function StaffFormSidePane({
             <FieldDescription>
               {isEdit
                 ? 'Email cannot be changed after the account is created.'
-                : 'Used to log in; must be unique in your restaurant.'}
+                : 'Used to log in; must be globally unique.'}
             </FieldDescription>
-            <FieldError>{errors.email?.message}</FieldError>
+            {!isEdit && <FieldError>{errors.email?.message}</FieldError>}
           </Field>
 
           <Field data-invalid={Boolean(errors.phone)}>
