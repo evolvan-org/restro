@@ -36,7 +36,7 @@ export function useTableList(
   return useQuery({
     queryKey: [TableQueryKey.Tables, query],
     queryFn: async (): Promise<TableListResponse> => {
-      const response = await api.get('/table/tables', { params: query });
+      const response = await api.get('/tables', { params: query });
       return tableListResponseSchema.parse(response.data);
     },
     placeholderData: keepPreviousData,
@@ -48,7 +48,7 @@ export function useTableOptions(enabled: boolean): UseQueryResult<TableOptionsRe
   return useQuery({
     queryKey: [TableQueryKey.Options],
     queryFn: async (): Promise<TableOptionsResponse> => {
-      const response = await api.get('/table/tables/options');
+      const response = await api.get('/tables/options');
       return tableOptionsResponseSchema.parse(response.data);
     },
     enabled,
@@ -65,7 +65,7 @@ export function useCreateTable(): UseMutationResult<
 
   return useMutation<CreateTableResponse, Error, CreateTableRequest>({
     mutationFn: async (input: CreateTableRequest): Promise<CreateTableResponse> => {
-      const response = await api.post('/table/tables', input);
+      const response = await api.post('/tables', input);
       return createTableResponseSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
@@ -79,7 +79,7 @@ export function useUpdateTable(): UseMutationResult<RestaurantTable, Error, Upda
 
   return useMutation<RestaurantTable, Error, UpdateTableVariables>({
     mutationFn: async ({ id, input }: UpdateTableVariables): Promise<RestaurantTable> => {
-      const response = await api.patch(`/table/tables/${id}`, input);
+      const response = await api.patch(`/table/${id}`, input);
       return restaurantTableSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
@@ -97,7 +97,7 @@ export function useUpdateTableActive(): UseMutationResult<
 
   return useMutation<RestaurantTable, Error, UpdateTableActiveVariables>({
     mutationFn: async ({ id, input }: UpdateTableActiveVariables): Promise<RestaurantTable> => {
-      const response = await api.patch(`/table/tables/${id}/active`, input);
+      const response = await api.patch(`/table/${id}/active`, input);
       return restaurantTableSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),

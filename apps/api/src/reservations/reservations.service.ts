@@ -8,7 +8,7 @@ import {
 } from '@rms/api-contract';
 import { buildPageMeta } from '@rms/shared';
 
-import type { Actor } from '../../common/auth/authenticated-request';
+import type { Actor } from '../common/auth/authenticated-request';
 import { toReservation } from './reservations.mapper';
 import { ReservationsRepository } from './reservations.repository';
 

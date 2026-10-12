@@ -1,6 +1,6 @@
 import type { Reservation } from '@rms/api-contract';
 
-import { toGuest } from '../guests/guests.mapper';
+import { toGuest } from './guests/guests.mapper';
 import type { ReservationRecord } from './reservations.repository';
 
 export function toReservation(record: ReservationRecord): Reservation {

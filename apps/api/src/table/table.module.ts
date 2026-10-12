@@ -8,9 +8,9 @@ import { DiningSectionsService } from './dining-sections/dining-sections.service
 import { TableStatusesController } from './table-statuses/table-statuses.controller';
 import { TableStatusesRepository } from './table-statuses/table-statuses.repository';
 import { TableStatusesService } from './table-statuses/table-statuses.service';
-import { TablesController } from './tables/tables.controller';
-import { TablesRepository } from './tables/tables.repository';
-import { TablesService } from './tables/tables.service';
+import { TablesController } from './tables.controller';
+import { TablesRepository } from './tables.repository';
+import { TablesService } from './tables.service';
 
 @Module({
   imports: [DatabaseModule, AuthorizationModule],

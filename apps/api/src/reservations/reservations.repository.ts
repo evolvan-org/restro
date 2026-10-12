@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, ReservationStatus } from '@rms/db';
 
-import { PrismaService } from '../../common/database/prisma.service';
-import { guestSelect, GuestsRepository } from '../guests/guests.repository';
+import { PrismaService } from '../common/database/prisma.service';
+import { guestSelect, GuestsRepository } from './guests/guests.repository';
 
 const reservationSelect = {
   id: true,

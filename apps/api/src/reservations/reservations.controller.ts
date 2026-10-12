@@ -24,13 +24,13 @@ import {
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
-import type { Actor } from '../../common/auth/authenticated-request';
-import { CurrentActor } from '../../common/auth/current-actor.decorator';
-import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
-import { PermissionsGuard } from '../../common/auth/permissions.guard';
-import { RequirePermissions } from '../../common/auth/require-permissions.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { apiError, ApiZodQuery, zodOpenApiSchema } from '../../common/swagger/zod-openapi';
+import type { Actor } from '../common/auth/authenticated-request';
+import { CurrentActor } from '../common/auth/current-actor.decorator';
+import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/auth/permissions.guard';
+import { RequirePermissions } from '../common/auth/require-permissions.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
 import { ReservationsService } from './reservations.service';
 
 @ApiTags('reservations')

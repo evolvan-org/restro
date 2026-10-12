@@ -18,7 +18,7 @@ import {
 } from '@rms/api-contract';
 import { buildPageMeta } from '@rms/shared';
 
-import type { Actor } from '../../common/auth/authenticated-request';
+import type { Actor } from '../common/auth/authenticated-request';
 import {
   type TableDetails,
   TableNumberConflictError,
@@ -67,6 +67,10 @@ export class TablesService {
     ]);
 
     return { sections, statuses };
+  }
+
+  async get(actor: Actor, tableId: string): Promise<RestaurantTable> {
+    return toRestaurantTable(await this.findInRestaurant(actor.restaurantId, tableId));
   }
 
   async update(
