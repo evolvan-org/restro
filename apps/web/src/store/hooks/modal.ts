@@ -3,6 +3,7 @@ import type {
   DiningSection,
   MenuCategory,
   MenuItem,
+  Reservation,
   RestaurantTable,
   StaffAccount,
   TableStatus,
@@ -118,6 +119,14 @@ export function useShowTableActiveModal(): (table: RestaurantTable) => void {
   const showModal = useShowModal();
   return (table) => {
     showModal(ModalType.TableActive, { table });
+  };
+}
+
+/** Open the reservation cancellation form. */
+export function useShowReservationCancelModal(): (reservation: Reservation) => void {
+  const showModal = useShowModal();
+  return (reservation) => {
+    showModal(ModalType.ReservationCancel, { reservation });
   };
 }
 

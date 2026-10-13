@@ -1,4 +1,5 @@
 import {
+  type CancelReservationRequest,
   type CreateReservationRequest,
   type CreateWalkInRequest,
   type GuestLookupResponse,
@@ -8,6 +9,7 @@ import {
   type ReservationListResponse,
   reservationListResponseSchema,
   reservationSchema,
+  type UpdateReservationRequest,
 } from '@rms/api-contract';
 import {
   keepPreviousData,
@@ -22,6 +24,51 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 
 import { ReservationQueryKey } from '../types/ReservationQueryKey';
+
+type CancelReservationVariables = { id: string; input: CancelReservationRequest };
+type UpdateReservationVariables = { id: string; input: UpdateReservationRequest };
+
+export function useUpdateReservation(): UseMutationResult<
+  Reservation,
+  Error,
+  UpdateReservationVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update the reservation.');
+
+  return useMutation<Reservation, Error, UpdateReservationVariables>({
+    mutationFn: async ({ id, input }): Promise<Reservation> => {
+      const response = await api.patch(`/reservations/${id}`, input);
+      return reservationSchema.parse(response.data);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.GuestLookup] }),
+      ]);
+    },
+    onError: showApiError,
+  });
+}
+
+export function useCancelReservation(): UseMutationResult<
+  Reservation,
+  Error,
+  CancelReservationVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to cancel the reservation.');
+
+  return useMutation<Reservation, Error, CancelReservationVariables>({
+    mutationFn: async ({ id, input }): Promise<Reservation> => {
+      const response = await api.patch(`/reservations/${id}/cancel`, input);
+      return reservationSchema.parse(response.data);
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+    onError: showApiError,
+  });
+}
 
 /** One page of reservations; the previous page stays visible while the next one loads. */
 export function useReservations(

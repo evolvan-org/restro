@@ -20,6 +20,7 @@ export enum ModalType {
   TableActive,
   MenuCategoryStatus,
   MenuItemDelete,
+  ReservationCancel,
 }
 
 /**

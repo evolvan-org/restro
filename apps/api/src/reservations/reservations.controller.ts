@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -6,12 +16,15 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type CancelReservationRequest,
+  cancelReservationRequestSchema,
   type CreateReservationRequest,
   createReservationRequestSchema,
   type Reservation,
@@ -21,6 +34,8 @@ import {
   type ReservationListResponse,
   reservationListResponseSchema,
   reservationSchema,
+  type UpdateReservationRequest,
+  updateReservationRequestSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
@@ -41,6 +56,57 @@ import { ReservationsService } from './reservations.service';
 @Controller('reservations')
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
+
+  @Patch(':id')
+  @RequirePermissions(Permission.RESERVATION_WRITE)
+  @ApiOperation({
+    summary: 'Modify a booked reservation',
+    description:
+      'Partially updates the time, party size, notes or shared guest profile. ' +
+      'Time and party-size edits revalidate table capacity and booking overlaps, excluding this reservation. ' +
+      'Only BOOKED reservations may be edited. Requires `reservation:write`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(updateReservationRequestSchema) })
+  @ApiOkResponse({
+    description: 'The updated reservation with embedded guest',
+    schema: zodOpenApiSchema(reservationSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid reservation id, fields, table state or party size'))
+  @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
+  @ApiConflictResponse(
+    apiError('Reservation is not booked, table overlaps, or guest phone is in use'),
+  )
+  update(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateReservationRequestSchema)) input: UpdateReservationRequest,
+  ): Promise<Reservation> {
+    return this.service.update(actor, id, input);
+  }
+
+  @Patch(':id/cancel')
+  @RequirePermissions(Permission.RESERVATION_WRITE)
+  @ApiOperation({
+    summary: 'Cancel a reservation',
+    description:
+      "Cancels a reservation in the caller's restaurant, clears its held table and records an " +
+      'optional reason. CANCELLED and COMPLETED reservations return 409. Requires `reservation:write`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(cancelReservationRequestSchema) })
+  @ApiOkResponse({
+    description: 'The cancelled reservation with tableId = null and its embedded guest',
+    schema: zodOpenApiSchema(reservationSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid reservation id or cancellation reason'))
+  @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
+  @ApiConflictResponse(apiError('Cancelled or completed reservations cannot be cancelled'))
+  cancel(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(cancelReservationRequestSchema)) input: CancelReservationRequest,
+  ): Promise<Reservation> {
+    return this.service.cancel(actor, id, input);
+  }
 
   @Get()
   @RequirePermissions(Permission.RESERVATION_READ)
