@@ -16,3 +16,5 @@ export * from './table-statuses';
 export * from './restaurant-settings';
 export * from './reservations';
 export * from './menu-categories';
+export * from './stock-items';
+export * from './menu-items';

@@ -4,6 +4,7 @@ import { type ComponentType, Fragment } from 'react';
 
 import DiningSectionFormSidePane from '@/components/SidePanes/DiningSectionFormSidePane';
 import MenuCategoryFormSidePane from '@/components/SidePanes/MenuCategoryFormSidePane';
+import MenuItemFormSidePane from '@/components/SidePanes/MenuItemFormSidePane';
 import ReservationFormSidePane from '@/components/SidePanes/ReservationFormSidePane';
 import SampleSidePane from '@/components/SidePanes/SampleSidePane';
 import StaffFormSidePane from '@/components/SidePanes/StaffFormSidePane';
@@ -31,6 +32,7 @@ const SIDE_PANES: Partial<Record<SidePaneType, ComponentType<any>>> = {
   [SidePaneType.ReservationForm]: ReservationFormSidePane,
   [SidePaneType.TableForm]: TableFormSidePane,
   [SidePaneType.MenuCategoryForm]: MenuCategoryFormSidePane,
+  [SidePaneType.MenuItemForm]: MenuItemFormSidePane,
 };
 
 /** Single mount point for every side pane — a right-hand slide-in drawer. */

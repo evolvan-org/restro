@@ -1,6 +1,7 @@
 import type {
   DiningSection,
   MenuCategory,
+  MenuItem,
   RestaurantTable,
   StaffAccount,
   TableStatus,
@@ -53,6 +54,14 @@ export function useShowMenuCategoryFormSidePane(): (category?: MenuCategory) => 
   const showSidePane = useShowSidePane();
   return (category) => {
     showSidePane(SidePaneType.MenuCategoryForm, category ? { category } : {});
+  };
+}
+
+/** Open the menu-item form: pass an item to edit it, or nothing to create one. */
+export function useShowMenuItemFormSidePane(): (item?: MenuItem) => void {
+  const showSidePane = useShowSidePane();
+  return (item) => {
+    showSidePane(SidePaneType.MenuItemForm, item ? { item } : {});
   };
 }
 

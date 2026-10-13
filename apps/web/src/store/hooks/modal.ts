@@ -2,6 +2,7 @@ import type {
   CreateStaffResponse,
   DiningSection,
   MenuCategory,
+  MenuItem,
   RestaurantTable,
   StaffAccount,
   TableStatus,
@@ -90,6 +91,14 @@ export function useShowMenuCategoryStatusModal(): (
   const showModal = useShowModal();
   return (category, action) => {
     showModal(ModalType.MenuCategoryStatus, { category, action });
+  };
+}
+
+/** Confirm deleting a menu item. */
+export function useShowMenuItemDeleteModal(): (item: MenuItem) => void {
+  const showModal = useShowModal();
+  return (item) => {
+    showModal(ModalType.MenuItemDelete, { item });
   };
 }
 

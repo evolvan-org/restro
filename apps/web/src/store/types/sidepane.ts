@@ -19,6 +19,7 @@ export enum SidePaneType {
   ReservationForm,
   TableForm,
   MenuCategoryForm,
+  MenuItemForm,
 }
 
 /**

@@ -25,6 +25,9 @@ export const Permission = {
   MENU_READ: 'menu:read',
   MENU_WRITE: 'menu:write',
 
+  // Stock
+  STOCK_READ: 'stock:read',
+
   // Reservations
   RESERVATION_READ: 'reservation:read',
   RESERVATION_WRITE: 'reservation:write',
