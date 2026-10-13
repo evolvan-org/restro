@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReservationStatus } from '@rms/api-contract';
+import { type ReservationStatus, TERMINAL_RESERVATION_STATUSES } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Plus } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { useReservations } from '@/services/api/requests/reservations';
+import { useShowReservationCancelModal } from '@/store/hooks/modal';
 import { useShowReservationFormSidePane, useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
 type ReservationFilters = { status: ReservationStatus | ''; page: number };
@@ -67,6 +68,7 @@ export default function Reservations(): ReactElement | null {
   );
   const showWalkInForm = useShowWalkInFormSidePane();
   const showReservationForm = useShowReservationFormSidePane();
+  const showCancellationForm = useShowReservationCancelModal();
 
   if (!isAllowed) return null;
 
@@ -137,6 +139,8 @@ export default function Reservations(): ReactElement | null {
                 <TableHead>Reservation time</TableHead>
                 <TableHead>Table</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead>Cancellation reason</TableHead>
+                {canWrite && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -153,12 +157,33 @@ export default function Reservations(): ReactElement | null {
                   <TableCell>{dateFormatter.format(new Date(reservation.reservationAt))}</TableCell>
                   <TableCell>{reservation.tableId ? reservation.tableId : 'Unassigned'}</TableCell>
                   <TableCell className="max-w-60 truncate">{reservation.notes ?? '-'}</TableCell>
+                  <TableCell className="max-w-60 whitespace-normal break-words">
+                    {reservation.cancellationReason ?? '-'}
+                  </TableCell>
+                  {canWrite && (
+                    <TableCell>
+                      {!TERMINAL_RESERVATION_STATUSES.includes(reservation.status) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          aria-label={`Cancel reservation for ${reservation.guest.guestName}`}
+                          onClick={() => showCancellationForm(reservation)}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
 
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={canWrite ? 9 : 8}
+                    className="py-10 text-center text-muted-foreground"
+                  >
                     {reservations.isPending
                       ? 'Loading reservations...'
                       : status

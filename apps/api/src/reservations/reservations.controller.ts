@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -6,12 +16,15 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type CancelReservationRequest,
+  cancelReservationRequestSchema,
   type CreateReservationRequest,
   createReservationRequestSchema,
   type Reservation,
@@ -41,6 +54,30 @@ import { ReservationsService } from './reservations.service';
 @Controller('reservations')
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
+
+  @Patch(':id/cancel')
+  @RequirePermissions(Permission.RESERVATION_WRITE)
+  @ApiOperation({
+    summary: 'Cancel a reservation',
+    description:
+      "Cancels a reservation in the caller's restaurant, clears its held table and records an " +
+      'optional reason. CANCELLED and COMPLETED reservations return 409. Requires `reservation:write`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(cancelReservationRequestSchema) })
+  @ApiOkResponse({
+    description: 'The cancelled reservation with tableId = null and its embedded guest',
+    schema: zodOpenApiSchema(reservationSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid reservation id or cancellation reason'))
+  @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
+  @ApiConflictResponse(apiError('Cancelled or completed reservations cannot be cancelled'))
+  cancel(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(cancelReservationRequestSchema)) input: CancelReservationRequest,
+  ): Promise<Reservation> {
+    return this.service.cancel(actor, id, input);
+  }
 
   @Get()
   @RequirePermissions(Permission.RESERVATION_READ)

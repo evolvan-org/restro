@@ -1,10 +1,18 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  type CancelReservationRequest,
   type CreateReservationRequest,
   type Reservation,
   RESERVATION_DURATION_MINUTES,
   type ReservationListQuery,
   type ReservationListResponse,
+  reservationStatusSchema,
+  TERMINAL_RESERVATION_STATUSES,
 } from '@rms/api-contract';
 import { buildPageMeta } from '@rms/shared';
 
@@ -15,6 +23,24 @@ import { ReservationsRepository } from './reservations.repository';
 @Injectable()
 export class ReservationsService {
   constructor(private readonly repository: ReservationsRepository) {}
+
+  async cancel(actor: Actor, id: string, input: CancelReservationRequest): Promise<Reservation> {
+    const allowedStatuses = reservationStatusSchema.options.filter(
+      (status) => !TERMINAL_RESERVATION_STATUSES.includes(status),
+    );
+    const reservation = await this.repository.updateForStatuses(
+      actor.restaurantId,
+      id,
+      allowedStatuses,
+      { status: 'CANCELLED', tableId: null, cancellationReason: input.reason || null },
+    );
+    if (reservation) return toReservation(reservation);
+
+    const existing = await this.repository.findById(actor.restaurantId, id);
+    if (!existing) throw new NotFoundException('Reservation not found');
+
+    throw new ConflictException('Cancelled or completed reservations cannot be cancelled');
+  }
 
   async list(actor: Actor, query: ReservationListQuery): Promise<ReservationListResponse> {
     const { page, pageSize, status } = query;

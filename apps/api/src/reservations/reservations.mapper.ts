@@ -13,6 +13,7 @@ export function toReservation(record: ReservationRecord): Reservation {
     partySize: record.partySize,
     status: record.status,
     notes: record.notes,
+    cancellationReason: record.cancellationReason,
     guest: toGuest(record.guest),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),

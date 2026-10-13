@@ -4,6 +4,7 @@ import { type ComponentType, Fragment } from 'react';
 
 import DiningSectionActionModal from '@/components/Modals/DiningSectionActionModal';
 import MenuCategoryStatusModal from '@/components/Modals/MenuCategoryStatusModal';
+import ReservationCancelModal from '@/components/Modals/ReservationCancelModal';
 import SampleModal from '@/components/Modals/SampleModal';
 import StaffPasswordRegenerationModal from '@/components/Modals/StaffPasswordRegenerationModal';
 import StaffStatusModal from '@/components/Modals/StaffStatusModal';
@@ -30,6 +31,7 @@ const MODALS: Partial<Record<ModalType, ComponentType<any>>> = {
   [ModalType.TableStatusAction]: TableStatusActionModal,
   [ModalType.TableActive]: TableActiveModal,
   [ModalType.MenuCategoryStatus]: MenuCategoryStatusModal,
+  [ModalType.ReservationCancel]: ReservationCancelModal,
 };
 
 /** Single mount point for every modal, driven by the `modal` slice. */

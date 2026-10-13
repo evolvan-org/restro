@@ -37,6 +37,11 @@ export const reservationStatusSchema = z.enum([
   'NO_SHOW',
 ]);
 
+export const TERMINAL_RESERVATION_STATUSES: readonly ReservationStatus[] = [
+  'CANCELLED',
+  'COMPLETED',
+];
+
 export const guestSchema = z
   .object({
     id: z.string().uuid(),
@@ -57,6 +62,7 @@ export const reservationSchema = z
     partySize: z.number().int(),
     status: reservationStatusSchema,
     notes: z.string().nullable(),
+    cancellationReason: z.string().nullable(),
     guest: guestSchema,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -68,6 +74,12 @@ export const reservationListQuerySchema = paginationQuerySchema.extend({
 });
 
 export const reservationListResponseSchema = paginatedResponseSchema(reservationSchema);
+
+export const cancelReservationRequestSchema = z
+  .object({
+    reason: z.string().trim().max(255, 'Reason must be 255 characters or fewer').optional(),
+  })
+  .strict();
 
 export const guestLookupQuerySchema = z
   .object({
@@ -116,3 +128,4 @@ export type GuestLookupQuery = z.infer<typeof guestLookupQuerySchema>;
 export type GuestLookupResponse = z.infer<typeof guestLookupResponseSchema>;
 export type CreateWalkInRequest = z.infer<typeof createWalkInRequestSchema>;
 export type CreateReservationRequest = z.infer<typeof createReservationRequestSchema>;
+export type CancelReservationRequest = z.infer<typeof cancelReservationRequestSchema>;

@@ -13,6 +13,7 @@ const reservationSelect = {
   partySize: true,
   status: true,
   notes: true,
+  cancellationReason: true,
   guest: {
     select: guestSelect,
   },
@@ -38,6 +39,12 @@ export type WalkInDetails = {
 
 export type BookingDetails = WalkInDetails & { tableId: string | null };
 
+export type ReservationTransition = {
+  status: ReservationStatus;
+  tableId: string | null;
+  cancellationReason: string | null;
+};
+
 export type TableAvailability = 'OK' | 'TABLE_NOT_FOUND' | 'OVER_CAPACITY' | 'CONFLICT';
 
 export type BookingResult =
@@ -52,6 +59,34 @@ export class ReservationsRepository {
     private readonly prisma: PrismaService,
     private readonly guests: GuestsRepository,
   ) {}
+
+  findById(restaurantId: string, id: string): Promise<ReservationRecord | null> {
+    return this.prisma.reservation.findFirst({
+      where: { id, restaurantId },
+      select: reservationSelect,
+    });
+  }
+
+  /** Update only eligible rows, returning the same transaction's resource snapshot. */
+  updateForStatuses(
+    restaurantId: string,
+    id: string,
+    allowedStatuses: ReservationStatus[],
+    data: ReservationTransition,
+  ): Promise<ReservationRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.reservation.updateMany({
+        where: { id, restaurantId, status: { in: allowedStatuses } },
+        data,
+      });
+      if (updated.count === 0) return null;
+
+      return tx.reservation.findFirst({
+        where: { id, restaurantId },
+        select: reservationSelect,
+      });
+    });
+  }
 
   async findPage(
     restaurantId: string,

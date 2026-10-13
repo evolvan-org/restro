@@ -288,17 +288,18 @@ model Guest {
 }
 
 model Reservation {
-  id              String            @id @default(uuid()) @db.Uuid
-  restaurantId    String            @map("restaurant_id") @db.Uuid
-  guestId         String            @map("guest_id") @db.Uuid
-  tableId         String?           @map("table_id") @db.Uuid
-  createdByUserId String            @map("created_by_user_id") @db.Uuid
-  reservationAt   DateTime          @map("reservation_at") @db.Timestamptz(6)
-  partySize       Int               @map("party_size")
-  status          ReservationStatus @default(BOOKED)
-  notes           String?           @db.VarChar(255)
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String            @id @default(uuid()) @db.Uuid
+  restaurantId       String            @map("restaurant_id") @db.Uuid
+  guestId            String            @map("guest_id") @db.Uuid
+  tableId            String?           @map("table_id") @db.Uuid
+  createdByUserId    String            @map("created_by_user_id") @db.Uuid
+  reservationAt      DateTime          @map("reservation_at") @db.Timestamptz(6)
+  partySize          Int               @map("party_size")
+  status             ReservationStatus @default(BOOKED)
+  notes              String?           @db.VarChar(255)
+  cancellationReason String?           @map("cancellation_reason") @db.VarChar(255)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant    Restaurant       @relation(fields: [restaurantId], references: [id])
   guest         Guest            @relation(fields: [guestId], references: [id])
