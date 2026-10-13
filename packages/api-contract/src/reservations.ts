@@ -42,6 +42,9 @@ export const TERMINAL_RESERVATION_STATUSES: readonly ReservationStatus[] = [
   'COMPLETED',
 ];
 
+export const EDITABLE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED'];
+export const ACTIVE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED', 'SEATED'];
+
 export const guestSchema = z
   .object({
     id: z.string().uuid(),
@@ -119,6 +122,25 @@ export const createReservationRequestSchema = z
   })
   .strict();
 
+export const updateReservationGuestSchema = z
+  .object({
+    guestName: guestNameSchema.optional(),
+    phoneNumber: guestPhoneSchema.optional(),
+  })
+  .strict();
+
+export const updateReservationRequestSchema = createReservationRequestSchema
+  .pick({ reservationAt: true, partySize: true, notes: true })
+  .partial()
+  .extend({
+    guest: updateReservationGuestSchema.optional(),
+  })
+  .strict()
+  .describe(
+    'Partial update of a BOOKED reservation. Supplied times must be in the future. ' +
+      'Guest changes update the shared guest profile for all its reservations.',
+  );
+
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
 export type Guest = z.infer<typeof guestSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
@@ -129,3 +151,5 @@ export type GuestLookupResponse = z.infer<typeof guestLookupResponseSchema>;
 export type CreateWalkInRequest = z.infer<typeof createWalkInRequestSchema>;
 export type CreateReservationRequest = z.infer<typeof createReservationRequestSchema>;
 export type CancelReservationRequest = z.infer<typeof cancelReservationRequestSchema>;
+export type UpdateReservationGuest = z.infer<typeof updateReservationGuestSchema>;
+export type UpdateReservationRequest = z.infer<typeof updateReservationRequestSchema>;

@@ -9,6 +9,7 @@ import {
   type ReservationListResponse,
   reservationListResponseSchema,
   reservationSchema,
+  type UpdateReservationRequest,
 } from '@rms/api-contract';
 import {
   keepPreviousData,
@@ -25,6 +26,30 @@ import { api } from '@/lib/api';
 import { ReservationQueryKey } from '../types/ReservationQueryKey';
 
 type CancelReservationVariables = { id: string; input: CancelReservationRequest };
+type UpdateReservationVariables = { id: string; input: UpdateReservationRequest };
+
+export function useUpdateReservation(): UseMutationResult<
+  Reservation,
+  Error,
+  UpdateReservationVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update the reservation.');
+
+  return useMutation<Reservation, Error, UpdateReservationVariables>({
+    mutationFn: async ({ id, input }): Promise<Reservation> => {
+      const response = await api.patch(`/reservations/${id}`, input);
+      return reservationSchema.parse(response.data);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.GuestLookup] }),
+      ]);
+    },
+    onError: showApiError,
+  });
+}
 
 export function useCancelReservation(): UseMutationResult<
   Reservation,

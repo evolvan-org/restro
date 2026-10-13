@@ -1,6 +1,10 @@
 'use client';
 
-import { type ReservationStatus, TERMINAL_RESERVATION_STATUSES } from '@rms/api-contract';
+import {
+  EDITABLE_RESERVATION_STATUSES,
+  type ReservationStatus,
+  TERMINAL_RESERVATION_STATUSES,
+} from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Plus } from 'lucide-react';
@@ -22,7 +26,12 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { useReservations } from '@/services/api/requests/reservations';
 import { useShowReservationCancelModal } from '@/store/hooks/modal';
-import { useShowReservationFormSidePane, useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
+import {
+  useShowReservationFormSidePane,
+  useShowSidePane,
+  useShowWalkInFormSidePane,
+} from '@/store/hooks/sidepane';
+import { SidePaneType } from '@/store/types/sidepane';
 
 type ReservationFilters = { status: ReservationStatus | ''; page: number };
 
@@ -69,6 +78,7 @@ export default function Reservations(): ReactElement | null {
   const showWalkInForm = useShowWalkInFormSidePane();
   const showReservationForm = useShowReservationFormSidePane();
   const showCancellationForm = useShowReservationCancelModal();
+  const showSidePane = useShowSidePane();
 
   if (!isAllowed) return null;
 
@@ -162,6 +172,20 @@ export default function Reservations(): ReactElement | null {
                   </TableCell>
                   {canWrite && (
                     <TableCell>
+                      {EDITABLE_RESERVATION_STATUSES.includes(reservation.status) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mr-2"
+                          aria-label={`Edit reservation for ${reservation.guest.guestName}`}
+                          onClick={() =>
+                            showSidePane(SidePaneType.ReservationEdit, { reservation })
+                          }
+                        >
+                          Edit
+                        </Button>
+                      )}
                       {!TERMINAL_RESERVATION_STATUSES.includes(reservation.status) && (
                         <Button
                           type="button"

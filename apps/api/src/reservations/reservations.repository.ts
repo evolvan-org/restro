@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { ACTIVE_RESERVATION_STATUSES } from '@rms/api-contract';
 import { Prisma, ReservationStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
-import { guestSelect, GuestsRepository } from './guests/guests.repository';
+import { guestSelect, GuestsRepository, type GuestUpdateDetails } from './guests/guests.repository';
 
 const reservationSelect = {
   id: true,
@@ -51,7 +52,29 @@ export type BookingResult =
   | { outcome: 'CREATED'; reservation: ReservationRecord }
   | { outcome: Exclude<TableAvailability, 'OK'> };
 
-const ACTIVE_STATUSES = [ReservationStatus.BOOKED, ReservationStatus.SEATED];
+export type ReservationUpdateDetails = {
+  reservationAt?: Date;
+  partySize?: number;
+  notes?: string | null;
+};
+
+export type ReservationOverlapFilters = {
+  tableId: string;
+  statuses: ReservationStatus[];
+  from: Date;
+  to: Date;
+  excludeId?: string;
+};
+
+export type ReservationEditContext = {
+  reservation: ReservationRecord;
+  findTable: () => Promise<{ capacity: number; isActive: boolean } | null>;
+  findOverlap: (filters: ReservationOverlapFilters) => Promise<{ id: string } | null>;
+  update: (
+    data: ReservationUpdateDetails,
+    guest?: GuestUpdateDetails,
+  ) => Promise<ReservationRecord>;
+};
 
 @Injectable()
 export class ReservationsRepository {
@@ -64,6 +87,71 @@ export class ReservationsRepository {
     return this.prisma.reservation.findFirst({
       where: { id, restaurantId },
       select: reservationSelect,
+    });
+  }
+
+  /** Keep reservation/table locks and every edit inside one tenant-scoped transaction. */
+  withLockedReservation(
+    restaurantId: string,
+    id: string,
+    edit: (context: ReservationEditContext) => Promise<ReservationRecord>,
+  ): Promise<ReservationRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      const reservation = await tx.reservation.findFirst({
+        where: { id, restaurantId },
+        select: reservationSelect,
+      });
+      if (!reservation) return null;
+
+      if (reservation.tableId) {
+        await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${reservation.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      }
+
+      return edit({
+        reservation,
+        findTable: () =>
+          reservation.tableId
+            ? tx.restaurantTable.findFirst({
+                where: { id: reservation.tableId, restaurantId },
+                select: { capacity: true, isActive: true },
+              })
+            : Promise.resolve(null),
+        findOverlap: (filters) => this.findOverlapIn(tx, restaurantId, filters),
+        update: async (data, guest) => {
+          if (guest && Object.keys(guest).length > 0) {
+            await this.guests.updateIn(tx, restaurantId, reservation.guestId, guest);
+          }
+          if (Object.keys(data).length > 0) {
+            return tx.reservation.update({
+              where: { id, restaurantId },
+              data,
+              select: reservationSelect,
+            });
+          }
+          return tx.reservation.findFirstOrThrow({
+            where: { id, restaurantId },
+            select: reservationSelect,
+          });
+        },
+      });
+    });
+  }
+
+  private findOverlapIn(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    filters: ReservationOverlapFilters,
+  ): Promise<{ id: string } | null> {
+    return tx.reservation.findFirst({
+      where: {
+        restaurantId,
+        tableId: filters.tableId,
+        status: { in: filters.statuses },
+        ...(filters.excludeId && { id: { not: filters.excludeId } }),
+        reservationAt: { gt: filters.from, lt: filters.to },
+      },
+      select: { id: true },
     });
   }
 
@@ -162,17 +250,11 @@ export class ReservationsRepository {
         if (details.partySize > table.capacity) return { outcome: 'OVER_CAPACITY' };
 
         const windowMs = durationMinutes * 60_000;
-        const conflict = await tx.reservation.findFirst({
-          where: {
-            restaurantId,
-            tableId: details.tableId,
-            status: { in: ACTIVE_STATUSES },
-            reservationAt: {
-              gt: new Date(details.reservationAt.getTime() - windowMs),
-              lt: new Date(details.reservationAt.getTime() + windowMs),
-            },
-          },
-          select: { id: true },
+        const conflict = await this.findOverlapIn(tx, restaurantId, {
+          tableId: details.tableId,
+          statuses: [...ACTIVE_RESERVATION_STATUSES],
+          from: new Date(details.reservationAt.getTime() - windowMs),
+          to: new Date(details.reservationAt.getTime() + windowMs),
         });
         if (conflict) return { outcome: 'CONFLICT' };
       }

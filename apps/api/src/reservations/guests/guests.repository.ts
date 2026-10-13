@@ -13,12 +13,23 @@ export const guestSelect = {
 
 export type GuestRecord = Prisma.GuestGetPayload<{ select: typeof guestSelect }>;
 
+export type GuestUpdateDetails = Partial<Pick<GuestRecord, 'guestName' | 'phoneNumber'>>;
+
 @Injectable()
 export class GuestsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   findByPhone(restaurantId: string, phoneNumber: string): Promise<GuestRecord | null> {
     return this.findByPhoneIn(this.prisma, restaurantId, phoneNumber);
+  }
+
+  async updateIn(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    id: string,
+    data: GuestUpdateDetails,
+  ): Promise<void> {
+    await tx.guest.update({ where: { id, restaurantId }, data, select: { id: true } });
   }
 
   /**

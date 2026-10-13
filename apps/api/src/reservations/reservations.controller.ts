@@ -34,6 +34,8 @@ import {
   type ReservationListResponse,
   reservationListResponseSchema,
   reservationSchema,
+  type UpdateReservationRequest,
+  updateReservationRequestSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
@@ -54,6 +56,33 @@ import { ReservationsService } from './reservations.service';
 @Controller('reservations')
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
+
+  @Patch(':id')
+  @RequirePermissions(Permission.RESERVATION_WRITE)
+  @ApiOperation({
+    summary: 'Modify a booked reservation',
+    description:
+      'Partially updates the time, party size, notes or shared guest profile. ' +
+      'Time and party-size edits revalidate table capacity and booking overlaps, excluding this reservation. ' +
+      'Only BOOKED reservations may be edited. Requires `reservation:write`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(updateReservationRequestSchema) })
+  @ApiOkResponse({
+    description: 'The updated reservation with embedded guest',
+    schema: zodOpenApiSchema(reservationSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid reservation id, fields, table state or party size'))
+  @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
+  @ApiConflictResponse(
+    apiError('Reservation is not booked, table overlaps, or guest phone is in use'),
+  )
+  update(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateReservationRequestSchema)) input: UpdateReservationRequest,
+  ): Promise<Reservation> {
+    return this.service.update(actor, id, input);
+  }
 
   @Patch(':id/cancel')
   @RequirePermissions(Permission.RESERVATION_WRITE)
