@@ -1,4 +1,7 @@
 import {
+  type AssignReservationTableRequest,
+  type AssignReservationTableResponse,
+  assignReservationTableResponseSchema,
   type CancelReservationRequest,
   type CreateReservationRequest,
   type CreateWalkInRequest,
@@ -27,6 +30,35 @@ import { ReservationQueryKey } from '../types/ReservationQueryKey';
 
 type CancelReservationVariables = { id: string; input: CancelReservationRequest };
 type UpdateReservationVariables = { id: string; input: UpdateReservationRequest };
+type AssignReservationTableVariables = { id: string; input: AssignReservationTableRequest };
+
+export function useAssignReservationTable(): UseMutationResult<
+  AssignReservationTableResponse,
+  Error,
+  AssignReservationTableVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to change the table assignment.');
+
+  return useMutation<AssignReservationTableResponse, Error, AssignReservationTableVariables>({
+    mutationFn: async ({ id, input }): Promise<AssignReservationTableResponse> => {
+      const response = await api.patch(`/reservations/${id}/table`, input);
+      return assignReservationTableResponseSchema.parse(response.data);
+    },
+    onSuccess: async (reservation) => {
+      queryClient.setQueriesData<ReservationListResponse>(
+        { queryKey: [ReservationQueryKey.Reservations] },
+        (current) =>
+          current && {
+            ...current,
+            data: current.data.map((item) => (item.id === reservation.id ? reservation : item)),
+          },
+      );
+      await queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] });
+    },
+    onError: showApiError,
+  });
+}
 
 export function useUpdateReservation(): UseMutationResult<
   Reservation,

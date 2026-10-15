@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
+import { restaurantTableSchema } from './tables';
+
+// Preserve the existing export while keeping the constant's definition in @rms/shared.
+export { RESERVATION_DURATION_MINUTES } from '@rms/shared';
 
 /** Upper bound for a single party; also keeps the value inside Postgres INT4. */
 export const MAX_PARTY_SIZE = 1000;
@@ -55,11 +59,19 @@ export const guestSchema = z
   })
   .strict();
 
+export const reservationTableSchema = restaurantTableSchema.pick({
+  id: true,
+  tableNumber: true,
+  capacity: true,
+  currentStatus: true,
+});
+
 export const reservationSchema = z
   .object({
     id: z.string().uuid(),
     guestId: z.string().uuid(),
     tableId: z.string().uuid().nullable(),
+    table: reservationTableSchema.nullable(),
     createdByUserId: z.string().uuid(),
     reservationAt: z.string().datetime(),
     partySize: z.number().int(),
@@ -84,6 +96,15 @@ export const cancelReservationRequestSchema = z
   })
   .strict();
 
+export const assignReservationTableRequestSchema = z
+  .object({
+    tableId: z.string().uuid('Table id must be a valid UUID').nullable(),
+  })
+  .strict()
+  .describe('Assign or reassign a table; null clears the assignment. BOOKED and SEATED only.');
+
+export const assignReservationTableResponseSchema = reservationSchema;
+
 export const guestLookupQuerySchema = z
   .object({
     phoneNumber: guestPhoneSchema,
@@ -100,8 +121,6 @@ export const createWalkInRequestSchema = z
     notes: reservationNotesSchema,
   })
   .strict();
-
-export const RESERVATION_DURATION_MINUTES = 90;
 
 export const createReservationRequestSchema = z
   .object({
@@ -144,6 +163,8 @@ export const updateReservationRequestSchema = createReservationRequestSchema
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
 export type Guest = z.infer<typeof guestSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
+export type AssignReservationTableRequest = z.infer<typeof assignReservationTableRequestSchema>;
+export type AssignReservationTableResponse = z.infer<typeof assignReservationTableResponseSchema>;
 export type ReservationListQuery = z.infer<typeof reservationListQuerySchema>;
 export type ReservationListResponse = z.infer<typeof reservationListResponseSchema>;
 export type GuestLookupQuery = z.infer<typeof guestLookupQuerySchema>;

@@ -22,6 +22,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.TABLE_UPDATE_STATUS,
     Permission.RESERVATION_READ,
     Permission.RESERVATION_WRITE,
+    Permission.RESERVATION_ASSIGN_TABLE,
     Permission.ORDER_READ,
     Permission.ORDER_WRITE,
     Permission.KOT_READ,

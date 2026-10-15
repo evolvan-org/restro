@@ -6,11 +6,12 @@ import {
 } from '@nestjs/common';
 import {
   ACTIVE_RESERVATION_STATUSES,
+  type AssignReservationTableRequest,
+  type AssignReservationTableResponse,
   type CancelReservationRequest,
   type CreateReservationRequest,
   EDITABLE_RESERVATION_STATUSES,
   type Reservation,
-  RESERVATION_DURATION_MINUTES,
   type ReservationListQuery,
   type ReservationListResponse,
   reservationStatusSchema,
@@ -18,15 +19,60 @@ import {
   type UpdateReservationRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
-import { buildPageMeta } from '@rms/shared';
+import {
+  buildPageMeta,
+  getReservationOverlapWindow,
+  hasOverlap,
+  RESERVATION_DURATION_MINUTES,
+} from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { toReservation } from './reservations.mapper';
-import { ReservationsRepository } from './reservations.repository';
+import { ReservationsRepository, type ReservationTableContext } from './reservations.repository';
+
+type TableAllocation = {
+  tableId: string;
+  partySize: number;
+  reservationAt: Date;
+  excludeId?: string;
+};
 
 @Injectable()
 export class ReservationsService {
   constructor(private readonly repository: ReservationsRepository) {}
+
+  async assignTable(
+    actor: Actor,
+    id: string,
+    input: AssignReservationTableRequest,
+  ): Promise<AssignReservationTableResponse> {
+    const updated = await this.repository.withLockedReservation(
+      actor.restaurantId,
+      id,
+      async (context) => {
+        const { reservation } = context;
+        if (!ACTIVE_RESERVATION_STATUSES.includes(reservation.status)) {
+          throw new ConflictException('Only booked or seated reservations can change tables');
+        }
+
+        if (input.tableId !== null) {
+          const table = await context.findTable(input.tableId);
+          if (!table) throw new NotFoundException('Table not found');
+          await this.assertTableAvailable(context, table, {
+            tableId: input.tableId,
+            partySize: reservation.partySize,
+            reservationAt: reservation.reservationAt,
+            excludeId: reservation.id,
+          });
+        }
+
+        return context.update({ tableId: input.tableId });
+      },
+      input.tableId,
+    );
+    if (!updated) throw new NotFoundException('Reservation not found');
+    return toReservation(updated);
+  }
 
   async update(actor: Actor, id: string, input: UpdateReservationRequest): Promise<Reservation> {
     try {
@@ -52,29 +98,16 @@ export class ReservationsService {
           const changesSchedule =
             input.reservationAt !== undefined || input.partySize !== undefined;
           if (changesSchedule && reservation.tableId) {
-            const table = await context.findTable();
-            if (!table?.isActive) {
+            const table = await context.findTable(reservation.tableId);
+            if (!table) {
               throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
             }
-            if (partySize > table.capacity) {
-              throw new BadRequestException({
-                message: ['partySize: Party size exceeds the capacity of the selected table'],
-              });
-            }
-
-            const windowMs = RESERVATION_DURATION_MINUTES * 60_000;
-            const overlap = await context.findOverlap({
+            await this.assertTableAvailable(context, table, {
               tableId: reservation.tableId,
-              statuses: [...ACTIVE_RESERVATION_STATUSES],
-              from: new Date(reservationAt.getTime() - windowMs),
-              to: new Date(reservationAt.getTime() + windowMs),
+              partySize,
+              reservationAt,
               excludeId: reservation.id,
             });
-            if (overlap) {
-              throw new ConflictException(
-                `This table is already reserved within ${RESERVATION_DURATION_MINUTES} minutes of the requested time`,
-              );
-            }
           }
 
           return context.update(
@@ -132,7 +165,7 @@ export class ReservationsService {
   }
 
   async create(actor: Actor, input: CreateReservationRequest): Promise<Reservation> {
-    const result = await this.repository.createBooking(
+    const reservation = await this.repository.createBooking(
       actor.restaurantId,
       actor.userId,
       {
@@ -143,22 +176,47 @@ export class ReservationsService {
         reservationAt: new Date(input.reservationAt),
         tableId: input.tableId ?? null,
       },
-      RESERVATION_DURATION_MINUTES,
+      async (context) => {
+        if (!input.tableId) return;
+        const table = await context.findTable(input.tableId);
+        if (!table) {
+          throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
+        }
+        await this.assertTableAvailable(context, table, {
+          tableId: input.tableId,
+          partySize: input.partySize,
+          reservationAt: new Date(input.reservationAt),
+        });
+      },
     );
 
-    switch (result.outcome) {
-      case 'CREATED':
-        return toReservation(result.reservation);
-      case 'TABLE_NOT_FOUND':
-        throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
-      case 'OVER_CAPACITY':
-        throw new BadRequestException({
-          message: ['partySize: Party size exceeds the capacity of the selected table'],
-        });
-      case 'CONFLICT':
-        throw new ConflictException(
-          `This table is already reserved within ${RESERVATION_DURATION_MINUTES} minutes of the requested time`,
-        );
+    return toReservation(reservation);
+  }
+
+  private async assertTableAvailable(
+    context: ReservationTableContext,
+    table: { capacity: number; isActive: boolean },
+    allocation: TableAllocation,
+  ): Promise<void> {
+    if (!table.isActive) {
+      throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
+    }
+    if (allocation.partySize > table.capacity) {
+      throw new BadRequestException({
+        message: ['partySize: Party size exceeds the capacity of the selected table'],
+      });
+    }
+
+    const overlap = await context.findOverlap({
+      tableId: allocation.tableId,
+      statuses: [...ACTIVE_RESERVATION_STATUSES],
+      ...getReservationOverlapWindow(allocation.reservationAt),
+      excludeId: allocation.excludeId,
+    });
+    if (overlap && hasOverlap(allocation.reservationAt, overlap.reservationAt)) {
+      throw new ConflictException(
+        `This table is already reserved within ${RESERVATION_DURATION_MINUTES} minutes of the requested time`,
+      );
     }
   }
 }
