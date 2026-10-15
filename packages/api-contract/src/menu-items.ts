@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { paginatedResponseSchema, paginationQuerySchema } from './common';
 import { servingTypeSchema } from './serving-types';
 import { stockItemSchema, unitSchema } from './stock-items';
 
@@ -102,6 +103,23 @@ export const menuItemListQuerySchema = z.object({
 
 export const menuItemListResponseSchema = z.array(menuItemSchema);
 
+export const menuItemSearchQuerySchema = paginationQuerySchema.extend({
+  q: z
+    .string()
+    .trim()
+    .max(100, 'Search must be 100 characters or fewer')
+    .optional()
+    .describe('Case-insensitive match on name or description'),
+  categoryId: z.string().uuid('categoryId must be a UUID').optional(),
+  itemType: servingTypeSchema.optional(),
+  isAvailable: z
+    .enum(['true', 'false'], { invalid_type_error: 'isAvailable must be true or false' })
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === 'true')),
+});
+
+export const menuItemSearchResponseSchema = paginatedResponseSchema(menuItemSchema);
+
 export const updateMenuItemAvailabilityRequestSchema = z
   .object({
     isAvailable: z.boolean(),
@@ -153,6 +171,8 @@ export type RecipeItem = z.infer<typeof recipeItemSchema>;
 export type MenuItem = z.infer<typeof menuItemSchema>;
 export type MenuItemListQuery = z.infer<typeof menuItemListQuerySchema>;
 export type MenuItemListResponse = z.infer<typeof menuItemListResponseSchema>;
+export type MenuItemSearchQuery = z.infer<typeof menuItemSearchQuerySchema>;
+export type MenuItemSearchResponse = z.infer<typeof menuItemSearchResponseSchema>;
 export type CreateMenuItemRequest = z.infer<typeof createMenuItemRequestSchema>;
 export type UpdateMenuItemRequest = z.infer<typeof updateMenuItemRequestSchema>;
 export type UpdateMenuItemAvailabilityRequest = z.infer<

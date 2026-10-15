@@ -60,6 +60,46 @@ export class MenuItemsRepository {
     });
   }
 
+  /** Case-insensitive, partial match on name/description, combined (AND) with the other filters. */
+  async findSearchPage(
+    restaurantId: string,
+    filters: {
+      q?: string;
+      categoryId?: string;
+      itemType?: ServingType;
+      isAvailable?: boolean;
+      skip: number;
+      take: number;
+    },
+  ): Promise<{ items: MenuItemRecord[]; total: number }> {
+    const where: Prisma.MenuItemWhereInput = {
+      restaurantId,
+      isActive: true,
+      ...(filters.categoryId && { categoryId: filters.categoryId }),
+      ...(filters.itemType && { itemType: filters.itemType }),
+      ...(filters.isAvailable !== undefined && { isAvailable: filters.isAvailable }),
+      ...(filters.q && {
+        OR: [
+          { name: { contains: filters.q, mode: 'insensitive' } },
+          { description: { contains: filters.q, mode: 'insensitive' } },
+        ],
+      }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.menuItem.findMany({
+        where,
+        select: menuItemSelect,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: filters.skip,
+        take: filters.take,
+      }),
+      this.prisma.menuItem.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
   findById(restaurantId: string, id: string): Promise<MenuItemRecord | null> {
     return this.prisma.menuItem.findFirst({
       where: { id, restaurantId, isActive: true },

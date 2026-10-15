@@ -5,6 +5,9 @@ import {
   menuItemListQuerySchema,
   menuItemListResponseSchema,
   menuItemSchema,
+  type MenuItemSearchQuery,
+  type MenuItemSearchResponse,
+  menuItemSearchResponseSchema,
   type StockItem,
   stockItemListResponseSchema,
   type UpdateMenuItemAvailabilityRequest,
@@ -16,6 +19,7 @@ import {
   type UpdateMenuItemRequest,
 } from '@rms/api-contract';
 import {
+  keepPreviousData,
   useMutation,
   type UseMutationResult,
   useQuery,
@@ -49,6 +53,22 @@ export function useMenuItems(
     },
     enabled,
     staleTime: 0,
+  });
+}
+
+/** Debounced search + filters, paginated; keeps the previous page visible while the next loads. */
+export function useMenuItemSearch(
+  query: MenuItemSearchQuery,
+  enabled: boolean,
+): UseQueryResult<MenuItemSearchResponse> {
+  return useQuery({
+    queryKey: [MenuItemQueryKey.Items, 'search', query],
+    queryFn: async (): Promise<MenuItemSearchResponse> => {
+      const response = await api.get('/menu-items/search', { params: query });
+      return menuItemSearchResponseSchema.parse(response.data);
+    },
+    enabled,
+    placeholderData: keepPreviousData,
   });
 }
 

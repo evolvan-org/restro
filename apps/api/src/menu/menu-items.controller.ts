@@ -34,6 +34,10 @@ import {
   menuItemListQuerySchema,
   menuItemListResponseSchema,
   menuItemSchema,
+  type MenuItemSearchQuery,
+  menuItemSearchQuerySchema,
+  type MenuItemSearchResponse,
+  menuItemSearchResponseSchema,
   type UpdateMenuItemAvailabilityRequest,
   updateMenuItemAvailabilityRequestSchema,
   type UpdateMenuItemClassificationRequest,
@@ -75,6 +79,22 @@ export class MenuItemsController {
     @Query(new ZodValidationPipe(menuItemListQuerySchema)) query: MenuItemListQuery,
   ): Promise<MenuItem[]> {
     return this.service.list(actor, query);
+  }
+
+  @Get('search')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_READ)
+  @ApiOperation({
+    summary: 'Search active menu items by name/description, filterable and paginated',
+  })
+  @ApiZodQuery(menuItemSearchQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSearchResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid query parameters'))
+  search(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(menuItemSearchQuerySchema)) query: MenuItemSearchQuery,
+  ): Promise<MenuItemSearchResponse> {
+    return this.service.search(actor, query);
   }
 
   @Post()

@@ -2,7 +2,16 @@
 
 import type { MenuItem, ServingType } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
-import { Loader2, Pencil, Plus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
+import { DEFAULT_PAGE_SIZE } from '@rms/shared';
+import {
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
+} from 'lucide-react';
 import { type ReactElement, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
@@ -10,7 +19,8 @@ import MenuItemClassificationEditor from '@/components/MenuItemClassificationEdi
 import MenuItemPriceEditor from '@/components/MenuItemPriceEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { NativeSelect } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Table,
@@ -23,25 +33,56 @@ import {
 import useShowApiError from '@/hooks/api/useShowApiError';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
 import { getServingTypeLabel, getServingTypeOptions } from '@/lib/serving-types';
 import { useMenuCategories } from '@/services/api/requests/menu-categories';
-import { useMenuItems, useUpdateMenuItemAvailability } from '@/services/api/requests/menu-items';
+import { useMenuItemSearch, useUpdateMenuItemAvailability } from '@/services/api/requests/menu-items';
 import { useShowMenuItemDeleteModal } from '@/store/hooks/modal';
 import { useShowMenuItemFormSidePane } from '@/store/hooks/sidepane';
+
+const SEARCH_DEBOUNCE_MS = 300;
+
+type MenuItemFilters = {
+  q: string;
+  categoryId: string;
+  itemType: ServingType | '';
+  isAvailable: '' | 'true' | 'false';
+  page: number;
+};
+
+const AVAILABILITY_FILTERS: { value: '' | 'true' | 'false'; label: string }[] = [
+  { value: '', label: 'All availability' },
+  { value: 'true', label: 'Available' },
+  { value: 'false', label: 'Unavailable' },
+];
 
 export default function MenuItems(): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.MENU_READ]);
   const { can } = usePermissions();
   const canRead = can(Permission.MENU_READ);
   const canWrite = can(Permission.MENU_WRITE);
-  const filters = useForm<{ categoryId: string; itemType: ServingType | '' }>({
-    defaultValues: { categoryId: '', itemType: '' },
+
+  const filters = useForm<MenuItemFilters>({
+    defaultValues: { q: '', categoryId: '', itemType: '', isAvailable: '', page: 1 },
   });
+  const q = useWatch({ control: filters.control, name: 'q' });
   const categoryId = useWatch({ control: filters.control, name: 'categoryId' });
   const itemType = useWatch({ control: filters.control, name: 'itemType' });
+  const isAvailable = useWatch({ control: filters.control, name: 'isAvailable' });
+  const page = useWatch({ control: filters.control, name: 'page' });
+  const debouncedQ = useDebouncedValue(q.trim(), SEARCH_DEBOUNCE_MS);
+  const resetPage = (): void => filters.setValue('page', 1);
+
   const categories = useMenuCategories(canRead);
-  const items = useMenuItems(
-    { categoryId: categoryId || undefined, itemType: itemType || undefined },
+  const items = useMenuItemSearch(
+    {
+      page,
+      pageSize: DEFAULT_PAGE_SIZE,
+      q: debouncedQ || undefined,
+      categoryId: categoryId || undefined,
+      itemType: itemType || undefined,
+      isAvailable: isAvailable === '' ? undefined : isAvailable === 'true',
+    },
     canRead,
   );
   const {
@@ -63,10 +104,12 @@ export default function MenuItems(): ReactElement | null {
 
   if (!isAllowed) return null;
 
-  const rows = items.data ?? [];
+  const meta = items.data?.meta;
+  const rows = items.data?.data ?? [];
   const categoriesById = new Map(
     (categories.data ?? []).map((category) => [category.id, category]),
   );
+  const hasFilters = Boolean(debouncedQ || categoryId || itemType || isAvailable);
 
   const toggleAvailability = async (item: MenuItem): Promise<void> => {
     try {
@@ -96,13 +139,33 @@ export default function MenuItems(): ReactElement | null {
         )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="w-full max-w-xs">
+      <form
+        aria-label="Menu item filters"
+        onSubmit={(event) => event.preventDefault()}
+        className="mb-4 flex flex-wrap items-center gap-3"
+      >
+        <div className="relative w-full sm:w-72">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            className="pl-8"
+            placeholder="Search by name or description"
+            aria-label="Search menu items by name or description"
+            {...filters.register('q', { onChange: resetPage })}
+          />
+        </div>
+        <div className="w-full sm:w-56">
           <SearchableSelect
             aria-label="Filter by category"
             placeholder="All categories"
             value={categoryId}
-            onChange={(value) => filters.setValue('categoryId', value)}
+            onChange={(value) => {
+              filters.setValue('categoryId', value);
+              resetPage();
+            }}
             options={[
               { value: '', label: 'All categories' },
               ...(categories.data ?? []).map((category) => ({
@@ -112,7 +175,10 @@ export default function MenuItems(): ReactElement | null {
             ]}
           />
         </div>
-        <NativeSelect aria-label="Filter by classification" {...filters.register('itemType')}>
+        <NativeSelect
+          aria-label="Filter by classification"
+          {...filters.register('itemType', { onChange: resetPage })}
+        >
           <option value="">All types</option>
           {getServingTypeOptions().map(({ value, label }) => (
             <option key={value} value={value}>
@@ -120,7 +186,17 @@ export default function MenuItems(): ReactElement | null {
             </option>
           ))}
         </NativeSelect>
-      </div>
+        <NativeSelect
+          aria-label="Filter by availability"
+          {...filters.register('isAvailable', { onChange: resetPage })}
+        >
+          {AVAILABILITY_FILTERS.map((filter) => (
+            <NativeSelectOption key={filter.value} value={filter.value}>
+              {filter.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </form>
 
       {items.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
@@ -235,14 +311,43 @@ export default function MenuItems(): ReactElement | null {
                   >
                     {items.isPending
                       ? 'Loading menu items…'
-                      : categoryId || itemType
-                        ? 'No menu items match these filters.'
+                      : hasFilters
+                        ? 'No menu items match your search.'
                         : 'No menu items yet.'}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {meta && meta.total > 0 && (
+        <div className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
+          <p>
+            {meta.total} {meta.total === 1 ? 'item' : 'items'} · Page {meta.page} of{' '}
+            {meta.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={meta.page <= 1 || items.isFetching}
+              onClick={() => filters.setValue('page', page - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={meta.page >= meta.totalPages || items.isFetching}
+              onClick={() => filters.setValue('page', page + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </main>

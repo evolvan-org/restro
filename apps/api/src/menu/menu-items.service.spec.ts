@@ -50,6 +50,7 @@ function setup(): {
 } {
   const repo = {
     findAll: jest.fn(),
+    findSearchPage: jest.fn().mockResolvedValue({ items: [record], total: 1 }),
     findById: jest.fn(),
     categoryExists: jest.fn().mockResolvedValue(true),
     isNameTaken: jest.fn().mockResolvedValue(false),
@@ -64,6 +65,37 @@ function setup(): {
 }
 
 describe('MenuItemsService', () => {
+  it('searches with pagination, mapping page/pageSize to skip/take', async () => {
+    const { service, repo } = setup();
+    const result = await service.search(actor, {
+      page: 2,
+      pageSize: 10,
+      q: 'marg',
+      categoryId: CATEGORY,
+      itemType: 'FOOD',
+      isAvailable: true,
+    });
+    expect(repo.findSearchPage).toHaveBeenCalledWith('r1', {
+      q: 'marg',
+      categoryId: CATEGORY,
+      itemType: 'FOOD',
+      isAvailable: true,
+      skip: 10,
+      take: 10,
+    });
+    expect(result).toEqual({
+      data: [expect.objectContaining({ id: 'i1', price: '9.50' })],
+      meta: { page: 2, pageSize: 10, total: 1, totalPages: 1 },
+    });
+  });
+
+  it('returns an empty page instead of an error when nothing matches', async () => {
+    const { service, repo } = setup();
+    repo.findSearchPage.mockResolvedValue({ items: [], total: 0 });
+    const result = await service.search(actor, { page: 1, pageSize: 20 });
+    expect(result).toEqual({ data: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 } });
+  });
+
   it('creates an item and returns decimals as strings', async () => {
     const { service, repo } = setup();
     const result = await service.create(actor, input);

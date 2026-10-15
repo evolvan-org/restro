@@ -8,12 +8,15 @@ import type {
   CreateMenuItemRequest,
   MenuItem,
   MenuItemListQuery,
+  MenuItemSearchQuery,
+  MenuItemSearchResponse,
   RecipeRow,
   UpdateMenuItemAvailabilityRequest,
   UpdateMenuItemClassificationRequest,
   UpdateMenuItemPriceRequest,
   UpdateMenuItemRequest,
 } from '@rms/api-contract';
+import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { StockItemsRepository } from '../stock/stock-items.repository';
@@ -37,6 +40,19 @@ export class MenuItemsService {
       query.itemType,
     );
     return items.map(toMenuItem);
+  }
+
+  async search(actor: Actor, query: MenuItemSearchQuery): Promise<MenuItemSearchResponse> {
+    const { page, pageSize, q, categoryId, itemType, isAvailable } = query;
+    const { items, total } = await this.repository.findSearchPage(actor.restaurantId, {
+      q,
+      categoryId,
+      itemType,
+      isAvailable,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { data: items.map(toMenuItem), meta: buildPageMeta(page, pageSize, total) };
   }
 
   async create(actor: Actor, input: CreateMenuItemRequest): Promise<MenuItem> {
