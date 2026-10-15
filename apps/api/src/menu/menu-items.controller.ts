@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -33,6 +34,8 @@ import {
   menuItemListQuerySchema,
   menuItemListResponseSchema,
   menuItemSchema,
+  type UpdateMenuItemAvailabilityRequest,
+  updateMenuItemAvailabilityRequestSchema,
   type UpdateMenuItemRequest,
   updateMenuItemRequestSchema,
 } from '@rms/api-contract';
@@ -57,6 +60,7 @@ export class MenuItemsController {
   constructor(private readonly service: MenuItemsService) {}
 
   @Get()
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.MENU_READ)
   @ApiOperation({ summary: 'List active menu items with their recipes, optionally by category' })
   @ApiZodQuery(menuItemListQuerySchema)
@@ -102,6 +106,25 @@ export class MenuItemsController {
     @Body(new ZodValidationPipe(updateMenuItemRequestSchema)) input: UpdateMenuItemRequest,
   ): Promise<MenuItem> {
     return this.service.update(actor, id, input);
+  }
+
+  @Patch(':id/availability')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({
+    summary: 'Set item availability; setting the current value is a successful no-op',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(updateMenuItemAvailabilityRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(apiError('Invalid item id or availability; isAvailable must be a boolean'))
+  @ApiNotFoundResponse(apiError('No active item with this id in the caller restaurant'))
+  updateAvailability(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMenuItemAvailabilityRequestSchema))
+    input: UpdateMenuItemAvailabilityRequest,
+  ): Promise<MenuItem> {
+    return this.service.updateAvailability(actor, id, input);
   }
 
   @Delete(':id')

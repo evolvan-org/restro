@@ -9,6 +9,7 @@ import type {
   MenuItem,
   MenuItemListQuery,
   RecipeRow,
+  UpdateMenuItemAvailabilityRequest,
   UpdateMenuItemRequest,
 } from '@rms/api-contract';
 
@@ -60,6 +61,20 @@ export class MenuItemsService {
 
     const { recipe, ...fields } = input;
     const updated = await this.repository.update(restaurantId, id, fields, recipe);
+    if (!updated) throw new NotFoundException('Menu item not found');
+    return toMenuItem(updated);
+  }
+
+  async updateAvailability(
+    actor: Actor,
+    id: string,
+    input: UpdateMenuItemAvailabilityRequest,
+  ): Promise<MenuItem> {
+    const updated = await this.repository.updateAvailability(
+      actor.restaurantId,
+      id,
+      input.isAvailable,
+    );
     if (!updated) throw new NotFoundException('Menu item not found');
     return toMenuItem(updated);
   }

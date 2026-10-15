@@ -5,6 +5,8 @@ import {
   menuItemSchema,
   type StockItem,
   stockItemListResponseSchema,
+  type UpdateMenuItemAvailabilityRequest,
+  updateMenuItemAvailabilityRequestSchema,
   type UpdateMenuItemRequest,
 } from '@rms/api-contract';
 import {
@@ -21,6 +23,7 @@ import { api } from '@/lib/api';
 import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 
 type UpdateVariables = { id: string; input: UpdateMenuItemRequest };
+type AvailabilityVariables = { id: string; input: UpdateMenuItemAvailabilityRequest };
 
 /** Lists active items with their recipes. Never cached stale: edits show on the next read. */
 export function useMenuItems(
@@ -75,6 +78,33 @@ export function useUpdateMenuItem(): UseMutationResult<MenuItem, Error, UpdateVa
       return menuItemSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
+    onError: showApiError,
+  });
+}
+
+export function useUpdateMenuItemAvailability(): UseMutationResult<
+  MenuItem,
+  Error,
+  AvailabilityVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update item availability.');
+  return useMutation<MenuItem, Error, AvailabilityVariables>({
+    mutationFn: async ({ id, input }): Promise<MenuItem> => {
+      const response = await api.patch(
+        `/menu-items/${id}/availability`,
+        updateMenuItemAvailabilityRequestSchema.parse(input),
+      );
+      return menuItemSchema.parse(response.data);
+    },
+    onSuccess: async (updated): Promise<void> => {
+      // Stop an earlier list request from overwriting the confirmed availability.
+      await queryClient.cancelQueries({ queryKey: [MenuItemQueryKey.Items] });
+      queryClient.setQueriesData<MenuItem[]>({ queryKey: [MenuItemQueryKey.Items] }, (items) =>
+        items?.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      await queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] });
+    },
     onError: showApiError,
   });
 }

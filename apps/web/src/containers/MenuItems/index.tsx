@@ -1,8 +1,10 @@
 'use client';
 
+import type { MenuItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { type ReactElement, useEffect, useState } from 'react';
+import { Loader2, Pencil, Plus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
+import { type ReactElement, useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,7 +21,7 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { useMenuCategories } from '@/services/api/requests/menu-categories';
-import { useMenuItems } from '@/services/api/requests/menu-items';
+import { useMenuItems, useUpdateMenuItemAvailability } from '@/services/api/requests/menu-items';
 import { useShowMenuItemDeleteModal } from '@/store/hooks/modal';
 import { useShowMenuItemFormSidePane } from '@/store/hooks/sidepane';
 
@@ -28,9 +30,15 @@ export default function MenuItems(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.MENU_READ);
   const canWrite = can(Permission.MENU_WRITE);
-  const [categoryId, setCategoryId] = useState('');
+  const filters = useForm<{ categoryId: string }>({ defaultValues: { categoryId: '' } });
+  const categoryId = useWatch({ control: filters.control, name: 'categoryId' });
   const categories = useMenuCategories(canRead);
   const items = useMenuItems(categoryId || undefined, canRead);
+  const {
+    mutateAsync: updateAvailability,
+    isPending: isUpdatingAvailability,
+    variables: availabilityVariables,
+  } = useUpdateMenuItemAvailability();
   const showForm = useShowMenuItemFormSidePane();
   const showDelete = useShowMenuItemDeleteModal();
   const showApiError = useShowApiError('Unable to load menu items.');
@@ -43,6 +51,14 @@ export default function MenuItems(): ReactElement | null {
 
   const rows = items.data ?? [];
   const categoryNames = new Map((categories.data ?? []).map((c) => [c.id, c.name]));
+
+  const toggleAvailability = async (item: MenuItem): Promise<void> => {
+    try {
+      await updateAvailability({ id: item.id, input: { isAvailable: !item.isAvailable } });
+    } catch {
+      // The mutation hook reports the error; keep the last confirmed availability visible.
+    }
+  };
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
@@ -69,7 +85,7 @@ export default function MenuItems(): ReactElement | null {
           aria-label="Filter by category"
           placeholder="All categories"
           value={categoryId}
-          onChange={setCategoryId}
+          onChange={(value) => filters.setValue('categoryId', value)}
           options={[
             { value: '', label: 'All categories' },
             ...(categories.data ?? []).map((category) => ({
@@ -113,9 +129,32 @@ export default function MenuItems(): ReactElement | null {
                   <TableCell>{categoryNames.get(item.categoryId) ?? '—'}</TableCell>
                   <TableCell>{item.price}</TableCell>
                   <TableCell>
-                    <Badge variant={item.isAvailable ? 'active' : 'inactive'}>
-                      {item.isAvailable ? 'Available' : 'Unavailable'}
-                    </Badge>
+                    {canWrite ? (
+                      <Button
+                        type="button"
+                        role="switch"
+                        aria-checked={item.isAvailable}
+                        aria-label={`Availability of ${item.name}`}
+                        title={`Mark ${item.name} ${item.isAvailable ? 'unavailable' : 'available'}`}
+                        variant={item.isAvailable ? 'success' : 'outline'}
+                        size="sm"
+                        disabled={isUpdatingAvailability}
+                        onClick={() => toggleAvailability(item)}
+                      >
+                        {isUpdatingAvailability && availabilityVariables?.id === item.id ? (
+                          <Loader2 aria-hidden className="animate-spin" />
+                        ) : item.isAvailable ? (
+                          <ToggleRight aria-hidden />
+                        ) : (
+                          <ToggleLeft aria-hidden />
+                        )}
+                        {item.isAvailable ? 'Available' : 'Unavailable'}
+                      </Button>
+                    ) : (
+                      <Badge variant={item.isAvailable ? 'active' : 'inactive'}>
+                        {item.isAvailable ? 'Available' : 'Unavailable'}
+                      </Badge>
+                    )}
                   </TableCell>
                   {canWrite && (
                     <TableCell className="text-right">

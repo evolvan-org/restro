@@ -73,6 +73,12 @@ export const menuItemListQuerySchema = z.object({
 
 export const menuItemListResponseSchema = z.array(menuItemSchema);
 
+export const updateMenuItemAvailabilityRequestSchema = z
+  .object({
+    isAvailable: z.boolean(),
+  })
+  .strict();
+
 export const createMenuItemRequestSchema = z
   .object({
     categoryId: z.string().uuid('Category is required'),
@@ -108,3 +114,6 @@ export type MenuItemListQuery = z.infer<typeof menuItemListQuerySchema>;
 export type MenuItemListResponse = z.infer<typeof menuItemListResponseSchema>;
 export type CreateMenuItemRequest = z.infer<typeof createMenuItemRequestSchema>;
 export type UpdateMenuItemRequest = z.infer<typeof updateMenuItemRequestSchema>;
+export type UpdateMenuItemAvailabilityRequest = z.infer<
+  typeof updateMenuItemAvailabilityRequestSchema
+>;

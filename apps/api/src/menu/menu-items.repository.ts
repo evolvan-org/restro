@@ -119,6 +119,25 @@ export class MenuItemsRepository {
     });
   }
 
+  /** Sets the explicit target; repeated requests leave the item and its timestamp unchanged. */
+  async updateAvailability(
+    restaurantId: string,
+    id: string,
+    isAvailable: boolean,
+  ): Promise<MenuItemRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.menuItem.updateMany({
+        where: { id, restaurantId, isActive: true, isAvailable: { not: isAvailable } },
+        data: { isAvailable },
+      });
+
+      return tx.menuItem.findFirst({
+        where: { id, restaurantId, isActive: true },
+        select: menuItemSelect,
+      });
+    });
+  }
+
   /** Soft delete; recipe rows are removed with it so the deactivated item holds no stock links. */
   async softDelete(restaurantId: string, id: string): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
