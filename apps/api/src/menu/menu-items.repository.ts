@@ -138,6 +138,26 @@ export class MenuItemsRepository {
     });
   }
 
+  /** Updates only the price, using decimal arithmetic and a tenant-scoped write/read transaction. */
+  async updatePrice(
+    restaurantId: string,
+    id: string,
+    price: string,
+  ): Promise<MenuItemRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.menuItem.updateMany({
+        where: { id, restaurantId, isActive: true },
+        data: { price: new Prisma.Decimal(price) },
+      });
+      if (count === 0) return null;
+
+      return tx.menuItem.findFirst({
+        where: { id, restaurantId, isActive: true },
+        select: menuItemSelect,
+      });
+    });
+  }
+
   /** Soft delete; recipe rows are removed with it so the deactivated item holds no stock links. */
   async softDelete(restaurantId: string, id: string): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {

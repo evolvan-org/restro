@@ -18,6 +18,34 @@ const priceSchema = z
     message: 'Price can have at most 2 decimal places',
   });
 
+export const MAX_MENU_ITEM_PRICE = '999999.99';
+
+const decimalPricePattern = /^\d{1,10}(?:\.\d{1,2})?$/;
+
+function priceInMinorUnits(value: string): bigint {
+  const [whole = '0', fraction = ''] = value.split('.');
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+}
+
+/** The focused price-edit path keeps money as a decimal string throughout. */
+export const menuItemPriceSchema = z
+  .string({
+    required_error: 'Price is required',
+    invalid_type_error: 'Price must be a decimal string',
+  })
+  .trim()
+  .min(1, 'Price is required')
+  .regex(decimalPricePattern, 'Price must be non-negative with at most 2 decimal places')
+  .refine(
+    (value) =>
+      !decimalPricePattern.test(value) ||
+      priceInMinorUnits(value) <= priceInMinorUnits(MAX_MENU_ITEM_PRICE),
+    { message: `Price cannot exceed ${MAX_MENU_ITEM_PRICE}` },
+  )
+  .describe(
+    `Non-negative decimal string with at most 2 decimal places; maximum ${MAX_MENU_ITEM_PRICE}`,
+  );
+
 /**
  * Recipe quantities are decimal strings end to end (never JS floats): the column is
  * Decimal(12,3), so at most 9 integer digits and 3 fraction digits, and strictly positive.
@@ -79,6 +107,12 @@ export const updateMenuItemAvailabilityRequestSchema = z
   })
   .strict();
 
+export const updateMenuItemPriceRequestSchema = z
+  .object({
+    price: menuItemPriceSchema,
+  })
+  .strict();
+
 export const createMenuItemRequestSchema = z
   .object({
     categoryId: z.string().uuid('Category is required'),
@@ -117,3 +151,4 @@ export type UpdateMenuItemRequest = z.infer<typeof updateMenuItemRequestSchema>;
 export type UpdateMenuItemAvailabilityRequest = z.infer<
   typeof updateMenuItemAvailabilityRequestSchema
 >;
+export type UpdateMenuItemPriceRequest = z.infer<typeof updateMenuItemPriceRequestSchema>;

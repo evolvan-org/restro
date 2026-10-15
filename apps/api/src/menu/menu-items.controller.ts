@@ -36,6 +36,8 @@ import {
   menuItemSchema,
   type UpdateMenuItemAvailabilityRequest,
   updateMenuItemAvailabilityRequestSchema,
+  type UpdateMenuItemPriceRequest,
+  updateMenuItemPriceRequestSchema,
   type UpdateMenuItemRequest,
   updateMenuItemRequestSchema,
 } from '@rms/api-contract';
@@ -125,6 +127,23 @@ export class MenuItemsController {
     input: UpdateMenuItemAvailabilityRequest,
   ): Promise<MenuItem> {
     return this.service.updateAvailability(actor, id, input);
+  }
+
+  @Patch(':id/price')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({ summary: 'Update only the price of an active menu item' })
+  @ApiBody({ schema: zodOpenApiSchema(updateMenuItemPriceRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(apiError('Invalid item id or price; see the shared price constraints'))
+  @ApiNotFoundResponse(apiError('No active item with this id in the caller restaurant'))
+  updatePrice(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMenuItemPriceRequestSchema))
+    input: UpdateMenuItemPriceRequest,
+  ): Promise<MenuItem> {
+    return this.service.updatePrice(actor, id, input);
   }
 
   @Delete(':id')

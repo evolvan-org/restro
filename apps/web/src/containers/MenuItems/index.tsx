@@ -6,6 +6,7 @@ import { Loader2, Pencil, Plus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-r
 import { type ReactElement, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import MenuItemPriceEditor from '@/components/MenuItemPriceEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -127,7 +128,9 @@ export default function MenuItems(): ReactElement | null {
                     </span>
                   </TableCell>
                   <TableCell>{categoryNames.get(item.categoryId) ?? '—'}</TableCell>
-                  <TableCell>{item.price}</TableCell>
+                  <TableCell>
+                    {canWrite ? <MenuItemPriceEditor item={item} /> : item.price}
+                  </TableCell>
                   <TableCell>
                     {canWrite ? (
                       <Button

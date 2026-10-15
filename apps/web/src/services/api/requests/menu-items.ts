@@ -7,6 +7,8 @@ import {
   stockItemListResponseSchema,
   type UpdateMenuItemAvailabilityRequest,
   updateMenuItemAvailabilityRequestSchema,
+  type UpdateMenuItemPriceRequest,
+  updateMenuItemPriceRequestSchema,
   type UpdateMenuItemRequest,
 } from '@rms/api-contract';
 import {
@@ -24,6 +26,7 @@ import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 
 type UpdateVariables = { id: string; input: UpdateMenuItemRequest };
 type AvailabilityVariables = { id: string; input: UpdateMenuItemAvailabilityRequest };
+type PriceVariables = { id: string; input: UpdateMenuItemPriceRequest };
 
 /** Lists active items with their recipes. Never cached stale: edits show on the next read. */
 export function useMenuItems(
@@ -99,6 +102,29 @@ export function useUpdateMenuItemAvailability(): UseMutationResult<
     },
     onSuccess: async (updated): Promise<void> => {
       // Stop an earlier list request from overwriting the confirmed availability.
+      await queryClient.cancelQueries({ queryKey: [MenuItemQueryKey.Items] });
+      queryClient.setQueriesData<MenuItem[]>({ queryKey: [MenuItemQueryKey.Items] }, (items) =>
+        items?.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      await queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] });
+    },
+    onError: showApiError,
+  });
+}
+
+export function useUpdateMenuItemPrice(): UseMutationResult<MenuItem, Error, PriceVariables> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update the item price.');
+  return useMutation<MenuItem, Error, PriceVariables>({
+    mutationFn: async ({ id, input }): Promise<MenuItem> => {
+      const response = await api.patch(
+        `/menu-items/${id}/price`,
+        updateMenuItemPriceRequestSchema.parse(input),
+      );
+      return menuItemSchema.parse(response.data);
+    },
+    onSuccess: async (updated): Promise<void> => {
+      // Keep all category variants current and prevent older list responses from replacing the price.
       await queryClient.cancelQueries({ queryKey: [MenuItemQueryKey.Items] });
       queryClient.setQueriesData<MenuItem[]>({ queryKey: [MenuItemQueryKey.Items] }, (items) =>
         items?.map((item) => (item.id === updated.id ? updated : item)),
