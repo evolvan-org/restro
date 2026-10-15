@@ -53,7 +53,8 @@ export default function TableFormSidePane({
       tableNumber: table?.tableNumber ?? '',
       capacity: table?.capacity ?? 2,
       sectionId: table?.section.id ?? '',
-      currentStatusId: table?.currentStatus.id ?? '',
+      // Status is only accepted by the create contract.
+      ...(!isEdit ? { currentStatusId: '' } : {}),
     },
   });
   const { errors } = form.formState;
@@ -138,32 +139,34 @@ export default function TableFormSidePane({
             <FieldError>{errors.sectionId?.message}</FieldError>
           </Field>
 
-          <Field data-invalid={Boolean(errors.currentStatusId)}>
-            <FieldLabel htmlFor="table-status">Status</FieldLabel>
-            <NativeSelect
-              id="table-status"
-              className="w-full"
-              disabled={options.isPending}
-              aria-invalid={Boolean(errors.currentStatusId)}
-              {...form.register('currentStatusId')}
-            >
-              <NativeSelectOption value="" disabled={isEdit}>
-                {options.isPending ? 'Loading statuses...' : 'Use default status'}
-              </NativeSelectOption>
-              {statuses.map((status) => (
-                <NativeSelectOption key={status.id} value={status.id}>
-                  {status.name}
+          {!isEdit && (
+            <Field data-invalid={Boolean(errors.currentStatusId)}>
+              <FieldLabel htmlFor="table-status">Status</FieldLabel>
+              <NativeSelect
+                id="table-status"
+                className="w-full"
+                disabled={options.isPending}
+                aria-invalid={Boolean(errors.currentStatusId)}
+                {...form.register('currentStatusId')}
+              >
+                <NativeSelectOption value="">
+                  {options.isPending ? 'Loading statuses...' : 'Use default status'}
                 </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <FieldError>{errors.currentStatusId?.message}</FieldError>
-          </Field>
+                {statuses.map((status) => (
+                  <NativeSelectOption key={status.id} value={status.id}>
+                    {status.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <FieldError>{errors.currentStatusId?.message}</FieldError>
+            </Field>
+          )}
 
-          {options.isError ? (
+          {options.isError && (
             <p role="alert" className="rounded-md border px-3 py-2 text-sm text-destructive">
               {getApiErrorMessage(options.error, 'Unable to load table options.')}
             </p>
-          ) : null}
+          )}
         </FieldGroup>
       </form>
 
