@@ -9,6 +9,7 @@ import {
   tableListResponseSchema,
   type TableOptionsResponse,
   tableOptionsResponseSchema,
+  type TransitionTableStatusRequest,
   type UpdateTableActiveRequest,
   type UpdateTableRequest,
 } from '@rms/api-contract';
@@ -131,6 +132,25 @@ export function useUpdateTableActive(): UseMutationResult<
   return useMutation<RestaurantTable, Error, UpdateTableActiveVariables>({
     mutationFn: async ({ id, input }: UpdateTableActiveVariables): Promise<RestaurantTable> => {
       const response = await api.patch(`/table/${id}/active`, input);
+      return restaurantTableSchema.parse(response.data);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onError: showApiError,
+  });
+}
+
+type TransitionTableStatusVariables = { id: string; input: TransitionTableStatusRequest };
+
+export function useTransitionTableStatus(): UseMutationResult<
+  RestaurantTable,
+  Error,
+  TransitionTableStatusVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to change the table status.');
+  return useMutation<RestaurantTable, Error, TransitionTableStatusVariables>({
+    mutationFn: async ({ id, input }): Promise<RestaurantTable> => {
+      const response = await api.patch(`/tables/${id}/status`, input);
       return restaurantTableSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),

@@ -76,12 +76,12 @@ export default function Tables(): ReactElement | null {
               : 'The configured tables for your restaurant.'}
           </p>
         </div>
-        {canWrite ? (
+        {canWrite && (
           <Button type="button" onClick={() => showTableForm()}>
             <Plus aria-hidden />
             Add table
           </Button>
-        ) : null}
+        )}
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -170,7 +170,7 @@ export default function Tables(): ReactElement | null {
                 <TableHead>Capacity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>State</TableHead>
-                {canWrite ? <TableHead className="text-right">Actions</TableHead> : null}
+                {canWrite && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -185,7 +185,7 @@ export default function Tables(): ReactElement | null {
                       {table.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  {canWrite ? (
+                  {canWrite && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -208,11 +208,11 @@ export default function Tables(): ReactElement | null {
                         </Button>
                       </div>
                     </TableCell>
-                  ) : null}
+                  )}
                 </TableRow>
               ))}
 
-              {rows.length === 0 ? (
+              {rows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={canWrite ? 6 : 5}
@@ -225,13 +225,13 @@ export default function Tables(): ReactElement | null {
                         : 'No tables yet.'}
                   </TableCell>
                 </TableRow>
-              ) : null}
+              )}
             </TableBody>
           </Table>
         </div>
       )}
 
-      {meta && meta.total > 0 ? (
+      {meta && meta.total > 0 && (
         <div className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <p>
             {meta.total} {meta.total === 1 ? 'table' : 'tables'} · Page {meta.page} of{' '}
@@ -258,7 +258,7 @@ export default function Tables(): ReactElement | null {
             </Button>
           </div>
         </div>
-      ) : null}
+      )}
     </main>
   );
 }
