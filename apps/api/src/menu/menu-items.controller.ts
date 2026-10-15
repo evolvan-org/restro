@@ -1,9 +1,7 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -18,7 +16,6 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
-  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -31,6 +28,7 @@ import {
   type MenuItem,
   type MenuItemListQuery,
   menuItemListQuerySchema,
+  type MenuItemListResponse,
   menuItemListResponseSchema,
   menuItemSchema,
   type UpdateMenuItemRequest,
@@ -58,14 +56,16 @@ export class MenuItemsController {
 
   @Get()
   @RequirePermissions(Permission.MENU_READ)
-  @ApiOperation({ summary: 'List active menu items with their recipes, optionally by category' })
+  @ApiOperation({
+    summary: 'List a page of menu items with their recipes, optionally by category or active only',
+  })
   @ApiZodQuery(menuItemListQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(menuItemListResponseSchema) })
   @ApiBadRequestResponse(apiError('Invalid query parameters'))
   list(
     @CurrentActor() actor: Actor,
     @Query(new ZodValidationPipe(menuItemListQuerySchema)) query: MenuItemListQuery,
-  ): Promise<MenuItem[]> {
+  ): Promise<MenuItemListResponse> {
     return this.service.list(actor, query);
   }
 
@@ -88,7 +88,7 @@ export class MenuItemsController {
 
   @Patch(':id')
   @RequirePermissions(Permission.MENU_WRITE)
-  @ApiOperation({ summary: 'Update item fields and/or fully replace its recipe' })
+  @ApiOperation({ summary: 'Update item fields, active state and/or fully replace its recipe' })
   @ApiBody({ schema: zodOpenApiSchema(updateMenuItemRequestSchema) })
   @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
   @ApiBadRequestResponse(
@@ -102,18 +102,5 @@ export class MenuItemsController {
     @Body(new ZodValidationPipe(updateMenuItemRequestSchema)) input: UpdateMenuItemRequest,
   ): Promise<MenuItem> {
     return this.service.update(actor, id, input);
-  }
-
-  @Delete(':id')
-  @HttpCode(204)
-  @RequirePermissions(Permission.MENU_WRITE)
-  @ApiOperation({ summary: 'Soft-delete a menu item; its recipe rows are removed' })
-  @ApiNoContentResponse({ description: 'Item deleted' })
-  @ApiNotFoundResponse(apiError('No item with this id in the caller restaurant'))
-  async remove(
-    @CurrentActor() actor: Actor,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<void> {
-    await this.service.remove(actor, id);
   }
 }

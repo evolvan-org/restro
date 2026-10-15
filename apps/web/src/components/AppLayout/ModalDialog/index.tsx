@@ -4,7 +4,7 @@ import { type ComponentType, Fragment } from 'react';
 
 import DiningSectionActionModal from '@/components/Modals/DiningSectionActionModal';
 import MenuCategoryStatusModal from '@/components/Modals/MenuCategoryStatusModal';
-import MenuItemDeleteModal from '@/components/Modals/MenuItemDeleteModal';
+import MenuItemStatusModal from '@/components/Modals/MenuItemStatusModal';
 import ReservationCancelModal from '@/components/Modals/ReservationCancelModal';
 import SampleModal from '@/components/Modals/SampleModal';
 import StaffPasswordRegenerationModal from '@/components/Modals/StaffPasswordRegenerationModal';
@@ -32,7 +32,7 @@ const MODALS: Partial<Record<ModalType, ComponentType<any>>> = {
   [ModalType.TableStatusAction]: TableStatusActionModal,
   [ModalType.TableActive]: TableActiveModal,
   [ModalType.MenuCategoryStatus]: MenuCategoryStatusModal,
-  [ModalType.MenuItemDelete]: MenuItemDeleteModal,
+  [ModalType.MenuItemStatus]: MenuItemStatusModal,
   [ModalType.ReservationCancel]: ReservationCancelModal,
 };
 

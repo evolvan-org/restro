@@ -32,6 +32,7 @@ const record: MenuItemRecord = {
   price: new Prisma.Decimal(9.5),
   itemType: 'FOOD',
   isAvailable: true,
+  isActive: true,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   recipeItems: [
@@ -49,13 +50,12 @@ function setup(): {
   stock: jest.Mocked<StockItemsRepository>;
 } {
   const repo = {
-    findAll: jest.fn(),
+    findPage: jest.fn().mockResolvedValue({ items: [record], total: 45 }),
     findById: jest.fn(),
     categoryExists: jest.fn().mockResolvedValue(true),
     isNameTaken: jest.fn().mockResolvedValue(false),
     create: jest.fn().mockResolvedValue(record),
     update: jest.fn().mockResolvedValue(record),
-    softDelete: jest.fn(),
   } as unknown as jest.Mocked<MenuItemsRepository>;
   const stock = {
     findActiveIds: jest.fn().mockResolvedValue([FLOUR, CHEESE]),
@@ -107,13 +107,32 @@ describe('MenuItemsService', () => {
     expect(repo.update).toHaveBeenCalledWith('r1', 'i1', {}, [input.recipe[0]]);
   });
 
-  it('404s when updating or deleting a missing item', async () => {
+  it('404s when updating a missing item', async () => {
     const { service, repo } = setup();
     repo.findById.mockResolvedValue(null);
-    repo.softDelete.mockResolvedValue(false);
     await expect(service.update(actor, 'x', { name: 'A' })).rejects.toBeInstanceOf(
       NotFoundException,
     );
-    await expect(service.remove(actor, 'x')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('deactivates and reactivates through update without touching the recipe', async () => {
+    const { service, repo } = setup();
+    repo.findById.mockResolvedValue(record);
+    await service.update(actor, 'i1', { isActive: false });
+    expect(repo.update).toHaveBeenCalledWith('r1', 'i1', { isActive: false }, undefined);
+    expect(repo.isNameTaken).not.toHaveBeenCalled();
+  });
+
+  it('lists a page with skip/take and meta', async () => {
+    const { service, repo } = setup();
+    const result = await service.list(actor, { page: 3, pageSize: 20, activeOnly: false });
+    expect(repo.findPage).toHaveBeenCalledWith('r1', {
+      activeOnly: false,
+      categoryId: undefined,
+      skip: 40,
+      take: 20,
+    });
+    expect(result.data).toHaveLength(1);
+    expect(result.meta).toEqual({ page: 3, pageSize: 20, total: 45, totalPages: 3 });
   });
 });

@@ -1,6 +1,8 @@
 import {
   type CreateMenuItemRequest,
   type MenuItem,
+  type MenuItemListQuery,
+  type MenuItemListResponse,
   menuItemListResponseSchema,
   menuItemSchema,
   type StockItem,
@@ -8,6 +10,7 @@ import {
   type UpdateMenuItemRequest,
 } from '@rms/api-contract';
 import {
+  keepPreviousData,
   useMutation,
   type UseMutationResult,
   useQuery,
@@ -22,19 +25,18 @@ import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 
 type UpdateVariables = { id: string; input: UpdateMenuItemRequest };
 
-/** Lists active items with their recipes. Never cached stale: edits show on the next read. */
+/** One page of items (active and inactive); the previous page stays visible while the next loads. */
 export function useMenuItems(
-  categoryId: string | undefined,
+  query: Pick<MenuItemListQuery, 'page' | 'pageSize' | 'categoryId'>,
   enabled: boolean,
-): UseQueryResult<MenuItem[]> {
+): UseQueryResult<MenuItemListResponse> {
   return useQuery({
-    queryKey: [MenuItemQueryKey.Items, categoryId ?? 'all'],
-    queryFn: async (): Promise<MenuItem[]> => {
-      const response = await api.get('/menu-items', {
-        params: categoryId ? { categoryId } : undefined,
-      });
+    queryKey: [MenuItemQueryKey.Items, query],
+    queryFn: async (): Promise<MenuItemListResponse> => {
+      const response = await api.get('/menu-items', { params: query });
       return menuItemListResponseSchema.parse(response.data);
     },
+    placeholderData: keepPreviousData,
     enabled,
     staleTime: 0,
   });
@@ -73,18 +75,6 @@ export function useUpdateMenuItem(): UseMutationResult<MenuItem, Error, UpdateVa
     mutationFn: async ({ id, input }): Promise<MenuItem> => {
       const response = await api.patch(`/menu-items/${id}`, input);
       return menuItemSchema.parse(response.data);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
-    onError: showApiError,
-  });
-}
-
-export function useDeleteMenuItem(): UseMutationResult<void, Error, string> {
-  const queryClient = useQueryClient();
-  const showApiError = useShowApiError('Unable to delete the menu item.');
-  return useMutation<void, Error, string>({
-    mutationFn: async (id): Promise<void> => {
-      await api.delete(`/menu-items/${id}`);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
     onError: showApiError,

@@ -95,11 +95,14 @@ export function useShowMenuCategoryStatusModal(): (
   };
 }
 
-/** Confirm deleting a menu item. */
-export function useShowMenuItemDeleteModal(): (item: MenuItem) => void {
+/** Confirm deactivating or reactivating a menu item. */
+export function useShowMenuItemStatusModal(): (
+  item: MenuItem,
+  action: 'deactivate' | 'activate',
+) => void {
   const showModal = useShowModal();
-  return (item) => {
-    showModal(ModalType.MenuItemDelete, { item });
+  return (item, action) => {
+    showModal(ModalType.MenuItemStatus, { item, action });
   };
 }
 

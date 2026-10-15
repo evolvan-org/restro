@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { paginatedResponseSchema, paginationQuerySchema } from './common';
 import { categoryTypeSchema } from './menu-categories';
 import { stockItemSchema, unitSchema } from './stock-items';
 
@@ -61,17 +62,23 @@ export const menuItemSchema = z
     price: z.string().describe('Decimal string with 2 fraction digits'),
     itemType: categoryTypeSchema,
     isAvailable: z.boolean(),
+    isActive: z.boolean(),
     recipe: z.array(recipeItemSchema),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
   .strict();
 
-export const menuItemListQuerySchema = z.object({
+/** `?activeOnly=true` hides deactivated items; anything but `true`/`false` is a 400. */
+export const menuItemListQuerySchema = paginationQuerySchema.extend({
   categoryId: z.string().uuid('categoryId must be a UUID').optional(),
+  activeOnly: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
-export const menuItemListResponseSchema = z.array(menuItemSchema);
+export const menuItemListResponseSchema = paginatedResponseSchema(menuItemSchema);
 
 export const createMenuItemRequestSchema = z
   .object({
@@ -94,6 +101,7 @@ export const updateMenuItemRequestSchema = z
     price: priceSchema.optional(),
     itemType: categoryTypeSchema.optional(),
     isAvailable: z.boolean().optional(),
+    isActive: z.boolean().optional(),
     recipe: recipeSchema.optional(),
   })
   .strict()

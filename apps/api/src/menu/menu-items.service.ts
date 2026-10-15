@@ -8,9 +8,11 @@ import type {
   CreateMenuItemRequest,
   MenuItem,
   MenuItemListQuery,
+  MenuItemListResponse,
   RecipeRow,
   UpdateMenuItemRequest,
 } from '@rms/api-contract';
+import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { StockItemsRepository } from '../stock/stock-items.repository';
@@ -27,9 +29,15 @@ export class MenuItemsService {
     private readonly stockItems: StockItemsRepository,
   ) {}
 
-  async list(actor: Actor, query: MenuItemListQuery): Promise<MenuItem[]> {
-    const items = await this.repository.findAll(actor.restaurantId, query.categoryId);
-    return items.map(toMenuItem);
+  async list(actor: Actor, query: MenuItemListQuery): Promise<MenuItemListResponse> {
+    const { page, pageSize, activeOnly, categoryId } = query;
+    const { items, total } = await this.repository.findPage(actor.restaurantId, {
+      activeOnly,
+      categoryId,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { data: items.map(toMenuItem), meta: buildPageMeta(page, pageSize, total) };
   }
 
   async create(actor: Actor, input: CreateMenuItemRequest): Promise<MenuItem> {
@@ -62,11 +70,6 @@ export class MenuItemsService {
     const updated = await this.repository.update(restaurantId, id, fields, recipe);
     if (!updated) throw new NotFoundException('Menu item not found');
     return toMenuItem(updated);
-  }
-
-  async remove(actor: Actor, id: string): Promise<void> {
-    const deleted = await this.repository.softDelete(actor.restaurantId, id);
-    if (!deleted) throw new NotFoundException('Menu item not found');
   }
 
   private async assertCategoryExists(restaurantId: string, categoryId: string): Promise<void> {

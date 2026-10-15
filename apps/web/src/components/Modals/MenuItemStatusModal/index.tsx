@@ -12,16 +12,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useDeleteMenuItem } from '@/services/api/requests/menu-items';
+import { useUpdateMenuItem } from '@/services/api/requests/menu-items';
 import { useHideModal } from '@/store/hooks/modal';
 
-export type MenuItemDeleteModalProps = {
+export type MenuItemStatusModalProps = {
   item: MenuItem;
+  action: 'deactivate' | 'activate';
 };
 
-export default function MenuItemDeleteModal({ item }: MenuItemDeleteModalProps): ReactElement {
+export default function MenuItemStatusModal({
+  item,
+  action,
+}: MenuItemStatusModalProps): ReactElement {
   const hideModal = useHideModal();
-  const { mutateAsync: deleteItem, isPending, isSuccess } = useDeleteMenuItem();
+  const { mutateAsync: updateItem, isPending, isSuccess } = useUpdateMenuItem();
+  const isDeactivate = action === 'deactivate';
 
   useEffect(() => {
     if (isSuccess) hideModal();
@@ -29,7 +34,7 @@ export default function MenuItemDeleteModal({ item }: MenuItemDeleteModalProps):
 
   const confirm = async (): Promise<void> => {
     try {
-      await deleteItem(item.id);
+      await updateItem({ id: item.id, input: { isActive: !isDeactivate } });
     } catch {
       // The mutation hook reports the error through useShowApiError; keep the dialog open.
     }
@@ -39,9 +44,13 @@ export default function MenuItemDeleteModal({ item }: MenuItemDeleteModalProps):
     <Dialog open onOpenChange={(open) => !open && hideModal()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete {item.name}?</DialogTitle>
+          <DialogTitle>
+            {isDeactivate ? `Deactivate ${item.name}?` : `Activate ${item.name}?`}
+          </DialogTitle>
           <DialogDescription>
-            The item and its recipe will be removed from the menu and can no longer be ordered.
+            {isDeactivate
+              ? 'The item can no longer be ordered. It and its recipe are kept and can be activated again.'
+              : 'The item will be available for new orders again.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -49,8 +58,13 @@ export default function MenuItemDeleteModal({ item }: MenuItemDeleteModalProps):
           <Button type="button" variant="outline" onClick={hideModal}>
             Cancel
           </Button>
-          <Button type="button" variant="warning" onClick={confirm} disabled={isPending}>
-            {isPending ? 'Deleting…' : 'Delete'}
+          <Button
+            type="button"
+            variant={isDeactivate ? 'warning' : 'success'}
+            onClick={confirm}
+            disabled={isPending}
+          >
+            {isPending ? 'Saving…' : isDeactivate ? 'Deactivate' : 'Activate'}
           </Button>
         </DialogFooter>
       </DialogContent>

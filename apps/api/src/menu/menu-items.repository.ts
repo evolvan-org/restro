@@ -12,6 +12,7 @@ const menuItemSelect = {
   price: true,
   itemType: true,
   isAvailable: true,
+  isActive: true,
   createdAt: true,
   updatedAt: true,
   recipeItems: {
@@ -37,23 +38,47 @@ export type NewMenuItem = {
 
 export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {
   description?: string | null;
+  isActive?: boolean;
+};
+
+export type MenuItemPageFilters = {
+  activeOnly: boolean;
+  categoryId?: string;
+  skip: number;
+  take: number;
 };
 
 @Injectable()
 export class MenuItemsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(restaurantId: string, categoryId?: string): Promise<MenuItemRecord[]> {
-    return this.prisma.menuItem.findMany({
-      where: { restaurantId, isActive: true, ...(categoryId && { categoryId }) },
-      select: menuItemSelect,
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-    });
+  async findPage(
+    restaurantId: string,
+    filters: MenuItemPageFilters,
+  ): Promise<{ items: MenuItemRecord[]; total: number }> {
+    const where: Prisma.MenuItemWhereInput = {
+      restaurantId,
+      ...(filters.activeOnly && { isActive: true }),
+      ...(filters.categoryId && { categoryId: filters.categoryId }),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.menuItem.findMany({
+        where,
+        select: menuItemSelect,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: filters.skip,
+        take: filters.take,
+      }),
+      this.prisma.menuItem.count({ where }),
+    ]);
+
+    return { items, total };
   }
 
   findById(restaurantId: string, id: string): Promise<MenuItemRecord | null> {
     return this.prisma.menuItem.findFirst({
-      where: { id, restaurantId, isActive: true },
+      where: { id, restaurantId },
       select: menuItemSelect,
     });
   }
@@ -76,7 +101,6 @@ export class MenuItemsRepository {
       where: {
         restaurantId,
         categoryId,
-        isActive: true,
         name: { equals: name, mode: 'insensitive' },
         ...(excludeItemId && { id: { not: excludeItemId } }),
       },
@@ -102,7 +126,7 @@ export class MenuItemsRepository {
   ): Promise<MenuItemRecord | null> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.menuItem.updateMany({
-        where: { id, restaurantId, isActive: true },
+        where: { id, restaurantId },
         // updatedAt keeps `data` non-empty for recipe-only edits (an empty update matches nothing).
         data: { ...changes, updatedAt: new Date() },
       });
@@ -116,19 +140,6 @@ export class MenuItemsRepository {
       }
 
       return tx.menuItem.findFirst({ where: { id, restaurantId }, select: menuItemSelect });
-    });
-  }
-
-  /** Soft delete; recipe rows are removed with it so the deactivated item holds no stock links. */
-  async softDelete(restaurantId: string, id: string): Promise<boolean> {
-    return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.menuItem.updateMany({
-        where: { id, restaurantId, isActive: true },
-        data: { isActive: false },
-      });
-      if (count === 0) return false;
-      await tx.recipeItem.deleteMany({ where: { menuItemId: id } });
-      return true;
     });
   }
 }

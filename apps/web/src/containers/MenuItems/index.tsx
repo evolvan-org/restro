@@ -1,7 +1,8 @@
 'use client';
 
 import { Permission } from '@rms/permissions';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { DEFAULT_PAGE_SIZE } from '@rms/shared';
+import { Archive, Pencil, Plus } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +21,7 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { useMenuCategories } from '@/services/api/requests/menu-categories';
 import { useMenuItems } from '@/services/api/requests/menu-items';
-import { useShowMenuItemDeleteModal } from '@/store/hooks/modal';
+import { useShowMenuItemStatusModal } from '@/store/hooks/modal';
 import { useShowMenuItemFormSidePane } from '@/store/hooks/sidepane';
 
 export default function MenuItems(): ReactElement | null {
@@ -29,10 +30,14 @@ export default function MenuItems(): ReactElement | null {
   const canRead = can(Permission.MENU_READ);
   const canWrite = can(Permission.MENU_WRITE);
   const [categoryId, setCategoryId] = useState('');
+  const [page, setPage] = useState(1);
   const categories = useMenuCategories(canRead);
-  const items = useMenuItems(categoryId || undefined, canRead);
+  const items = useMenuItems(
+    { page, pageSize: DEFAULT_PAGE_SIZE, categoryId: categoryId || undefined },
+    canRead,
+  );
   const showForm = useShowMenuItemFormSidePane();
-  const showDelete = useShowMenuItemDeleteModal();
+  const showStatus = useShowMenuItemStatusModal();
   const showApiError = useShowApiError('Unable to load menu items.');
 
   useEffect(() => {
@@ -41,7 +46,8 @@ export default function MenuItems(): ReactElement | null {
 
   if (!isAllowed) return null;
 
-  const rows = items.data ?? [];
+  const rows = items.data?.data ?? [];
+  const meta = items.data?.meta;
   const categoryNames = new Map((categories.data ?? []).map((c) => [c.id, c.name]));
 
   return (
@@ -69,7 +75,10 @@ export default function MenuItems(): ReactElement | null {
           aria-label="Filter by category"
           placeholder="All categories"
           value={categoryId}
-          onChange={setCategoryId}
+          onChange={(value) => {
+            setCategoryId(value);
+            setPage(1);
+          }}
           options={[
             { value: '', label: 'All categories' },
             ...(categories.data ?? []).map((category) => ({
@@ -113,8 +122,8 @@ export default function MenuItems(): ReactElement | null {
                   <TableCell>{categoryNames.get(item.categoryId) ?? '—'}</TableCell>
                   <TableCell>{item.price}</TableCell>
                   <TableCell>
-                    <Badge variant={item.isAvailable ? 'active' : 'inactive'}>
-                      {item.isAvailable ? 'Available' : 'Unavailable'}
+                    <Badge variant={item.isActive && item.isAvailable ? 'active' : 'inactive'}>
+                      {!item.isActive ? 'Inactive' : item.isAvailable ? 'Available' : 'Unavailable'}
                     </Badge>
                   </TableCell>
                   {canWrite && (
@@ -133,10 +142,12 @@ export default function MenuItems(): ReactElement | null {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => showDelete(item)}
+                          onClick={() =>
+                            showStatus(item, item.isActive ? 'deactivate' : 'activate')
+                          }
                         >
-                          <Trash2 aria-hidden />
-                          Delete
+                          {item.isActive && <Archive aria-hidden />}
+                          {item.isActive ? 'Deactivate' : 'Activate'}
                         </Button>
                       </div>
                     </TableCell>
@@ -156,6 +167,35 @@ export default function MenuItems(): ReactElement | null {
               )}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {meta && meta.total > 0 && (
+        <div className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
+          <p>
+            {meta.total} {meta.total === 1 ? 'item' : 'items'} · Page {meta.page} of{' '}
+            {meta.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={meta.page <= 1 || items.isFetching}
+              onClick={() => setPage(page - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={meta.page >= meta.totalPages || items.isFetching}
+              onClick={() => setPage(page + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </main>
