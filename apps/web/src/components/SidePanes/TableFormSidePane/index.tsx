@@ -5,9 +5,10 @@ import {
   type CreateTableRequest,
   createTableRequestSchema,
   type RestaurantTable,
-  updateTableRequestSchema,
 } from '@rms/api-contract';
-import { type ReactElement, useEffect } from 'react';
+import { Permission } from '@rms/permissions';
+import { isTableStatusCode, isTableStatusTransitionAllowed } from '@rms/shared';
+import { type ReactElement } from 'react';
 import { type Resolver, useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
@@ -15,8 +16,14 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/c
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
-import { useCreateTable, useTableOptions, useUpdateTable } from '@/services/api/requests/tables';
+import {
+  useCreateTable,
+  useTableOptions,
+  useTransitionTableStatus,
+  useUpdateTable,
+} from '@/services/api/requests/tables';
 import { useHideSidePane } from '@/store/hooks/sidepane';
 
 export type TableFormSidePaneProps = {
@@ -32,54 +39,80 @@ export default function TableFormSidePane({
 }: TableFormSidePaneProps): ReactElement {
   const isEdit = table !== undefined;
   const options = useTableOptions(true);
-  const {
-    mutateAsync: createTable,
-    isPending: isCreating,
-    isSuccess: isCreated,
-  } = useCreateTable();
-  const {
-    mutateAsync: updateTable,
-    isPending: isUpdating,
-    isSuccess: isUpdated,
-  } = useUpdateTable();
+  const { mutateAsync: createTable, isPending: isCreating } = useCreateTable();
+  const { mutateAsync: updateTable, isPending: isUpdating } = useUpdateTable();
+  const { mutateAsync: transitionStatus, isPending: isChangingStatus } = useTransitionTableStatus();
+  const { can } = usePermissions();
+  const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
   const hideSidePane = useHideSidePane();
 
   const form = useForm<CreateTableRequest>({
-    // Edit is validated against the update contract, create against the create contract.
-    resolver: zodResolver(
-      isEdit ? updateTableRequestSchema : createTableRequestSchema,
-    ) as Resolver<CreateTableRequest>,
+    // Validate the full form; submit configuration and status using their separate contracts.
+    resolver: zodResolver(createTableRequestSchema) as Resolver<CreateTableRequest>,
     defaultValues: {
       tableNumber: table?.tableNumber ?? '',
       capacity: table?.capacity ?? 2,
       sectionId: table?.section.id ?? '',
-      // Status is only accepted by the create contract.
-      ...(!isEdit ? { currentStatusId: '' } : {}),
+      currentStatusId: table?.currentStatus.id ?? '',
     },
   });
   const { errors } = form.formState;
 
-  useEffect(() => {
-    if (isCreated || isUpdated) {
-      hideSidePane();
-    }
-  }, [isCreated, isUpdated, hideSidePane]);
-
   const onSubmit = form.handleSubmit(async (values) => {
+    let detailsSaved = false;
     try {
       if (table) {
-        await updateTable({ id: table.id, input: values });
+        const { currentStatusId, ...details } = values;
+        const statusChanged = currentStatusId !== table.currentStatus.id;
+        const target = options.data?.statuses.find((status) => status.id === currentStatusId);
+        if (
+          statusChanged &&
+          (!canChangeStatus ||
+            !target ||
+            !isTableStatusCode(target.code) ||
+            !isTableStatusTransitionAllowed(table.currentStatus.code, target.code))
+        ) {
+          form.setError('currentStatusId', { message: 'Select an allowed status.' });
+          return;
+        }
+        const configurationChanged =
+          details.tableNumber !== table.tableNumber ||
+          details.capacity !== table.capacity ||
+          details.sectionId !== table.section.id;
+        let currentStatus = table.currentStatus;
+        if (configurationChanged) {
+          const updated = await updateTable({ id: table.id, input: details });
+          currentStatus = updated.currentStatus;
+          detailsSaved = true;
+        }
+        if (
+          statusChanged &&
+          target &&
+          isTableStatusCode(target.code) &&
+          target.id !== currentStatus.id
+        ) {
+          await transitionStatus({ id: table.id, input: { statusCode: target.code } });
+        }
       } else {
         await createTable(values);
       }
-    } catch {
-      // The request hook reports the error; keep the form open for correction or retry.
+      hideSidePane();
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Unable to save the table.');
+      form.setError('root', {
+        message: detailsSaved
+          ? `Table details saved, but the status change failed. ${message}`
+          : message,
+      });
     }
   });
 
-  const isSaving = isCreating || isUpdating;
+  const isSaving = form.formState.isSubmitting || isCreating || isUpdating || isChangingStatus;
   const sections = options.data?.sections ?? [];
   const statuses = options.data?.statuses ?? [];
+  const displayedStatuses = table
+    ? [table.currentStatus, ...statuses.filter((status) => status.id !== table.currentStatus.id)]
+    : statuses;
 
   return (
     <>
@@ -139,27 +172,45 @@ export default function TableFormSidePane({
             <FieldError>{errors.sectionId?.message}</FieldError>
           </Field>
 
-          {!isEdit && (
-            <Field data-invalid={Boolean(errors.currentStatusId)}>
-              <FieldLabel htmlFor="table-status">Status</FieldLabel>
-              <NativeSelect
-                id="table-status"
-                className="w-full"
-                disabled={options.isPending}
-                aria-invalid={Boolean(errors.currentStatusId)}
-                {...form.register('currentStatusId')}
-              >
-                <NativeSelectOption value="">
-                  {options.isPending ? 'Loading statuses...' : 'Use default status'}
-                </NativeSelectOption>
-                {statuses.map((status) => (
-                  <NativeSelectOption key={status.id} value={status.id}>
+          <Field data-invalid={Boolean(errors.currentStatusId)}>
+            <FieldLabel htmlFor="table-status">Status</FieldLabel>
+            <NativeSelect
+              id="table-status"
+              className="w-full"
+              disabled={options.isPending || (isEdit && !canChangeStatus)}
+              aria-invalid={Boolean(errors.currentStatusId)}
+              {...form.register('currentStatusId')}
+            >
+              <NativeSelectOption value="" disabled={isEdit}>
+                {options.isPending ? 'Loading statuses...' : 'Use default status'}
+              </NativeSelectOption>
+              {displayedStatuses.map((status) => {
+                const isUnavailable = Boolean(
+                  table &&
+                  status.id !== table.currentStatus.id &&
+                  !isTableStatusTransitionAllowed(table.currentStatus.code, status.code),
+                );
+                return (
+                  <NativeSelectOption key={status.id} value={status.id} disabled={isUnavailable}>
                     {status.name}
+                    {isUnavailable ? ' (transition not allowed)' : ''}
                   </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <FieldError>{errors.currentStatusId?.message}</FieldError>
-            </Field>
+                );
+              })}
+            </NativeSelect>
+            {isEdit && (
+              <FieldDescription>
+                All active statuses are shown. Only allowed transitions from the current status can
+                be selected.
+              </FieldDescription>
+            )}
+            <FieldError>{errors.currentStatusId?.message}</FieldError>
+          </Field>
+
+          {errors.root && (
+            <p role="alert" className="text-sm text-destructive">
+              {errors.root.message}
+            </p>
           )}
 
           {options.isError && (
