@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { CategoryType, RecipeRow } from '@rms/api-contract';
+import type { CategoryType, RecipeRow, ServingType } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -43,9 +43,18 @@ export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {
 export class MenuItemsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(restaurantId: string, categoryId?: string): Promise<MenuItemRecord[]> {
+  findAll(
+    restaurantId: string,
+    categoryId?: string,
+    itemType?: ServingType,
+  ): Promise<MenuItemRecord[]> {
     return this.prisma.menuItem.findMany({
-      where: { restaurantId, isActive: true, ...(categoryId && { categoryId }) },
+      where: {
+        restaurantId,
+        isActive: true,
+        ...(categoryId && { categoryId }),
+        ...(itemType && { itemType }),
+      },
       select: menuItemSelect,
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
@@ -55,6 +64,16 @@ export class MenuItemsRepository {
     return this.prisma.menuItem.findFirst({
       where: { id, restaurantId, isActive: true },
       select: menuItemSelect,
+    });
+  }
+
+  findCategory(
+    restaurantId: string,
+    categoryId: string,
+  ): Promise<{ categoryType: ServingType } | null> {
+    return this.prisma.menuCategory.findFirst({
+      where: { id: categoryId, restaurantId },
+      select: { categoryType: true },
     });
   }
 
@@ -148,6 +167,31 @@ export class MenuItemsRepository {
       const { count } = await tx.menuItem.updateMany({
         where: { id, restaurantId, isActive: true },
         data: { price: new Prisma.Decimal(price) },
+      });
+      if (count === 0) return null;
+
+      return tx.menuItem.findFirst({
+        where: { id, restaurantId, isActive: true },
+        select: menuItemSelect,
+      });
+    });
+  }
+
+  /** The relation predicate protects the service's expected category type at write time. */
+  async updateClassification(
+    restaurantId: string,
+    id: string,
+    itemType: ServingType,
+  ): Promise<MenuItemRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.menuItem.updateMany({
+        where: {
+          id,
+          restaurantId,
+          isActive: true,
+          category: { restaurantId, categoryType: itemType },
+        },
+        data: { itemType },
       });
       if (count === 0) return null;
 

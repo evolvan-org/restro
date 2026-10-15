@@ -1,12 +1,16 @@
 import {
   type CreateMenuItemRequest,
   type MenuItem,
+  type MenuItemListQuery,
+  menuItemListQuerySchema,
   menuItemListResponseSchema,
   menuItemSchema,
   type StockItem,
   stockItemListResponseSchema,
   type UpdateMenuItemAvailabilityRequest,
   updateMenuItemAvailabilityRequestSchema,
+  type UpdateMenuItemClassificationRequest,
+  updateMenuItemClassificationRequestSchema,
   type UpdateMenuItemPriceRequest,
   updateMenuItemPriceRequestSchema,
   type UpdateMenuItemRequest,
@@ -27,17 +31,19 @@ import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 type UpdateVariables = { id: string; input: UpdateMenuItemRequest };
 type AvailabilityVariables = { id: string; input: UpdateMenuItemAvailabilityRequest };
 type PriceVariables = { id: string; input: UpdateMenuItemPriceRequest };
+type ClassificationVariables = { id: string; input: UpdateMenuItemClassificationRequest };
 
 /** Lists active items with their recipes. Never cached stale: edits show on the next read. */
 export function useMenuItems(
-  categoryId: string | undefined,
+  query: MenuItemListQuery,
   enabled: boolean,
 ): UseQueryResult<MenuItem[]> {
   return useQuery({
-    queryKey: [MenuItemQueryKey.Items, categoryId ?? 'all'],
-    queryFn: async (): Promise<MenuItem[]> => {
+    queryKey: [MenuItemQueryKey.Items, query.categoryId ?? 'all', query.itemType ?? 'all'],
+    queryFn: async ({ signal }): Promise<MenuItem[]> => {
       const response = await api.get('/menu-items', {
-        params: categoryId ? { categoryId } : undefined,
+        params: menuItemListQuerySchema.parse(query),
+        signal,
       });
       return menuItemListResponseSchema.parse(response.data);
     },
@@ -130,6 +136,47 @@ export function useUpdateMenuItemPrice(): UseMutationResult<MenuItem, Error, Pri
         items?.map((item) => (item.id === updated.id ? updated : item)),
       );
       await queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] });
+    },
+    onError: showApiError,
+  });
+}
+
+export function useUpdateMenuItemClassification(): UseMutationResult<
+  MenuItem,
+  Error,
+  ClassificationVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update item classification.');
+  return useMutation<MenuItem, Error, ClassificationVariables>({
+    mutationFn: async ({ id, input }): Promise<MenuItem> => {
+      const response = await api.patch(
+        `/menu-items/${id}/classification`,
+        updateMenuItemClassificationRequestSchema.parse(input),
+      );
+      return menuItemSchema.parse(response.data);
+    },
+    onSuccess: async (updated): Promise<void> => {
+      await queryClient.cancelQueries({ queryKey: [MenuItemQueryKey.Items] });
+      for (const [queryKey, items] of queryClient.getQueriesData<MenuItem[]>({
+        queryKey: [MenuItemQueryKey.Items],
+      })) {
+        if (!items) continue;
+        const matchesCategory = queryKey[1] === 'all' || queryKey[1] === updated.categoryId;
+        // Two-part keys from an existing session represent the unfiltered type list.
+        const matchesType =
+          queryKey[2] === undefined || queryKey[2] === 'all' || queryKey[2] === updated.itemType;
+        const next =
+          matchesCategory && matchesType
+            ? items.map((item) => (item.id === updated.id ? updated : item))
+            : items.filter((item) => item.id !== updated.id);
+        queryClient.setQueryData(queryKey, next);
+      }
+      // Fetch newly matching rows in database order, including cached inactive filter variants.
+      await queryClient.invalidateQueries({
+        queryKey: [MenuItemQueryKey.Items],
+        refetchType: 'all',
+      });
     },
     onError: showApiError,
   });

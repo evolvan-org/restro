@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { categoryTypeSchema } from './menu-categories';
+import { servingTypeSchema } from './serving-types';
 import { stockItemSchema, unitSchema } from './stock-items';
 
 const menuItemNameSchema = z
@@ -87,7 +87,7 @@ export const menuItemSchema = z
     name: z.string(),
     description: z.string().nullable(),
     price: z.string().describe('Decimal string with 2 fraction digits'),
-    itemType: categoryTypeSchema,
+    itemType: servingTypeSchema,
     isAvailable: z.boolean(),
     recipe: z.array(recipeItemSchema),
     createdAt: z.string().datetime(),
@@ -97,6 +97,7 @@ export const menuItemSchema = z
 
 export const menuItemListQuerySchema = z.object({
   categoryId: z.string().uuid('categoryId must be a UUID').optional(),
+  itemType: servingTypeSchema.optional(),
 });
 
 export const menuItemListResponseSchema = z.array(menuItemSchema);
@@ -113,13 +114,19 @@ export const updateMenuItemPriceRequestSchema = z
   })
   .strict();
 
+export const updateMenuItemClassificationRequestSchema = z
+  .object({
+    itemType: servingTypeSchema,
+  })
+  .strict();
+
 export const createMenuItemRequestSchema = z
   .object({
     categoryId: z.string().uuid('Category is required'),
     name: menuItemNameSchema,
     description: descriptionSchema.optional(),
     price: priceSchema,
-    itemType: categoryTypeSchema,
+    itemType: servingTypeSchema,
     isAvailable: z.boolean().optional().default(true),
     recipe: recipeSchema,
   })
@@ -132,7 +139,7 @@ export const updateMenuItemRequestSchema = z
     name: menuItemNameSchema.optional(),
     description: descriptionSchema.nullable().optional(),
     price: priceSchema.optional(),
-    itemType: categoryTypeSchema.optional(),
+    itemType: servingTypeSchema.optional(),
     isAvailable: z.boolean().optional(),
     recipe: recipeSchema.optional(),
   })
@@ -152,3 +159,6 @@ export type UpdateMenuItemAvailabilityRequest = z.infer<
   typeof updateMenuItemAvailabilityRequestSchema
 >;
 export type UpdateMenuItemPriceRequest = z.infer<typeof updateMenuItemPriceRequestSchema>;
+export type UpdateMenuItemClassificationRequest = z.infer<
+  typeof updateMenuItemClassificationRequestSchema
+>;

@@ -10,6 +10,7 @@ import type {
   MenuItemListQuery,
   RecipeRow,
   UpdateMenuItemAvailabilityRequest,
+  UpdateMenuItemClassificationRequest,
   UpdateMenuItemPriceRequest,
   UpdateMenuItemRequest,
 } from '@rms/api-contract';
@@ -30,7 +31,11 @@ export class MenuItemsService {
   ) {}
 
   async list(actor: Actor, query: MenuItemListQuery): Promise<MenuItem[]> {
-    const items = await this.repository.findAll(actor.restaurantId, query.categoryId);
+    const items = await this.repository.findAll(
+      actor.restaurantId,
+      query.categoryId,
+      query.itemType,
+    );
     return items.map(toMenuItem);
   }
 
@@ -87,6 +92,34 @@ export class MenuItemsService {
   ): Promise<MenuItem> {
     const updated = await this.repository.updatePrice(actor.restaurantId, id, input.price);
     if (!updated) throw new NotFoundException('Menu item not found');
+    return toMenuItem(updated);
+  }
+
+  async updateClassification(
+    actor: Actor,
+    id: string,
+    input: UpdateMenuItemClassificationRequest,
+  ): Promise<MenuItem> {
+    const existing = await this.repository.findById(actor.restaurantId, id);
+    if (!existing) throw new NotFoundException('Menu item not found');
+    const category = await this.repository.findCategory(actor.restaurantId, existing.categoryId);
+    if (!category) throw new NotFoundException('Menu category not found');
+    if (input.itemType !== category.categoryType) {
+      throw new BadRequestException('Item classification must match its category classification');
+    }
+    const updated = await this.repository.updateClassification(
+      actor.restaurantId,
+      id,
+      input.itemType,
+    );
+    if (!updated) {
+      if (!(await this.repository.findById(actor.restaurantId, id))) {
+        throw new NotFoundException('Menu item not found');
+      }
+      throw new ConflictException(
+        'The item or category changed. Refresh before updating classification.',
+      );
+    }
     return toMenuItem(updated);
   }
 

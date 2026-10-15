@@ -17,6 +17,7 @@ import {
 import useShowApiError from '@/hooks/api/useShowApiError';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
+import { getServingTypeLabel } from '@/lib/serving-types';
 import {
   useMenuCategories,
   useReorderMenuCategories,
@@ -129,7 +130,7 @@ export default function MenuCategories(): ReactElement | null {
                     )}
                   </TableCell>
                   <TableCell className="font-medium">{category.name}</TableCell>
-                  <TableCell>{category.categoryType === 'FOOD' ? 'Food' : 'Bar'}</TableCell>
+                  <TableCell>{getServingTypeLabel(category.categoryType)}</TableCell>
                   <TableCell>
                     <Badge variant={category.isActive ? 'active' : 'inactive'}>
                       {category.isActive ? 'Active' : 'Inactive'}

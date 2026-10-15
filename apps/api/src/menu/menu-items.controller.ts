@@ -36,6 +36,8 @@ import {
   menuItemSchema,
   type UpdateMenuItemAvailabilityRequest,
   updateMenuItemAvailabilityRequestSchema,
+  type UpdateMenuItemClassificationRequest,
+  updateMenuItemClassificationRequestSchema,
   type UpdateMenuItemPriceRequest,
   updateMenuItemPriceRequestSchema,
   type UpdateMenuItemRequest,
@@ -144,6 +146,28 @@ export class MenuItemsController {
     input: UpdateMenuItemPriceRequest,
   ): Promise<MenuItem> {
     return this.service.updatePrice(actor, id, input);
+  }
+
+  @Patch(':id/classification')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({ summary: 'Set FOOD/BAR classification, matching the item category' })
+  @ApiBody({ schema: zodOpenApiSchema(updateMenuItemClassificationRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(
+    apiError('Invalid classification/id or classification differs from the category'),
+  )
+  @ApiNotFoundResponse(apiError('No active item with this id in the caller restaurant'))
+  @ApiConflictResponse(
+    apiError('The item or category changed during the update; refresh and retry'),
+  )
+  updateClassification(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMenuItemClassificationRequestSchema))
+    input: UpdateMenuItemClassificationRequest,
+  ): Promise<MenuItem> {
+    return this.service.updateClassification(actor, id, input);
   }
 
   @Delete(':id')
