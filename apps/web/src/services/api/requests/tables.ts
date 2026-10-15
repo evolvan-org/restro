@@ -32,6 +32,7 @@ type UpdateTableActiveVariables = { id: string; input: UpdateTableActiveRequest 
 export function useTableList(
   query: TableListQuery,
   enabled: boolean,
+  refetchInterval?: number,
 ): UseQueryResult<TableListResponse> {
   return useQuery({
     queryKey: [TableQueryKey.Tables, query],
@@ -41,6 +42,7 @@ export function useTableList(
     },
     placeholderData: keepPreviousData,
     enabled,
+    refetchInterval,
   });
 }
 
