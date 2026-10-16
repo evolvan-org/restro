@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -31,6 +32,16 @@ import {
   type MenuItemListResponse,
   menuItemListResponseSchema,
   menuItemSchema,
+  type MenuItemSearchQuery,
+  menuItemSearchQuerySchema,
+  type MenuItemSearchResponse,
+  menuItemSearchResponseSchema,
+  type UpdateMenuItemAvailabilityRequest,
+  updateMenuItemAvailabilityRequestSchema,
+  type UpdateMenuItemClassificationRequest,
+  updateMenuItemClassificationRequestSchema,
+  type UpdateMenuItemPriceRequest,
+  updateMenuItemPriceRequestSchema,
   type UpdateMenuItemRequest,
   updateMenuItemRequestSchema,
 } from '@rms/api-contract';
@@ -55,9 +66,10 @@ export class MenuItemsController {
   constructor(private readonly service: MenuItemsService) {}
 
   @Get()
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.MENU_READ)
   @ApiOperation({
-    summary: 'List a page of menu items with their recipes, optionally by category or active only',
+    summary: 'List menu items with their recipes, optionally by category or active only',
   })
   @ApiZodQuery(menuItemListQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(menuItemListResponseSchema) })
@@ -67,6 +79,23 @@ export class MenuItemsController {
     @Query(new ZodValidationPipe(menuItemListQuerySchema)) query: MenuItemListQuery,
   ): Promise<MenuItemListResponse> {
     return this.service.list(actor, query);
+  }
+
+  @Get('search')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_READ)
+  @ApiOperation({
+    summary:
+      'Search menu items by name/description, filterable and paginated; activeOnly hides inactive',
+  })
+  @ApiZodQuery(menuItemSearchQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSearchResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid query parameters'))
+  search(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(menuItemSearchQuerySchema)) query: MenuItemSearchQuery,
+  ): Promise<MenuItemSearchResponse> {
+    return this.service.search(actor, query);
   }
 
   @Post()
@@ -102,5 +131,63 @@ export class MenuItemsController {
     @Body(new ZodValidationPipe(updateMenuItemRequestSchema)) input: UpdateMenuItemRequest,
   ): Promise<MenuItem> {
     return this.service.update(actor, id, input);
+  }
+
+  @Patch(':id/availability')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({
+    summary: 'Set item availability; setting the current value is a successful no-op',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(updateMenuItemAvailabilityRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(apiError('Invalid item id or availability; isAvailable must be a boolean'))
+  @ApiNotFoundResponse(apiError('No active item with this id in the caller restaurant'))
+  updateAvailability(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMenuItemAvailabilityRequestSchema))
+    input: UpdateMenuItemAvailabilityRequest,
+  ): Promise<MenuItem> {
+    return this.service.updateAvailability(actor, id, input);
+  }
+
+  @Patch(':id/price')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({ summary: 'Update only the price of an active menu item' })
+  @ApiBody({ schema: zodOpenApiSchema(updateMenuItemPriceRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(apiError('Invalid item id or price; see the shared price constraints'))
+  @ApiNotFoundResponse(apiError('No active item with this id in the caller restaurant'))
+  updatePrice(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMenuItemPriceRequestSchema))
+    input: UpdateMenuItemPriceRequest,
+  ): Promise<MenuItem> {
+    return this.service.updatePrice(actor, id, input);
+  }
+
+  @Patch(':id/classification')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({ summary: 'Set FOOD/BAR classification, matching the item category' })
+  @ApiBody({ schema: zodOpenApiSchema(updateMenuItemClassificationRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(
+    apiError('Invalid classification/id or classification differs from the category'),
+  )
+  @ApiNotFoundResponse(apiError('No active item with this id in the caller restaurant'))
+  @ApiConflictResponse(
+    apiError('The item or category changed during the update; refresh and retry'),
+  )
+  updateClassification(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMenuItemClassificationRequestSchema))
+    input: UpdateMenuItemClassificationRequest,
+  ): Promise<MenuItem> {
+    return this.service.updateClassification(actor, id, input);
   }
 }

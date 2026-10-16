@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
-import { categoryTypeSchema } from './menu-categories';
+import { servingTypeSchema } from './serving-types';
 import { stockItemSchema, unitSchema } from './stock-items';
 
 const menuItemNameSchema = z
@@ -18,6 +18,34 @@ const priceSchema = z
   .refine((value) => Number.isFinite(value) && Math.round(value * 100) / 100 === value, {
     message: 'Price can have at most 2 decimal places',
   });
+
+export const MAX_MENU_ITEM_PRICE = '999999.99';
+
+const decimalPricePattern = /^\d{1,10}(?:\.\d{1,2})?$/;
+
+function priceInMinorUnits(value: string): bigint {
+  const [whole = '0', fraction = ''] = value.split('.');
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+}
+
+/** The focused price-edit path keeps money as a decimal string throughout. */
+export const menuItemPriceSchema = z
+  .string({
+    required_error: 'Price is required',
+    invalid_type_error: 'Price must be a decimal string',
+  })
+  .trim()
+  .min(1, 'Price is required')
+  .regex(decimalPricePattern, 'Price must be non-negative with at most 2 decimal places')
+  .refine(
+    (value) =>
+      !decimalPricePattern.test(value) ||
+      priceInMinorUnits(value) <= priceInMinorUnits(MAX_MENU_ITEM_PRICE),
+    { message: `Price cannot exceed ${MAX_MENU_ITEM_PRICE}` },
+  )
+  .describe(
+    `Non-negative decimal string with at most 2 decimal places; maximum ${MAX_MENU_ITEM_PRICE}`,
+  );
 
 /**
  * Recipe quantities are decimal strings end to end (never JS floats): the column is
@@ -60,7 +88,7 @@ export const menuItemSchema = z
     name: z.string(),
     description: z.string().nullable(),
     price: z.string().describe('Decimal string with 2 fraction digits'),
-    itemType: categoryTypeSchema,
+    itemType: servingTypeSchema,
     isAvailable: z.boolean(),
     isActive: z.boolean(),
     recipe: z.array(recipeItemSchema),
@@ -70,15 +98,54 @@ export const menuItemSchema = z
   .strict();
 
 /** `?activeOnly=true` hides deactivated items; anything but `true`/`false` is a 400. */
-export const menuItemListQuerySchema = paginationQuerySchema.extend({
+const activeOnlySchema = z
+  .enum(['true', 'false'])
+  .default('false')
+  .transform((value) => value === 'true');
+
+export const menuItemListQuerySchema = z.object({
   categoryId: z.string().uuid('categoryId must be a UUID').optional(),
-  activeOnly: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
+  itemType: servingTypeSchema.optional(),
+  activeOnly: activeOnlySchema,
 });
 
-export const menuItemListResponseSchema = paginatedResponseSchema(menuItemSchema);
+export const menuItemListResponseSchema = z.array(menuItemSchema);
+
+export const menuItemSearchQuerySchema = paginationQuerySchema.extend({
+  q: z
+    .string()
+    .trim()
+    .max(100, 'Search must be 100 characters or fewer')
+    .optional()
+    .describe('Case-insensitive match on name or description'),
+  categoryId: z.string().uuid('categoryId must be a UUID').optional(),
+  itemType: servingTypeSchema.optional(),
+  isAvailable: z
+    .enum(['true', 'false'], { invalid_type_error: 'isAvailable must be true or false' })
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === 'true')),
+  activeOnly: activeOnlySchema,
+});
+
+export const menuItemSearchResponseSchema = paginatedResponseSchema(menuItemSchema);
+
+export const updateMenuItemAvailabilityRequestSchema = z
+  .object({
+    isAvailable: z.boolean(),
+  })
+  .strict();
+
+export const updateMenuItemPriceRequestSchema = z
+  .object({
+    price: menuItemPriceSchema,
+  })
+  .strict();
+
+export const updateMenuItemClassificationRequestSchema = z
+  .object({
+    itemType: servingTypeSchema,
+  })
+  .strict();
 
 export const createMenuItemRequestSchema = z
   .object({
@@ -86,7 +153,7 @@ export const createMenuItemRequestSchema = z
     name: menuItemNameSchema,
     description: descriptionSchema.optional(),
     price: priceSchema,
-    itemType: categoryTypeSchema,
+    itemType: servingTypeSchema,
     isAvailable: z.boolean().optional().default(true),
     recipe: recipeSchema,
   })
@@ -99,7 +166,7 @@ export const updateMenuItemRequestSchema = z
     name: menuItemNameSchema.optional(),
     description: descriptionSchema.nullable().optional(),
     price: priceSchema.optional(),
-    itemType: categoryTypeSchema.optional(),
+    itemType: servingTypeSchema.optional(),
     isAvailable: z.boolean().optional(),
     isActive: z.boolean().optional(),
     recipe: recipeSchema.optional(),
@@ -114,5 +181,14 @@ export type RecipeItem = z.infer<typeof recipeItemSchema>;
 export type MenuItem = z.infer<typeof menuItemSchema>;
 export type MenuItemListQuery = z.infer<typeof menuItemListQuerySchema>;
 export type MenuItemListResponse = z.infer<typeof menuItemListResponseSchema>;
+export type MenuItemSearchQuery = z.infer<typeof menuItemSearchQuerySchema>;
+export type MenuItemSearchResponse = z.infer<typeof menuItemSearchResponseSchema>;
 export type CreateMenuItemRequest = z.infer<typeof createMenuItemRequestSchema>;
 export type UpdateMenuItemRequest = z.infer<typeof updateMenuItemRequestSchema>;
+export type UpdateMenuItemAvailabilityRequest = z.infer<
+  typeof updateMenuItemAvailabilityRequestSchema
+>;
+export type UpdateMenuItemPriceRequest = z.infer<typeof updateMenuItemPriceRequestSchema>;
+export type UpdateMenuItemClassificationRequest = z.infer<
+  typeof updateMenuItemClassificationRequestSchema
+>;

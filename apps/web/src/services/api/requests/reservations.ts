@@ -1,5 +1,9 @@
 import {
+  type AssignReservationTableRequest,
+  type AssignReservationTableResponse,
+  assignReservationTableResponseSchema,
   type CancelReservationRequest,
+  cancelReservationRequestSchema,
   type CreateReservationRequest,
   type CreateWalkInRequest,
   type GuestLookupResponse,
@@ -10,6 +14,7 @@ import {
   reservationListResponseSchema,
   reservationSchema,
   type UpdateReservationRequest,
+  updateReservationRequestSchema,
 } from '@rms/api-contract';
 import {
   keepPreviousData,
@@ -27,6 +32,35 @@ import { ReservationQueryKey } from '../types/ReservationQueryKey';
 
 type CancelReservationVariables = { id: string; input: CancelReservationRequest };
 type UpdateReservationVariables = { id: string; input: UpdateReservationRequest };
+type AssignReservationTableVariables = { id: string; input: AssignReservationTableRequest };
+
+export function useAssignReservationTable(): UseMutationResult<
+  AssignReservationTableResponse,
+  Error,
+  AssignReservationTableVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to change the table assignment.');
+
+  return useMutation<AssignReservationTableResponse, Error, AssignReservationTableVariables>({
+    mutationFn: async ({ id, input }): Promise<AssignReservationTableResponse> => {
+      const response = await api.patch(`/reservations/${id}/table`, input);
+      return assignReservationTableResponseSchema.parse(response.data);
+    },
+    onSuccess: async (reservation) => {
+      queryClient.setQueriesData<ReservationListResponse>(
+        { queryKey: [ReservationQueryKey.Reservations] },
+        (current) =>
+          current && {
+            ...current,
+            data: current.data.map((item) => (item.id === reservation.id ? reservation : item)),
+          },
+      );
+      await queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] });
+    },
+    onError: showApiError,
+  });
+}
 
 export function useUpdateReservation(): UseMutationResult<
   Reservation,
@@ -38,13 +72,26 @@ export function useUpdateReservation(): UseMutationResult<
 
   return useMutation<Reservation, Error, UpdateReservationVariables>({
     mutationFn: async ({ id, input }): Promise<Reservation> => {
-      const response = await api.patch(`/reservations/${id}`, input);
+      const response = await api.patch(
+        `/reservations/${id}`,
+        updateReservationRequestSchema.parse(input),
+      );
       return reservationSchema.parse(response.data);
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
-        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.GuestLookup] }),
+        queryClient.cancelQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.cancelQueries({ queryKey: [ReservationQueryKey.GuestLookup] }),
+      ]);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [ReservationQueryKey.Reservations],
+          refetchType: 'all',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [ReservationQueryKey.GuestLookup],
+          refetchType: 'all',
+        }),
       ]);
     },
     onError: showApiError,
@@ -61,11 +108,19 @@ export function useCancelReservation(): UseMutationResult<
 
   return useMutation<Reservation, Error, CancelReservationVariables>({
     mutationFn: async ({ id, input }): Promise<Reservation> => {
-      const response = await api.patch(`/reservations/${id}/cancel`, input);
+      const response = await api.patch(
+        `/reservations/${id}/cancel`,
+        cancelReservationRequestSchema.parse(input),
+      );
       return reservationSchema.parse(response.data);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+    onSuccess: async (): Promise<void> => {
+      await queryClient.cancelQueries({ queryKey: [ReservationQueryKey.Reservations] });
+      await queryClient.invalidateQueries({
+        queryKey: [ReservationQueryKey.Reservations],
+        refetchType: 'all',
+      });
+    },
     onError: showApiError,
   });
 }
@@ -77,12 +132,13 @@ export function useReservations(
 ): UseQueryResult<ReservationListResponse> {
   return useQuery({
     queryKey: [ReservationQueryKey.Reservations, query],
-    queryFn: async (): Promise<ReservationListResponse> => {
-      const response = await api.get('/reservations', { params: query });
+    queryFn: async ({ signal }): Promise<ReservationListResponse> => {
+      const response = await api.get('/reservations', { params: query, signal });
       return reservationListResponseSchema.parse(response.data);
     },
     placeholderData: keepPreviousData,
     enabled,
+    staleTime: 0,
   });
 }
 
@@ -124,12 +180,14 @@ export const GUEST_LOOKUP_MIN_LENGTH = 3;
 export function useGuestLookup(phoneNumber: string): UseQueryResult<GuestLookupResponse> {
   return useQuery({
     queryKey: [ReservationQueryKey.GuestLookup, phoneNumber],
-    queryFn: async (): Promise<GuestLookupResponse> => {
+    queryFn: async ({ signal }): Promise<GuestLookupResponse> => {
       const response = await api.get('/reservations/guests/lookup', {
         params: { phoneNumber },
+        signal,
       });
       return guestLookupResponseSchema.parse(response.data);
     },
     enabled: phoneNumber.length >= GUEST_LOOKUP_MIN_LENGTH,
+    staleTime: 0,
   });
 }

@@ -31,6 +31,7 @@ export const Permission = {
   // Reservations
   RESERVATION_READ: 'reservation:read',
   RESERVATION_WRITE: 'reservation:write',
+  RESERVATION_ASSIGN_TABLE: 'reservation:assign-table',
 
   // Orders
   ORDER_READ: 'order:read',

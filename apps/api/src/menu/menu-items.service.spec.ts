@@ -50,7 +50,8 @@ function setup(): {
   stock: jest.Mocked<StockItemsRepository>;
 } {
   const repo = {
-    findPage: jest.fn().mockResolvedValue({ items: [record], total: 45 }),
+    findAll: jest.fn().mockResolvedValue([record]),
+    findSearchPage: jest.fn().mockResolvedValue({ items: [record], total: 1 }),
     findById: jest.fn(),
     categoryExists: jest.fn().mockResolvedValue(true),
     isNameTaken: jest.fn().mockResolvedValue(false),
@@ -64,6 +65,39 @@ function setup(): {
 }
 
 describe('MenuItemsService', () => {
+  it('searches with pagination, mapping page/pageSize to skip/take', async () => {
+    const { service, repo } = setup();
+    const result = await service.search(actor, {
+      page: 2,
+      pageSize: 10,
+      q: 'marg',
+      categoryId: CATEGORY,
+      itemType: 'FOOD',
+      isAvailable: true,
+      activeOnly: false,
+    });
+    expect(repo.findSearchPage).toHaveBeenCalledWith('r1', {
+      q: 'marg',
+      categoryId: CATEGORY,
+      itemType: 'FOOD',
+      isAvailable: true,
+      activeOnly: false,
+      skip: 10,
+      take: 10,
+    });
+    expect(result).toEqual({
+      data: [expect.objectContaining({ id: 'i1', price: '9.50' })],
+      meta: { page: 2, pageSize: 10, total: 1, totalPages: 1 },
+    });
+  });
+
+  it('returns an empty page instead of an error when nothing matches', async () => {
+    const { service, repo } = setup();
+    repo.findSearchPage.mockResolvedValue({ items: [], total: 0 });
+    const result = await service.search(actor, { page: 1, pageSize: 20, activeOnly: false });
+    expect(result).toEqual({ data: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 } });
+  });
+
   it('creates an item and returns decimals as strings', async () => {
     const { service, repo } = setup();
     const result = await service.create(actor, input);
@@ -123,16 +157,17 @@ describe('MenuItemsService', () => {
     expect(repo.isNameTaken).not.toHaveBeenCalled();
   });
 
-  it('lists a page with skip/take and meta', async () => {
+  it('lists with the activeOnly filter', async () => {
     const { service, repo } = setup();
-    const result = await service.list(actor, { page: 3, pageSize: 20, activeOnly: false });
-    expect(repo.findPage).toHaveBeenCalledWith('r1', {
-      activeOnly: false,
-      categoryId: undefined,
-      skip: 40,
-      take: 20,
-    });
-    expect(result.data).toHaveLength(1);
-    expect(result.meta).toEqual({ page: 3, pageSize: 20, total: 45, totalPages: 3 });
+    await service.list(actor, { activeOnly: true });
+    expect(repo.findAll).toHaveBeenCalledWith('r1', true, undefined, undefined);
+  });
+
+  it('treats an inactive item as not found for classification changes', async () => {
+    const { service, repo } = setup();
+    repo.findById.mockResolvedValue({ ...record, isActive: false });
+    await expect(
+      service.updateClassification(actor, 'i1', { itemType: 'FOOD' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

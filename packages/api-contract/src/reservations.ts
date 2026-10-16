@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
+import { restaurantTableSchema } from './tables';
+
+// Preserve the existing export while keeping the constant's definition in @rms/shared.
+export { RESERVATION_DURATION_MINUTES } from '@rms/shared';
 
 /** Upper bound for a single party; also keeps the value inside Postgres INT4. */
 export const MAX_PARTY_SIZE = 1000;
@@ -17,11 +21,20 @@ const guestPhoneSchema = z
   .min(1, 'Phone number is required')
   .max(30, 'Phone number must be 30 characters or fewer');
 
-const partySizeSchema = z.coerce
-  .number({ invalid_type_error: 'Party size is required' })
-  .int('Party size must be a whole number')
-  .min(1, 'Party size must be at least 1')
-  .max(MAX_PARTY_SIZE, `Party size must be ${MAX_PARTY_SIZE} or fewer`);
+function withPartySizeConstraints(schema: z.ZodNumber): z.ZodNumber {
+  return schema
+    .int('Party size must be a whole number')
+    .min(1, 'Party size must be at least 1')
+    .max(MAX_PARTY_SIZE, `Party size must be ${MAX_PARTY_SIZE} or fewer`);
+}
+
+const partySizeSchema = withPartySizeConstraints(
+  z.coerce.number({ invalid_type_error: 'Party size is required' }),
+);
+
+const updatePartySizeSchema = withPartySizeConstraints(
+  z.number({ invalid_type_error: 'Party size must be a number' }),
+);
 
 const reservationNotesSchema = z
   .string()
@@ -55,11 +68,19 @@ export const guestSchema = z
   })
   .strict();
 
+export const reservationTableSchema = restaurantTableSchema.pick({
+  id: true,
+  tableNumber: true,
+  capacity: true,
+  currentStatus: true,
+});
+
 export const reservationSchema = z
   .object({
     id: z.string().uuid(),
     guestId: z.string().uuid(),
     tableId: z.string().uuid().nullable(),
+    table: reservationTableSchema.nullable(),
     createdByUserId: z.string().uuid(),
     reservationAt: z.string().datetime(),
     partySize: z.number().int(),
@@ -84,6 +105,15 @@ export const cancelReservationRequestSchema = z
   })
   .strict();
 
+export const assignReservationTableRequestSchema = z
+  .object({
+    tableId: z.string().uuid('Table id must be a valid UUID').nullable(),
+  })
+  .strict()
+  .describe('Assign or reassign a table; null clears the assignment. BOOKED and SEATED only.');
+
+export const assignReservationTableResponseSchema = reservationSchema;
+
 export const guestLookupQuerySchema = z
   .object({
     phoneNumber: guestPhoneSchema,
@@ -100,8 +130,6 @@ export const createWalkInRequestSchema = z
     notes: reservationNotesSchema,
   })
   .strict();
-
-export const RESERVATION_DURATION_MINUTES = 90;
 
 export const createReservationRequestSchema = z
   .object({
@@ -133,6 +161,7 @@ export const updateReservationRequestSchema = createReservationRequestSchema
   .pick({ reservationAt: true, partySize: true, notes: true })
   .partial()
   .extend({
+    partySize: updatePartySizeSchema.optional(),
     guest: updateReservationGuestSchema.optional(),
   })
   .strict()
@@ -144,6 +173,8 @@ export const updateReservationRequestSchema = createReservationRequestSchema
 export type ReservationStatus = z.infer<typeof reservationStatusSchema>;
 export type Guest = z.infer<typeof guestSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
+export type AssignReservationTableRequest = z.infer<typeof assignReservationTableRequestSchema>;
+export type AssignReservationTableResponse = z.infer<typeof assignReservationTableResponseSchema>;
 export type ReservationListQuery = z.infer<typeof reservationListQuerySchema>;
 export type ReservationListResponse = z.infer<typeof reservationListResponseSchema>;
 export type GuestLookupQuery = z.infer<typeof guestLookupQuerySchema>;

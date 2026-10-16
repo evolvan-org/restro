@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ACTIVE_RESERVATION_STATUSES } from '@rms/api-contract';
 import { Prisma, ReservationStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -9,6 +8,14 @@ const reservationSelect = {
   id: true,
   guestId: true,
   tableId: true,
+  table: {
+    select: {
+      id: true,
+      tableNumber: true,
+      capacity: true,
+      currentStatus: { select: { id: true, code: true, name: true } },
+    },
+  },
   createdByUserId: true,
   reservationAt: true,
   partySize: true,
@@ -46,13 +53,8 @@ export type ReservationTransition = {
   cancellationReason: string | null;
 };
 
-export type TableAvailability = 'OK' | 'TABLE_NOT_FOUND' | 'OVER_CAPACITY' | 'CONFLICT';
-
-export type BookingResult =
-  | { outcome: 'CREATED'; reservation: ReservationRecord }
-  | { outcome: Exclude<TableAvailability, 'OK'> };
-
 export type ReservationUpdateDetails = {
+  tableId?: string | null;
   reservationAt?: Date;
   partySize?: number;
   notes?: string | null;
@@ -66,10 +68,15 @@ export type ReservationOverlapFilters = {
   excludeId?: string;
 };
 
-export type ReservationEditContext = {
+export type ReservationTableContext = {
+  findTable: (tableId: string) => Promise<{ capacity: number; isActive: boolean } | null>;
+  findOverlap: (
+    filters: ReservationOverlapFilters,
+  ) => Promise<{ id: string; reservationAt: Date } | null>;
+};
+
+export type ReservationEditContext = ReservationTableContext & {
   reservation: ReservationRecord;
-  findTable: () => Promise<{ capacity: number; isActive: boolean } | null>;
-  findOverlap: (filters: ReservationOverlapFilters) => Promise<{ id: string } | null>;
   update: (
     data: ReservationUpdateDetails,
     guest?: GuestUpdateDetails,
@@ -95,6 +102,7 @@ export class ReservationsRepository {
     restaurantId: string,
     id: string,
     edit: (context: ReservationEditContext) => Promise<ReservationRecord>,
+    targetTableId?: string | null,
   ): Promise<ReservationRecord | null> {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
@@ -104,20 +112,17 @@ export class ReservationsRepository {
       });
       if (!reservation) return null;
 
-      if (reservation.tableId) {
-        await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${reservation.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      // Stable ordering also serializes two parties swapping tables without a lock cycle.
+      const tableIds = [reservation.tableId, targetTableId].filter(
+        (tableId): tableId is string => typeof tableId === 'string',
+      );
+      for (const tableId of [...new Set(tableIds)].sort()) {
+        await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
       }
 
       return edit({
         reservation,
-        findTable: () =>
-          reservation.tableId
-            ? tx.restaurantTable.findFirst({
-                where: { id: reservation.tableId, restaurantId },
-                select: { capacity: true, isActive: true },
-              })
-            : Promise.resolve(null),
-        findOverlap: (filters) => this.findOverlapIn(tx, restaurantId, filters),
+        ...this.tableContext(tx, restaurantId),
         update: async (data, guest) => {
           if (guest && Object.keys(guest).length > 0) {
             await this.guests.updateIn(tx, restaurantId, reservation.guestId, guest);
@@ -138,11 +143,25 @@ export class ReservationsRepository {
     });
   }
 
+  private tableContext(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+  ): ReservationTableContext {
+    return {
+      findTable: (tableId) =>
+        tx.restaurantTable.findFirst({
+          where: { id: tableId, restaurantId },
+          select: { capacity: true, isActive: true },
+        }),
+      findOverlap: (filters) => this.findOverlapIn(tx, restaurantId, filters),
+    };
+  }
+
   private findOverlapIn(
     tx: Prisma.TransactionClient,
     restaurantId: string,
     filters: ReservationOverlapFilters,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; reservationAt: Date } | null> {
     return tx.reservation.findFirst({
       where: {
         restaurantId,
@@ -151,7 +170,7 @@ export class ReservationsRepository {
         ...(filters.excludeId && { id: { not: filters.excludeId } }),
         reservationAt: { gt: filters.from, lt: filters.to },
       },
-      select: { id: true },
+      select: { id: true, reservationAt: true },
     });
   }
 
@@ -236,28 +255,14 @@ export class ReservationsRepository {
     restaurantId: string,
     createdByUserId: string,
     details: BookingDetails,
-    durationMinutes: number,
-  ): Promise<BookingResult> {
+    validate: (context: ReservationTableContext) => Promise<void>,
+  ): Promise<ReservationRecord> {
     return this.prisma.$transaction(async (tx) => {
       if (details.tableId) {
         await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${details.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-
-        const table = await tx.restaurantTable.findFirst({
-          where: { id: details.tableId, restaurantId, isActive: true },
-          select: { capacity: true },
-        });
-        if (!table) return { outcome: 'TABLE_NOT_FOUND' };
-        if (details.partySize > table.capacity) return { outcome: 'OVER_CAPACITY' };
-
-        const windowMs = durationMinutes * 60_000;
-        const conflict = await this.findOverlapIn(tx, restaurantId, {
-          tableId: details.tableId,
-          statuses: [...ACTIVE_RESERVATION_STATUSES],
-          from: new Date(details.reservationAt.getTime() - windowMs),
-          to: new Date(details.reservationAt.getTime() + windowMs),
-        });
-        if (conflict) return { outcome: 'CONFLICT' };
       }
+
+      await validate(this.tableContext(tx, restaurantId));
 
       const guest = await this.guests.findOrCreate(
         tx,
@@ -266,7 +271,7 @@ export class ReservationsRepository {
         details.phoneNumber,
       );
 
-      const reservation = await tx.reservation.create({
+      return tx.reservation.create({
         data: {
           restaurantId,
           guestId: guest.id,
@@ -279,7 +284,6 @@ export class ReservationsRepository {
         },
         select: reservationSelect,
       });
-      return { outcome: 'CREATED', reservation };
     });
   }
 }

@@ -7,6 +7,7 @@ import MenuCategoryFormSidePane from '@/components/SidePanes/MenuCategoryFormSid
 import MenuItemFormSidePane from '@/components/SidePanes/MenuItemFormSidePane';
 import ReservationEditSidePane from '@/components/SidePanes/ReservationEditSidePane';
 import ReservationFormSidePane from '@/components/SidePanes/ReservationFormSidePane';
+import ReservationTableSidePane from '@/components/SidePanes/ReservationTableSidePane';
 import SampleSidePane from '@/components/SidePanes/SampleSidePane';
 import StaffFormSidePane from '@/components/SidePanes/StaffFormSidePane';
 import TableFormSidePane from '@/components/SidePanes/TableFormSidePane';
@@ -35,6 +36,7 @@ const SIDE_PANES: Partial<Record<SidePaneType, ComponentType<any>>> = {
   [SidePaneType.MenuCategoryForm]: MenuCategoryFormSidePane,
   [SidePaneType.MenuItemForm]: MenuItemFormSidePane,
   [SidePaneType.ReservationEdit]: ReservationEditSidePane,
+  [SidePaneType.ReservationTable]: ReservationTableSidePane,
 };
 
 /** Single mount point for every side pane — a right-hand slide-in drawer. */

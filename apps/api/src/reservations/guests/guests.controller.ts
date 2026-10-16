@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Query, Res, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -15,6 +15,7 @@ import {
   guestLookupResponseSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
+import type { Response } from 'express';
 
 import type { Actor } from '../../common/auth/authenticated-request';
 import { CurrentActor } from '../../common/auth/current-actor.decorator';
@@ -35,6 +36,7 @@ export class GuestsController {
   constructor(private readonly service: GuestsService) {}
 
   @Get('lookup')
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
     summary: 'Look up a guest by phone number',
@@ -47,10 +49,13 @@ export class GuestsController {
     schema: zodOpenApiSchema(guestLookupResponseSchema),
   })
   @ApiBadRequestResponse(apiError('Invalid lookup query parameters'))
-  lookup(
+  async lookup(
     @CurrentActor() actor: Actor,
     @Query(new ZodValidationPipe(guestLookupQuerySchema)) query: GuestLookupQuery,
-  ): Promise<GuestLookupResponse> {
-    return this.service.lookup(actor, query);
+    @Res() response: Response<GuestLookupResponse>,
+  ): Promise<void> {
+    const guest = await this.service.lookup(actor, query);
+    // Nest sends an empty body for a null return; the shared nullable schema requires JSON null.
+    response.json(guest);
   }
 }

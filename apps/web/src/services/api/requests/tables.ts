@@ -13,6 +13,7 @@ import {
   type UpdateTableActiveRequest,
   type UpdateTableRequest,
 } from '@rms/api-contract';
+import { MAX_PAGE_SIZE } from '@rms/shared';
 import {
   keepPreviousData,
   useMutation,
@@ -21,6 +22,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
@@ -30,9 +32,41 @@ import { TableQueryKey } from '../types/TableQueryKey';
 type UpdateTableVariables = { id: string; input: UpdateTableRequest };
 type UpdateTableActiveVariables = { id: string; input: UpdateTableActiveRequest };
 
+/** Load every active-table page so the picker cannot silently omit later tables. */
+export function useAssignableTables(enabled: boolean): UseQueryResult<RestaurantTable[]> {
+  const showApiError = useShowApiError('Unable to load tables for assignment.');
+  const query = useQuery({
+    queryKey: [TableQueryKey.Tables, 'assignment'],
+    queryFn: async ({ signal }): Promise<RestaurantTable[]> => {
+      const tables: RestaurantTable[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const response = await api.get('/tables', {
+          params: { isActive: true, page, pageSize: MAX_PAGE_SIZE },
+          signal,
+        });
+        const result = tableListResponseSchema.parse(response.data);
+        tables.push(...result.data);
+        totalPages = result.meta.totalPages;
+        page += 1;
+      } while (page <= totalPages);
+      return tables;
+    },
+    enabled,
+  });
+
+  useEffect(() => {
+    if (query.error) showApiError(query.error);
+  }, [query.error, showApiError]);
+
+  return query;
+}
+
 export function useTableList(
   query: TableListQuery,
   enabled: boolean,
+  refetchInterval?: number,
 ): UseQueryResult<TableListResponse> {
   return useQuery({
     queryKey: [TableQueryKey.Tables, query],
@@ -42,6 +76,7 @@ export function useTableList(
     },
     placeholderData: keepPreviousData,
     enabled,
+    refetchInterval,
   });
 }
 

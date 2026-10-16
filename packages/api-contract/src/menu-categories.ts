@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { servingTypeSchema } from './serving-types';
+
 const categoryNameSchema = z
   .string()
   .trim()
@@ -12,7 +14,7 @@ const sortOrderSchema = z
   .min(0, 'Display order cannot be negative');
 
 /** Mirrors the Prisma `ServingType` enum. */
-export const categoryTypeSchema = z.enum(['FOOD', 'BAR'], {
+export const categoryTypeSchema = z.enum(servingTypeSchema.options, {
   errorMap: () => ({ message: 'Category type must be FOOD or BAR' }),
 });
 

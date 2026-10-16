@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ACTIVE_RESERVATION_STATUSES,
   EDITABLE_RESERVATION_STATUSES,
   type ReservationStatus,
   TERMINAL_RESERVATION_STATUSES,
@@ -68,6 +69,8 @@ export default function Reservations(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.RESERVATION_READ);
   const canWrite = can(Permission.RESERVATION_WRITE);
+  const canAssign = can(Permission.RESERVATION_ASSIGN_TABLE);
+  const canAct = canWrite || canAssign;
   const filters = useForm<ReservationFilters>({ defaultValues: { status: '', page: 1 } });
   const status = useWatch({ control: filters.control, name: 'status' });
   const page = useWatch({ control: filters.control, name: 'page' });
@@ -150,7 +153,7 @@ export default function Reservations(): ReactElement | null {
                 <TableHead>Table</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead>Cancellation reason</TableHead>
-                {canWrite && <TableHead>Actions</TableHead>}
+                {canAct && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -165,14 +168,30 @@ export default function Reservations(): ReactElement | null {
                     </Badge>
                   </TableCell>
                   <TableCell>{dateFormatter.format(new Date(reservation.reservationAt))}</TableCell>
-                  <TableCell>{reservation.tableId ? reservation.tableId : 'Unassigned'}</TableCell>
+                  <TableCell>
+                    {reservation.table ? `Table ${reservation.table.tableNumber}` : 'Unassigned'}
+                  </TableCell>
                   <TableCell className="max-w-60 truncate">{reservation.notes ?? '-'}</TableCell>
                   <TableCell className="max-w-60 whitespace-normal break-words">
                     {reservation.cancellationReason ?? '-'}
                   </TableCell>
-                  {canWrite && (
+                  {canAct && (
                     <TableCell>
-                      {EDITABLE_RESERVATION_STATUSES.includes(reservation.status) && (
+                      {canAssign && ACTIVE_RESERVATION_STATUSES.includes(reservation.status) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mr-2"
+                          aria-label={`Assign table for ${reservation.guest.guestName}`}
+                          onClick={() =>
+                            showSidePane(SidePaneType.ReservationTable, { reservation })
+                          }
+                        >
+                          {reservation.tableId ? 'Change table' : 'Assign table'}
+                        </Button>
+                      )}
+                      {canWrite && EDITABLE_RESERVATION_STATUSES.includes(reservation.status) && (
                         <Button
                           type="button"
                           variant="outline"
@@ -186,7 +205,7 @@ export default function Reservations(): ReactElement | null {
                           Edit
                         </Button>
                       )}
-                      {!TERMINAL_RESERVATION_STATUSES.includes(reservation.status) && (
+                      {canWrite && !TERMINAL_RESERVATION_STATUSES.includes(reservation.status) && (
                         <Button
                           type="button"
                           variant="outline"
@@ -205,7 +224,7 @@ export default function Reservations(): ReactElement | null {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canWrite ? 9 : 8}
+                    colSpan={canAct ? 9 : 8}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {reservations.isPending

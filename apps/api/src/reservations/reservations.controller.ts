@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -23,12 +24,15 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type AssignReservationTableRequest,
+  assignReservationTableRequestSchema,
+  type AssignReservationTableResponse,
+  assignReservationTableResponseSchema,
   type CancelReservationRequest,
   cancelReservationRequestSchema,
   type CreateReservationRequest,
   createReservationRequestSchema,
   type Reservation,
-  RESERVATION_DURATION_MINUTES,
   type ReservationListQuery,
   reservationListQuerySchema,
   type ReservationListResponse,
@@ -38,6 +42,7 @@ import {
   updateReservationRequestSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
+import { RESERVATION_DURATION_MINUTES } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { CurrentActor } from '../common/auth/current-actor.decorator';
@@ -57,7 +62,35 @@ import { ReservationsService } from './reservations.service';
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
 
+  @Patch(':id/table')
+  @RequirePermissions(Permission.RESERVATION_ASSIGN_TABLE)
+  @ApiOperation({
+    summary: 'Assign, reassign or unassign a reservation table',
+    description:
+      'Sets tableId on a BOOKED or SEATED reservation; null clears it. ' +
+      'Checks tenant ownership, active state, capacity and overlapping BOOKED/SEATED reservations. ' +
+      `The service window is ${RESERVATION_DURATION_MINUTES} minutes; touching boundaries are allowed. ` +
+      'Does not change reservation status or table status. Requires `reservation:assign-table`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(assignReservationTableRequestSchema) })
+  @ApiOkResponse({
+    description: 'The updated reservation with its guest and assigned table (null when unassigned)',
+    schema: zodOpenApiSchema(assignReservationTableResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid id or body, inactive table or insufficient capacity'))
+  @ApiNotFoundResponse(apiError('The reservation or table does not exist in your restaurant'))
+  @ApiConflictResponse(apiError('The reservation is not active or the table has an overlap'))
+  assignTable(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(assignReservationTableRequestSchema))
+    input: AssignReservationTableRequest,
+  ): Promise<AssignReservationTableResponse> {
+    return this.service.assignTable(actor, id, input);
+  }
+
   @Patch(':id')
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
     summary: 'Modify a booked reservation',
@@ -85,6 +118,7 @@ export class ReservationsController {
   }
 
   @Patch(':id/cancel')
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
     summary: 'Cancel a reservation',
@@ -109,6 +143,7 @@ export class ReservationsController {
   }
 
   @Get()
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_READ)
   @ApiOperation({
     summary: 'List reservations',
