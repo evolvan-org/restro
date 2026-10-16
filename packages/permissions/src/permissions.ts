@@ -32,6 +32,10 @@ export const Permission = {
   RESERVATION_READ: 'reservation:read',
   RESERVATION_WRITE: 'reservation:write',
   RESERVATION_ASSIGN_TABLE: 'reservation:assign-table',
+  /** Authority to set or clear a reservation's captain. */
+  RESERVATION_ASSIGN_CAPTAIN: 'reservation:assign-captain',
+  /** Eligibility to be a reservation's captain (not an authority; only the CAPTAIN role). */
+  RESERVATION_BE_CAPTAIN: 'reservation:be-captain',
 
   // Orders
   ORDER_READ: 'order:read',

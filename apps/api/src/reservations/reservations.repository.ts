@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, ReservationStatus } from '@rms/db';
+import { Prisma, ReservationStatus, UserStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
 import { guestSelect, GuestsRepository, type GuestUpdateDetails } from './guests/guests.repository';
@@ -17,6 +17,8 @@ const reservationSelect = {
     },
   },
   createdByUserId: true,
+  captainUserId: true,
+  captain: { select: { id: true, name: true, role: { select: { name: true } } } },
   reservationAt: true,
   partySize: true,
   status: true,
@@ -58,6 +60,7 @@ export type ReservationUpdateDetails = {
   reservationAt?: Date;
   partySize?: number;
   notes?: string | null;
+  captainUserId?: string | null;
 };
 
 export type ReservationOverlapFilters = {
@@ -75,8 +78,23 @@ export type ReservationTableContext = {
   ) => Promise<{ id: string; reservationAt: Date } | null>;
 };
 
+export type CaptainCandidate = {
+  id: string;
+  name: string;
+  status: UserStatus;
+  role: { name: string };
+};
+
+const captainCandidateSelect = {
+  id: true,
+  name: true,
+  status: true,
+  role: { select: { name: true } },
+} satisfies Prisma.UserSelect;
+
 export type ReservationEditContext = ReservationTableContext & {
   reservation: ReservationRecord;
+  findCaptainCandidate: (userId: string) => Promise<CaptainCandidate | null>;
   update: (
     data: ReservationUpdateDetails,
     guest?: GuestUpdateDetails,
@@ -94,6 +112,14 @@ export class ReservationsRepository {
     return this.prisma.reservation.findFirst({
       where: { id, restaurantId },
       select: reservationSelect,
+    });
+  }
+
+  listActiveUsers(restaurantId: string): Promise<CaptainCandidate[]> {
+    return this.prisma.user.findMany({
+      where: { restaurantId, status: UserStatus.ACTIVE },
+      select: captainCandidateSelect,
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -123,6 +149,11 @@ export class ReservationsRepository {
       return edit({
         reservation,
         ...this.tableContext(tx, restaurantId),
+        findCaptainCandidate: (userId) =>
+          tx.user.findFirst({
+            where: { id: userId, restaurantId },
+            select: captainCandidateSelect,
+          }),
         update: async (data, guest) => {
           if (guest && Object.keys(guest).length > 0) {
             await this.guests.updateIn(tx, restaurantId, reservation.guestId, guest);

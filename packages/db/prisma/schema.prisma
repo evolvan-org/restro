@@ -159,7 +159,8 @@ model User {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   role       Role       @relation(fields: [roleId], references: [id]) // Restrict (default): can't delete a role in use
 
-  reservationsCreated Reservation[] @relation("ReservationCreatedBy")
+  reservationsCreated   Reservation[] @relation("ReservationCreatedBy")
+  reservationsCaptained Reservation[] @relation("ReservationCaptain")
   ordersCreated       Order[]       @relation("OrderCreatedBy")
   kotsCreated         Kot[]         @relation("KotCreatedBy")
   billsGenerated      Bill[]        @relation("BillGeneratedBy")
@@ -294,6 +295,7 @@ model Reservation {
   guestId            String            @map("guest_id") @db.Uuid
   tableId            String?           @map("table_id") @db.Uuid
   createdByUserId    String            @map("created_by_user_id") @db.Uuid
+  captainUserId      String?           @map("captain_user_id") @db.Uuid
   reservationAt      DateTime          @map("reservation_at") @db.Timestamptz(6)
   partySize          Int               @map("party_size")
   status             ReservationStatus @default(BOOKED)
@@ -306,12 +308,14 @@ model Reservation {
   guest         Guest            @relation(fields: [guestId], references: [id])
   table         RestaurantTable? @relation(fields: [tableId], references: [id])
   createdByUser User             @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id])
+  captain       User?            @relation("ReservationCaptain", fields: [captainUserId], references: [id])
   orders        Order[]
 
   @@index([restaurantId])
   @@index([guestId])
   @@index([tableId])
   @@index([createdByUserId])
+  @@index([captainUserId])
   @@map("reservations")
 }
 

@@ -10,6 +10,12 @@ export function toReservation(record: ReservationRecord): Reservation {
     tableId: record.tableId,
     table: record.table,
     createdByUserId: record.createdByUserId,
+    captainUserId: record.captainUserId,
+    captain: record.captain && {
+      id: record.captain.id,
+      name: record.captain.name,
+      role: record.captain.role.name,
+    },
     reservationAt: record.reservationAt.toISOString(),
     partySize: record.partySize,
     status: record.status,

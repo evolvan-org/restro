@@ -75,6 +75,14 @@ export const reservationTableSchema = restaurantTableSchema.pick({
   currentStatus: true,
 });
 
+export const reservationCaptainSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    role: z.string(),
+  })
+  .strict();
+
 export const reservationSchema = z
   .object({
     id: z.string().uuid(),
@@ -82,6 +90,8 @@ export const reservationSchema = z
     tableId: z.string().uuid().nullable(),
     table: reservationTableSchema.nullable(),
     createdByUserId: z.string().uuid(),
+    captainUserId: z.string().uuid().nullable(),
+    captain: reservationCaptainSchema.nullable(),
     reservationAt: z.string().datetime(),
     partySize: z.number().int(),
     status: reservationStatusSchema,
@@ -113,6 +123,17 @@ export const assignReservationTableRequestSchema = z
   .describe('Assign or reassign a table; null clears the assignment. BOOKED and SEATED only.');
 
 export const assignReservationTableResponseSchema = reservationSchema;
+
+export const assignReservationCaptainRequestSchema = z
+  .object({
+    captainUserId: z.string().uuid('Captain id must be a valid UUID').nullable(),
+  })
+  .strict()
+  .describe('Assign or reassign a captain; null clears the assignment. BOOKED and SEATED only.');
+
+export const assignReservationCaptainResponseSchema = reservationSchema;
+
+export const captainOptionsResponseSchema = z.array(reservationCaptainSchema);
 
 export const guestLookupQuerySchema = z
   .object({
@@ -175,6 +196,12 @@ export type Guest = z.infer<typeof guestSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
 export type AssignReservationTableRequest = z.infer<typeof assignReservationTableRequestSchema>;
 export type AssignReservationTableResponse = z.infer<typeof assignReservationTableResponseSchema>;
+export type ReservationCaptain = z.infer<typeof reservationCaptainSchema>;
+export type AssignReservationCaptainRequest = z.infer<typeof assignReservationCaptainRequestSchema>;
+export type AssignReservationCaptainResponse = z.infer<
+  typeof assignReservationCaptainResponseSchema
+>;
+export type CaptainOptionsResponse = z.infer<typeof captainOptionsResponseSchema>;
 export type ReservationListQuery = z.infer<typeof reservationListQuerySchema>;
 export type ReservationListResponse = z.infer<typeof reservationListResponseSchema>;
 export type GuestLookupQuery = z.infer<typeof guestLookupQuerySchema>;

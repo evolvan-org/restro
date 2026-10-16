@@ -5,16 +5,21 @@ import { Role } from './roles';
  * Role → permission mapping. This is the authoritative policy consulted by
  * the API's authorization guard and mirrored by the web app for UI gating.
  *
- * OWNER holds every permission. MANAGER holds everything except `user:delete`,
- * which keeps MANAGER a superset of every other non-owner role — so the staff
- * escalation check (`canAssignRole`) lets a manager assign any of them.
+ * OWNER holds every permission except `reservation:be-captain`; MANAGER also lacks `user:delete`.
+ * `be-captain` is an eligibility marker held only by CAPTAIN, so the staff escalation check
+ * ignores it (see `ELIGIBILITY_ONLY_PERMISSIONS`) and a manager can still assign the CAPTAIN role.
  *
  * Every role must include `dashboard:read` so it can reach the landing page; a
  * role without it would be redirected to /forbidden on login.
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  [Role.OWNER]: [...ALL_PERMISSIONS],
-  [Role.MANAGER]: ALL_PERMISSIONS.filter((permission) => permission !== Permission.USER_DELETE),
+  [Role.OWNER]: ALL_PERMISSIONS.filter(
+    (permission) => permission !== Permission.RESERVATION_BE_CAPTAIN,
+  ),
+  [Role.MANAGER]: ALL_PERMISSIONS.filter(
+    (permission) =>
+      permission !== Permission.USER_DELETE && permission !== Permission.RESERVATION_BE_CAPTAIN,
+  ),
   [Role.CAPTAIN]: [
     Permission.DASHBOARD_READ,
     Permission.MENU_READ,
@@ -23,6 +28,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.RESERVATION_READ,
     Permission.RESERVATION_WRITE,
     Permission.RESERVATION_ASSIGN_TABLE,
+    Permission.RESERVATION_BE_CAPTAIN,
     Permission.ORDER_READ,
     Permission.ORDER_WRITE,
     Permission.KOT_READ,
@@ -53,6 +59,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.PAYMENT_WRITE,
   ],
 };
+
+/** Permissions that mark eligibility for a duty rather than authority; exempt from escalation checks. */
+export const ELIGIBILITY_ONLY_PERMISSIONS: readonly Permission[] = [
+  Permission.RESERVATION_BE_CAPTAIN,
+];
 
 /** Returns true if the given role is granted the given permission. */
 export function roleHasPermission(role: Role, permission: Permission): boolean {
