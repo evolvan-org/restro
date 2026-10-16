@@ -21,11 +21,20 @@ const guestPhoneSchema = z
   .min(1, 'Phone number is required')
   .max(30, 'Phone number must be 30 characters or fewer');
 
-const partySizeSchema = z.coerce
-  .number({ invalid_type_error: 'Party size is required' })
-  .int('Party size must be a whole number')
-  .min(1, 'Party size must be at least 1')
-  .max(MAX_PARTY_SIZE, `Party size must be ${MAX_PARTY_SIZE} or fewer`);
+function withPartySizeConstraints(schema: z.ZodNumber): z.ZodNumber {
+  return schema
+    .int('Party size must be a whole number')
+    .min(1, 'Party size must be at least 1')
+    .max(MAX_PARTY_SIZE, `Party size must be ${MAX_PARTY_SIZE} or fewer`);
+}
+
+const partySizeSchema = withPartySizeConstraints(
+  z.coerce.number({ invalid_type_error: 'Party size is required' }),
+);
+
+const updatePartySizeSchema = withPartySizeConstraints(
+  z.number({ invalid_type_error: 'Party size must be a number' }),
+);
 
 const reservationNotesSchema = z
   .string()
@@ -152,6 +161,7 @@ export const updateReservationRequestSchema = createReservationRequestSchema
   .pick({ reservationAt: true, partySize: true, notes: true })
   .partial()
   .extend({
+    partySize: updatePartySizeSchema.optional(),
     guest: updateReservationGuestSchema.optional(),
   })
   .strict()

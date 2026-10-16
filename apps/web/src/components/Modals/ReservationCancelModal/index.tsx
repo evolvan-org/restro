@@ -20,7 +20,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCancelReservation } from '@/services/api/requests/reservations';
 import { useHideModal } from '@/store/hooks/modal';
 
-import { getCancellationFormSchema, toCancellationFormDefaults } from './mapper';
+import {
+  getCancellationFormSchema,
+  getCancellationFormSettings,
+  toCancellationFormDefaults,
+} from './mapper';
 
 export type ReservationCancelModalProps = { reservation: Reservation };
 
@@ -36,6 +40,7 @@ export default function ReservationCancelModal({
     defaultValues: toCancellationFormDefaults(),
   });
   const { errors } = form.formState;
+  const settings = getCancellationFormSettings(reservation);
 
   useEffect(() => {
     if (isSuccess && data) {
@@ -61,15 +66,13 @@ export default function ReservationCancelModal({
     >
       <DialogContent showCloseButton={!isPending}>
         <DialogHeader>
-          <DialogTitle>Cancel reservation for {reservation.guest.guestName}?</DialogTitle>
-          <DialogDescription>
-            The reservation will be marked cancelled and any held table will be released.
-          </DialogDescription>
+          <DialogTitle>{settings.title}</DialogTitle>
+          <DialogDescription>{settings.description}</DialogDescription>
         </DialogHeader>
 
         <form id={FORM_ID} onSubmit={onSubmit} noValidate>
           <Field data-invalid={Boolean(errors.reason)}>
-            <FieldLabel htmlFor="reservation-cancel-reason">Cancellation reason</FieldLabel>
+            <FieldLabel htmlFor="reservation-cancel-reason">{settings.reasonLabel}</FieldLabel>
             <Textarea
               id="reservation-cancel-reason"
               rows={3}
@@ -78,17 +81,17 @@ export default function ReservationCancelModal({
               aria-invalid={Boolean(errors.reason)}
               {...form.register('reason')}
             />
-            <FieldDescription>Optional, up to 255 characters.</FieldDescription>
+            <FieldDescription>{settings.reasonHint}</FieldDescription>
             <FieldError>{errors.reason?.message}</FieldError>
           </Field>
         </form>
 
         <DialogFooter>
           <Button type="button" variant="outline" disabled={isPending} onClick={hideModal}>
-            Keep reservation
+            {settings.keepLabel}
           </Button>
           <Button type="submit" form={FORM_ID} variant="destructive" disabled={isPending}>
-            {isPending ? 'Cancelling...' : 'Cancel reservation'}
+            {isPending ? settings.pendingLabel : settings.submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

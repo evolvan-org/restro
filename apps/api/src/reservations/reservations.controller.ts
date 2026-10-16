@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -89,6 +90,7 @@ export class ReservationsController {
   }
 
   @Patch(':id')
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
     summary: 'Modify a booked reservation',
@@ -116,6 +118,7 @@ export class ReservationsController {
   }
 
   @Patch(':id/cancel')
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
     summary: 'Cancel a reservation',
@@ -140,6 +143,7 @@ export class ReservationsController {
   }
 
   @Get()
+  @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_READ)
   @ApiOperation({
     summary: 'List reservations',
