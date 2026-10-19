@@ -21,6 +21,7 @@
     "format": "prisma format",
     "validate": "dotenv -e ../../.env -- prisma validate",
     "seed:stock": "dotenv -e ../../.env -- ts-node src/seed-stock.ts",
+    "seed:restaurant": "dotenv -e ../../.env -- ts-node src/seed-restaurant.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
