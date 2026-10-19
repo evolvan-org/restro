@@ -27,12 +27,20 @@ import {
   createTableRequestSchema,
   type CreateTableResponse,
   createTableResponseSchema,
+  type RestaurantTable,
+  restaurantTableSchema,
+  type TableLifecycleStatusListResponse,
+  tableLifecycleStatusListResponseSchema,
   type TableListQuery,
   tableListQuerySchema,
   type TableListResponse,
   tableListResponseSchema,
   type TableOptionsResponse,
   tableOptionsResponseSchema,
+  type TransitionTableStatusRequest,
+  transitionTableStatusRequestSchema,
+  type TransitionTableStatusResponse,
+  transitionTableStatusResponseSchema,
   type UpdateTableActiveRequest,
   updateTableActiveRequestSchema,
   type UpdateTableActiveResponse,
@@ -44,13 +52,13 @@ import {
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
-import type { Actor } from '../../common/auth/authenticated-request';
-import { CurrentActor } from '../../common/auth/current-actor.decorator';
-import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
-import { PermissionsGuard } from '../../common/auth/permissions.guard';
-import { RequirePermissions } from '../../common/auth/require-permissions.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { apiError, ApiZodQuery, zodOpenApiSchema } from '../../common/swagger/zod-openapi';
+import type { Actor } from '../common/auth/authenticated-request';
+import { CurrentActor } from '../common/auth/current-actor.decorator';
+import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
+import { PermissionsGuard } from '../common/auth/permissions.guard';
+import { RequirePermissions } from '../common/auth/require-permissions.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
 import { TablesService } from './tables.service';
 
 @ApiTags('tables')
@@ -58,11 +66,11 @@ import { TablesService } from './tables.service';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
 @ApiForbiddenResponse(apiError('Missing permission'))
-@Controller('table/tables')
+@Controller()
 export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
 
-  @Get()
+  @Get('tables')
   @RequirePermissions(Permission.RESTAURANT_READ)
   @ApiOperation({
     summary: 'List restaurant tables',
@@ -82,7 +90,7 @@ export class TablesController {
     return this.tablesService.list(actor, query);
   }
 
-  @Get('options')
+  @Get('tables/options')
   @RequirePermissions(Permission.RESTAURANT_READ)
   @ApiOperation({
     summary: 'List table form options',
@@ -97,7 +105,41 @@ export class TablesController {
     return this.tablesService.options(actor);
   }
 
-  @Post()
+  @Get('table-statuses')
+  @RequirePermissions(Permission.RESTAURANT_READ)
+  @ApiOperation({
+    summary: 'List table lifecycle statuses',
+    description:
+      "Lists active lifecycle states for the caller's restaurant in display order. Requires `restaurant:read`.",
+  })
+  @ApiOkResponse({
+    description: 'Active table lifecycle statuses',
+    schema: zodOpenApiSchema(tableLifecycleStatusListResponseSchema),
+  })
+  listLifecycleStatuses(@CurrentActor() actor: Actor): Promise<TableLifecycleStatusListResponse> {
+    return this.tablesService.listLifecycleStatuses(actor);
+  }
+
+  @Get('table/:id')
+  @RequirePermissions(Permission.RESTAURANT_READ)
+  @ApiOperation({
+    summary: 'Get a restaurant table',
+    description: 'Returns a single table in the restaurant. Requires `restaurant:read`.',
+  })
+  @ApiOkResponse({
+    description: 'The requested table',
+    schema: zodOpenApiSchema(restaurantTableSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid table id'))
+  @ApiNotFoundResponse(apiError('No table with this id in your restaurant'))
+  get(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<RestaurantTable> {
+    return this.tablesService.get(actor, id);
+  }
+
+  @Post('tables')
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Create a restaurant table',
@@ -118,19 +160,18 @@ export class TablesController {
     return this.tablesService.create(actor, input);
   }
 
-  @Patch(':id')
+  @Patch('table/:id')
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Update a restaurant table',
-    description:
-      'Updates table number, capacity, section or current status. Requires `restaurant:write`.',
+    description: 'Updates table number, capacity or section. Requires `restaurant:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateTableRequestSchema) })
   @ApiOkResponse({
     description: 'The updated table',
     schema: zodOpenApiSchema(updateTableResponseSchema),
   })
-  @ApiBadRequestResponse(apiError('Invalid data, section or status'))
+  @ApiBadRequestResponse(apiError('Invalid data or section'))
   @ApiNotFoundResponse(apiError('No table with this id in your restaurant'))
   @ApiConflictResponse(apiError('The table number is already in use'))
   update(
@@ -141,7 +182,7 @@ export class TablesController {
     return this.tablesService.update(actor, id, input);
   }
 
-  @Patch(':id/active')
+  @Patch('table/:id/active')
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Activate or deactivate a restaurant table',
@@ -161,5 +202,28 @@ export class TablesController {
     @Body(new ZodValidationPipe(updateTableActiveRequestSchema)) input: UpdateTableActiveRequest,
   ): Promise<UpdateTableActiveResponse> {
     return this.tablesService.updateActiveState(actor, id, input);
+  }
+
+  @Patch('tables/:id/status')
+  @RequirePermissions(Permission.TABLE_UPDATE_STATUS)
+  @ApiOperation({
+    summary: 'Transition a table lifecycle status',
+    description: 'Moves a table to a permitted lifecycle state. Requires `table:update-status`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(transitionTableStatusRequestSchema) })
+  @ApiOkResponse({
+    description: 'The table with its updated status',
+    schema: zodOpenApiSchema(transitionTableStatusResponseSchema),
+  })
+  @ApiBadRequestResponse(apiError('Invalid table id or status code'))
+  @ApiNotFoundResponse(apiError('The table or target status does not exist'))
+  @ApiConflictResponse(apiError('The requested status transition is not allowed'))
+  transitionStatus(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(transitionTableStatusRequestSchema))
+    input: TransitionTableStatusRequest,
+  ): Promise<TransitionTableStatusResponse> {
+    return this.tablesService.transitionStatus(actor, id, input);
   }
 }

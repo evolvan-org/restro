@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   ChefHat,
   ClipboardList,
+  LayoutGrid,
   type LucideIcon,
   Receipt,
   Settings,
@@ -52,6 +53,13 @@ const MODULES: readonly Module[] = [
     icon: CalendarCheck,
     permission: Permission.RESERVATION_READ,
     href: '/reservations',
+  },
+  {
+    title: 'Live floor board',
+    description: 'Real-time table availability across the floor.',
+    icon: LayoutGrid,
+    permission: Permission.RESTAURANT_READ,
+    href: '/floor',
   },
   {
     title: 'Orders',

@@ -8,17 +8,20 @@ import {
   type CreateTableRequest,
   type CreateTableResponse,
   type RestaurantTable,
+  type TableLifecycleStatusListResponse,
   type TableListQuery,
   type TableListResponse,
   type TableOptionsResponse,
+  type TransitionTableStatusRequest,
+  type TransitionTableStatusResponse,
   type UpdateTableActiveRequest,
   type UpdateTableActiveResponse,
   type UpdateTableRequest,
   type UpdateTableResponse,
 } from '@rms/api-contract';
-import { buildPageMeta } from '@rms/shared';
+import { buildPageMeta, isTableStatusTransitionAllowed } from '@rms/shared';
 
-import type { Actor } from '../../common/auth/authenticated-request';
+import type { Actor } from '../common/auth/authenticated-request';
 import {
   type TableDetails,
   TableNumberConflictError,
@@ -69,6 +72,16 @@ export class TablesService {
     return { sections, statuses };
   }
 
+  listLifecycleStatuses(actor: Actor): Promise<TableLifecycleStatusListResponse> {
+    return this.tablesRepository
+      .findLifecycleStatuses(actor.restaurantId)
+      .then((statuses) => statuses.map(({ code, name, sortOrder }) => ({ code, name, sortOrder })));
+  }
+
+  async get(actor: Actor, tableId: string): Promise<RestaurantTable> {
+    return toRestaurantTable(await this.findInRestaurant(actor.restaurantId, tableId));
+  }
+
   async update(
     actor: Actor,
     tableId: string,
@@ -116,6 +129,45 @@ export class TablesService {
     return toRestaurantTable(updated);
   }
 
+  async transitionStatus(
+    actor: Actor,
+    tableId: string,
+    input: TransitionTableStatusRequest,
+  ): Promise<TransitionTableStatusResponse> {
+    const table = await this.findInRestaurant(actor.restaurantId, tableId);
+    const target = await this.tablesRepository.findLifecycleStatus(
+      actor.restaurantId,
+      input.statusCode,
+    );
+    if (!target) {
+      throw new NotFoundException(`Table status ${input.statusCode} not found`);
+    }
+
+    if (!isTableStatusTransitionAllowed(table.currentStatus.code, target.code)) {
+      throw new ConflictException(
+        `Table status cannot transition from ${table.currentStatus.code} to ${target.code}`,
+      );
+    }
+
+    const updated = await this.tablesRepository.updateStatus(
+      actor.restaurantId,
+      tableId,
+      table.currentStatus.id,
+      target.id,
+    );
+    if (!updated) {
+      const current = await this.tablesRepository.findById(actor.restaurantId, tableId);
+      if (!current) {
+        throw new NotFoundException('Table not found');
+      }
+      throw new ConflictException(
+        `Table status cannot transition from ${current.currentStatus.code} to ${target.code}`,
+      );
+    }
+
+    return toRestaurantTable(updated);
+  }
+
   private async findInRestaurant(restaurantId: string, tableId: string): Promise<TableRecord> {
     const table = await this.tablesRepository.findById(restaurantId, tableId);
     if (!table) {
@@ -147,15 +199,10 @@ export class TablesService {
     if (input.sectionId !== undefined) {
       await this.assertSectionExists(restaurantId, input.sectionId);
     }
-    if (input.currentStatusId !== undefined) {
-      await this.assertStatusExists(restaurantId, input.currentStatusId);
-    }
-
     return {
       ...(input.tableNumber !== undefined && { tableNumber: input.tableNumber }),
       ...(input.capacity !== undefined && { capacity: input.capacity }),
       ...(input.sectionId !== undefined && { sectionId: input.sectionId }),
-      ...(input.currentStatusId !== undefined && { currentStatusId: input.currentStatusId }),
     };
   }
 

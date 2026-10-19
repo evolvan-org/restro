@@ -1,3 +1,4 @@
+import { TABLE_STATUS_CODES } from '@rms/shared';
 import { z } from 'zod';
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
 
@@ -37,6 +38,24 @@ export const tableStatusSummarySchema = z
     id: z.string().uuid(),
     code: z.string().min(1),
     name: z.string().min(1),
+  })
+  .strict();
+
+export const tableLifecycleStatusCodeSchema = z.enum(TABLE_STATUS_CODES);
+
+export const tableLifecycleStatusSchema = z
+  .object({
+    code: tableLifecycleStatusCodeSchema,
+    name: z.string().min(1),
+    sortOrder: z.number().int(),
+  })
+  .strict();
+
+export const tableLifecycleStatusListResponseSchema = z.array(tableLifecycleStatusSchema);
+
+export const transitionTableStatusRequestSchema = z
+  .object({
+    statusCode: tableLifecycleStatusCodeSchema,
   })
   .strict();
 
@@ -81,13 +100,11 @@ const tableDetailsSchema = z
 export const createTableRequestSchema = tableDetailsSchema;
 
 export const updateTableRequestSchema = tableDetailsSchema
+  .omit({ currentStatusId: true })
   .partial()
   .refine(
-    ({ tableNumber, capacity, sectionId, currentStatusId }) =>
-      tableNumber !== undefined ||
-      capacity !== undefined ||
-      sectionId !== undefined ||
-      currentStatusId !== undefined,
+    ({ tableNumber, capacity, sectionId }) =>
+      tableNumber !== undefined || capacity !== undefined || sectionId !== undefined,
     { message: 'At least one field must be provided for update' },
   );
 
@@ -107,9 +124,17 @@ export const tableOptionsResponseSchema = z
 export const createTableResponseSchema = restaurantTableSchema;
 export const updateTableResponseSchema = restaurantTableSchema;
 export const updateTableActiveResponseSchema = restaurantTableSchema;
+export const transitionTableStatusResponseSchema = restaurantTableSchema;
 
 export type TableSection = z.infer<typeof tableSectionSchema>;
 export type TableStatusSummary = z.infer<typeof tableStatusSummarySchema>;
+export type TableLifecycleStatusCode = z.infer<typeof tableLifecycleStatusCodeSchema>;
+export type TableLifecycleStatus = z.infer<typeof tableLifecycleStatusSchema>;
+export type TableLifecycleStatusListResponse = z.infer<
+  typeof tableLifecycleStatusListResponseSchema
+>;
+export type TransitionTableStatusRequest = z.infer<typeof transitionTableStatusRequestSchema>;
+export type TransitionTableStatusResponse = z.infer<typeof transitionTableStatusResponseSchema>;
 export type RestaurantTable = z.infer<typeof restaurantTableSchema>;
 export type TableListQuery = z.infer<typeof tableListQuerySchema>;
 export type TableListResponse = z.infer<typeof tableListResponseSchema>;

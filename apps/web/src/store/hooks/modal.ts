@@ -1,6 +1,9 @@
 import type {
   CreateStaffResponse,
   DiningSection,
+  MenuCategory,
+  MenuItem,
+  Reservation,
   RestaurantTable,
   StaffAccount,
   TableStatus,
@@ -81,6 +84,28 @@ export function useShowDiningSectionActionModal(): (
   };
 }
 
+/** Confirm deactivating or reactivating a menu category. */
+export function useShowMenuCategoryStatusModal(): (
+  category: MenuCategory,
+  action: 'deactivate' | 'activate',
+) => void {
+  const showModal = useShowModal();
+  return (category, action) => {
+    showModal(ModalType.MenuCategoryStatus, { category, action });
+  };
+}
+
+/** Confirm deactivating or reactivating a menu item. */
+export function useShowMenuItemStatusModal(): (
+  item: MenuItem,
+  action: 'deactivate' | 'activate',
+) => void {
+  const showModal = useShowModal();
+  return (item, action) => {
+    showModal(ModalType.MenuItemStatus, { item, action });
+  };
+}
+
 /** Ask to activate, deactivate, or archive a table status. */
 export function useShowTableStatusActionModal(): (
   status: TableStatus,
@@ -97,6 +122,14 @@ export function useShowTableActiveModal(): (table: RestaurantTable) => void {
   const showModal = useShowModal();
   return (table) => {
     showModal(ModalType.TableActive, { table });
+  };
+}
+
+/** Open the reservation cancellation form. */
+export function useShowReservationCancelModal(): (reservation: Reservation) => void {
+  const showModal = useShowModal();
+  return (reservation) => {
+    showModal(ModalType.ReservationCancel, { reservation });
   };
 }
 

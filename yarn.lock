@@ -1859,6 +1859,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@orchidjs/sifter@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "@orchidjs/sifter@npm:1.1.0"
+  dependencies:
+    "@orchidjs/unicode-variants": "npm:^1.1.2"
+  checksum: 10c0/615f4c8f340c062d1a944ae88d7d745353e45d14d002c6966bc02ef44aca13c904942836f9ad89cbe2b5d8fa3b885c2b00b65be8d318cabc75f440949068ed6a
+  languageName: node
+  linkType: hard
+
+"@orchidjs/unicode-variants@npm:^1.1.2":
+  version: 1.2.2
+  resolution: "@orchidjs/unicode-variants@npm:1.2.2"
+  checksum: 10c0/e1f0dd5c77b4fda9b95a6ab9e5de67f2eb6fa5f2302afef277dac328d54f5ac9978890802f5384f283a2bffafef09d13be78c2863c0482e3be638774577fa817
+  languageName: node
+  linkType: hard
+
 "@parcel/watcher-android-arm64@npm:2.6.0":
   version: 2.6.0
   resolution: "@parcel/watcher-android-arm64@npm:2.6.0"
@@ -2199,6 +2215,7 @@ __metadata:
     shadcn: "npm:^4.21.0"
     sonner: "npm:^2.0.8"
     tailwindcss: "npm:^4.1.0"
+    tom-select: "npm:^2.6.2"
     tw-animate-css: "npm:^1.4.0"
     typescript: "npm:^5.6.2"
   languageName: unknown
@@ -10808,6 +10825,16 @@ __metadata:
     "@tokenizer/token": "npm:^0.3.0"
     ieee754: "npm:^1.2.1"
   checksum: 10c0/8786e28e3cb65b9e890bc3c38def98e6dfe4565538237f8c0e47dbe549ed8f5f00de8dc464717868308abb4729f1958f78f69e1c4c3deebbb685729113a6fee8
+  languageName: node
+  linkType: hard
+
+"tom-select@npm:^2.6.2":
+  version: 2.6.2
+  resolution: "tom-select@npm:2.6.2"
+  dependencies:
+    "@orchidjs/sifter": "npm:^1.1.0"
+    "@orchidjs/unicode-variants": "npm:^1.1.2"
+  checksum: 10c0/da6d71c8f9161d75346ab6a166731286153ed2b0150fc927bbfea0a36779620179cf611c7c47ea78a49b4f02506d60d6e70f87b3598d6a8023c658730bae97d4
   languageName: node
   linkType: hard
 

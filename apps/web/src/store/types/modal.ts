@@ -18,6 +18,9 @@ export enum ModalType {
   StaffPasswordRegeneration,
   TableStatusAction,
   TableActive,
+  MenuCategoryStatus,
+  MenuItemStatus,
+  ReservationCancel,
 }
 
 /**

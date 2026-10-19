@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { CreateWalkInRequest, Reservation } from '@rms/api-contract';
 
 import type { Actor } from '../../common/auth/authenticated-request';
-import { toReservation } from '../reservations/reservations.mapper';
-import { ReservationsRepository } from '../reservations/reservations.repository';
+import { toReservation } from '../reservations.mapper';
+import { ReservationsRepository } from '../reservations.repository';
 
 @Injectable()
 export class WalkInsService {

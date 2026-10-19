@@ -16,7 +16,13 @@ import {
   type UpdateStaffRequest,
   type UpdateStaffStatusRequest,
 } from '@rms/api-contract';
-import { isRole, Role, ROLE_PERMISSIONS, roleHasAll } from '@rms/permissions';
+import {
+  ELIGIBILITY_ONLY_PERMISSIONS,
+  isRole,
+  Role,
+  ROLE_PERMISSIONS,
+  roleHasAll,
+} from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 import { hash } from 'bcrypt';
 
@@ -189,7 +195,10 @@ function canAssignRole(actor: Actor, roleName: string): boolean {
   return (
     isRole(roleName) &&
     roleName !== Role.OWNER &&
-    roleHasAll(actor.role, ROLE_PERMISSIONS[roleName])
+    roleHasAll(
+      actor.role,
+      ROLE_PERMISSIONS[roleName].filter((p) => !ELIGIBILITY_ONLY_PERMISSIONS.includes(p)),
+    )
   );
 }
 

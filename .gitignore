@@ -24,6 +24,7 @@ out/
 
 # Prisma
 apps/api/prisma/migrations/dev.db*
+packages/db/prisma/seed.ts
 
 # Logs
 *.log
