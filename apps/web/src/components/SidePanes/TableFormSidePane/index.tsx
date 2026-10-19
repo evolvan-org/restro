@@ -15,11 +15,13 @@ import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import {
   getTable,
+  useCaptainOptions,
   useCreateTable,
   useTableOptions,
   useTransitionTableStatus,
@@ -48,6 +50,9 @@ export default function TableFormSidePane({
   const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
   const canConfigure = can(Permission.RESTAURANT_WRITE);
   const isStatusOnly = isEdit && !canConfigure;
+  // Captains are saved through the table update call, which needs restaurant:write.
+  const canAssignCaptain = canConfigure && can(Permission.TABLE_ASSIGN_CAPTAIN);
+  const captains = useCaptainOptions(canAssignCaptain);
   const hideSidePane = useHideSidePane();
 
   const form = useForm<CreateTableRequest>({
@@ -58,6 +63,7 @@ export default function TableFormSidePane({
       capacity: table?.capacity ?? 2,
       sectionId: table?.section.id ?? '',
       currentStatusId: table?.currentStatus.id ?? '',
+      captainUserId: table?.captainUserId ?? null,
     },
   });
   const { errors } = form.formState;
@@ -66,7 +72,8 @@ export default function TableFormSidePane({
     let detailsSaved = false;
     try {
       if (table) {
-        const { currentStatusId, ...details } = values;
+        const { currentStatusId, captainUserId, ...details } = values;
+        const captainChanged = canAssignCaptain && (captainUserId ?? null) !== table.captainUserId;
         const statusChanged = currentStatusId !== table.currentStatus.id;
         const target = options.data?.statuses.find((status) => status.id === currentStatusId);
         if (statusChanged && (!canChangeStatus || !target)) {
@@ -76,10 +83,14 @@ export default function TableFormSidePane({
         const configurationChanged =
           details.tableNumber !== table.tableNumber ||
           details.capacity !== table.capacity ||
-          details.sectionId !== table.section.id;
+          details.sectionId !== table.section.id ||
+          captainChanged;
         let currentStatus = table.currentStatus;
         if (canConfigure && configurationChanged) {
-          const updated = await updateTable({ id: table.id, input: details });
+          const updated = await updateTable({
+            id: table.id,
+            input: captainChanged ? { ...details, captainUserId: captainUserId ?? null } : details,
+          });
           currentStatus = updated.currentStatus;
           detailsSaved = true;
         }
@@ -87,7 +98,10 @@ export default function TableFormSidePane({
           await transitionStatus({ id: table.id, input: { statusCode: target.code } });
         }
       } else if (canConfigure) {
-        await createTable(values);
+        await createTable({
+          ...values,
+          captainUserId: canAssignCaptain ? (values.captainUserId ?? null) : undefined,
+        });
       }
       hideSidePane();
     } catch (error) {
@@ -113,6 +127,13 @@ export default function TableFormSidePane({
   const displayedSections = table
     ? [table.section, ...sections.filter((section) => section.id !== table.section.id)]
     : sections;
+  const captainOptions = [
+    { value: '', label: 'Unassigned' },
+    ...(table?.captain && !captains.data?.some((captain) => captain.id === table.captain?.id)
+      ? [{ value: table.captain.id, label: table.captain.name }]
+      : []),
+    ...(captains.data ?? []).map((captain) => ({ value: captain.id, label: captain.name })),
+  ];
   const displayedStatuses = table
     ? [
         statuses.find((status) => status.id === table.currentStatus.id) ?? table.currentStatus,
@@ -211,6 +232,37 @@ export default function TableFormSidePane({
             )}
             <FieldError>{errors.currentStatusId?.message}</FieldError>
           </Field>
+
+          {canAssignCaptain && (
+            <Field data-invalid={Boolean(errors.captainUserId)}>
+              <FieldLabel htmlFor="table-captain">Captain</FieldLabel>
+              {captains.isPending ? (
+                <p className="text-sm text-muted-foreground">Loading captains...</p>
+              ) : (
+                <SearchableSelect
+                  id="table-captain"
+                  value={form.watch('captainUserId') ?? ''}
+                  options={captainOptions}
+                  placeholder="Unassigned"
+                  aria-label="Captain"
+                  aria-invalid={Boolean(errors.captainUserId)}
+                  disabled={captains.isError}
+                  onChange={(next) =>
+                    form.setValue('captainUserId', next || null, { shouldDirty: true })
+                  }
+                />
+              )}
+              <FieldDescription>
+                Optional. Only active captains of this restaurant can be selected.
+              </FieldDescription>
+              {captains.isError && (
+                <p role="alert" className="text-sm text-destructive">
+                  Unable to load captains.
+                </p>
+              )}
+              <FieldError>{errors.captainUserId?.message}</FieldError>
+            </Field>
+          )}
 
           {errors.root && (
             <p role="alert" className="text-sm text-destructive">

@@ -20,6 +20,10 @@ export const Permission = {
   RESTAURANT_READ: 'restaurant:read',
   RESTAURANT_WRITE: 'restaurant:write',
   TABLE_UPDATE_STATUS: 'table:update-status',
+  /** Authority to set or clear a table's captain. */
+  TABLE_ASSIGN_CAPTAIN: 'table:assign-captain',
+  /** Eligibility to be a table's captain (not an authority; only the CAPTAIN role). */
+  TABLE_BE_CAPTAIN: 'table:be-captain',
 
   // Menu
   MENU_READ: 'menu:read',
@@ -32,10 +36,6 @@ export const Permission = {
   RESERVATION_READ: 'reservation:read',
   RESERVATION_WRITE: 'reservation:write',
   RESERVATION_ASSIGN_TABLE: 'reservation:assign-table',
-  /** Authority to set or clear a reservation's captain. */
-  RESERVATION_ASSIGN_CAPTAIN: 'reservation:assign-captain',
-  /** Eligibility to be a reservation's captain (not an authority; only the CAPTAIN role). */
-  RESERVATION_BE_CAPTAIN: 'reservation:be-captain',
 
   // Orders
   ORDER_READ: 'order:read',

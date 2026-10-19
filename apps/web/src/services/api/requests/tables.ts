@@ -1,4 +1,7 @@
 import {
+  type AssignTableCaptainRequest,
+  type CaptainOptionsResponse,
+  captainOptionsResponseSchema,
   type CreateTableRequest,
   type CreateTableResponse,
   createTableResponseSchema,
@@ -31,6 +34,43 @@ import { TableQueryKey } from '../types/TableQueryKey';
 
 type UpdateTableVariables = { id: string; input: UpdateTableRequest };
 type UpdateTableActiveVariables = { id: string; input: UpdateTableActiveRequest };
+type AssignTableCaptainVariables = { id: string; input: AssignTableCaptainRequest };
+
+export function useCaptainOptions(enabled: boolean): UseQueryResult<CaptainOptionsResponse> {
+  const showApiError = useShowApiError('Unable to load captains.');
+  const query = useQuery({
+    queryKey: [TableQueryKey.Tables, 'captains'],
+    queryFn: async ({ signal }): Promise<CaptainOptionsResponse> => {
+      const response = await api.get('/tables/captains', { signal });
+      return captainOptionsResponseSchema.parse(response.data);
+    },
+    enabled,
+  });
+
+  useEffect(() => {
+    if (query.error) showApiError(query.error);
+  }, [query.error, showApiError]);
+
+  return query;
+}
+
+export function useAssignTableCaptain(): UseMutationResult<
+  RestaurantTable,
+  Error,
+  AssignTableCaptainVariables
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to change the captain.');
+
+  return useMutation<RestaurantTable, Error, AssignTableCaptainVariables>({
+    mutationFn: async ({ id, input }): Promise<RestaurantTable> => {
+      const response = await api.patch(`/tables/${id}/captain`, input);
+      return restaurantTableSchema.parse(response.data);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onError: showApiError,
+  });
+}
 
 /** Load every active-table page so the picker cannot silently omit later tables. */
 export function useAssignableTables(enabled: boolean): UseQueryResult<RestaurantTable[]> {

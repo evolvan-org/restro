@@ -24,18 +24,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
-  type AssignReservationCaptainRequest,
-  assignReservationCaptainRequestSchema,
-  type AssignReservationCaptainResponse,
-  assignReservationCaptainResponseSchema,
   type AssignReservationTableRequest,
   assignReservationTableRequestSchema,
   type AssignReservationTableResponse,
   assignReservationTableResponseSchema,
   type CancelReservationRequest,
   cancelReservationRequestSchema,
-  type CaptainOptionsResponse,
-  captainOptionsResponseSchema,
   type CreateReservationRequest,
   createReservationRequestSchema,
   type Reservation,
@@ -67,50 +61,6 @@ import { ReservationsService } from './reservations.service';
 @Controller('reservations')
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
-
-  @Get('captains')
-  @Header('Cache-Control', 'no-store')
-  @RequirePermissions(Permission.RESERVATION_ASSIGN_CAPTAIN)
-  @ApiOperation({
-    summary: 'List eligible captains',
-    description:
-      "Active users in the caller's restaurant whose role holds `reservation:be-captain`. " +
-      'Requires `reservation:assign-captain`.',
-  })
-  @ApiOkResponse({
-    description: 'Eligible captains',
-    schema: zodOpenApiSchema(captainOptionsResponseSchema),
-  })
-  listCaptains(@CurrentActor() actor: Actor): Promise<CaptainOptionsResponse> {
-    return this.service.listCaptains(actor);
-  }
-
-  @Patch(':id/captain')
-  @Header('Cache-Control', 'no-store')
-  @RequirePermissions(Permission.RESERVATION_ASSIGN_CAPTAIN)
-  @ApiOperation({
-    summary: 'Assign, reassign or unassign a reservation captain',
-    description:
-      'Sets captainUserId on a BOOKED or SEATED reservation; null clears it. The captain must be an ' +
-      'active user of the same restaurant whose role holds `reservation:be-captain`. ' +
-      'Requires `reservation:assign-captain`.',
-  })
-  @ApiBody({ schema: zodOpenApiSchema(assignReservationCaptainRequestSchema) })
-  @ApiOkResponse({
-    description: 'The updated reservation with its embedded captain (null when unassigned)',
-    schema: zodOpenApiSchema(assignReservationCaptainResponseSchema),
-  })
-  @ApiBadRequestResponse(apiError('Invalid id or body, inactive user or ineligible role'))
-  @ApiNotFoundResponse(apiError('The reservation or captain does not exist in your restaurant'))
-  @ApiConflictResponse(apiError('The reservation is not active'))
-  assignCaptain(
-    @CurrentActor() actor: Actor,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(assignReservationCaptainRequestSchema))
-    input: AssignReservationCaptainRequest,
-  ): Promise<AssignReservationCaptainResponse> {
-    return this.service.assignCaptain(actor, id, input);
-  }
 
   @Patch(':id/table')
   @RequirePermissions(Permission.RESERVATION_ASSIGN_TABLE)

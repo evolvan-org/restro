@@ -1,10 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  type AssignTableCaptainRequest,
+  type AssignTableCaptainResponse,
+  type CaptainOptionsResponse,
   type CreateTableRequest,
   type CreateTableResponse,
   type RestaurantTable,
@@ -19,6 +23,7 @@ import {
   type UpdateTableRequest,
   type UpdateTableResponse,
 } from '@rms/api-contract';
+import { isRole, Permission, roleHasPermission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
@@ -34,6 +39,32 @@ const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use';
 @Injectable()
 export class TablesService {
   constructor(private readonly tablesRepository: TablesRepository) {}
+
+  async listCaptains(actor: Actor): Promise<CaptainOptionsResponse> {
+    const users = await this.tablesRepository.listActiveUsers(actor.restaurantId);
+    return users
+      .filter((user) => isEligibleCaptainRole(user.role.name))
+      .map((user) => ({ id: user.id, name: user.name, role: user.role.name }));
+  }
+
+  async assignCaptain(
+    actor: Actor,
+    tableId: string,
+    input: AssignTableCaptainRequest,
+  ): Promise<AssignTableCaptainResponse> {
+    await this.findInRestaurant(actor.restaurantId, tableId);
+    await this.assertCaptainEligible(actor.restaurantId, input.captainUserId);
+
+    const updated = await this.tablesRepository.updateCaptain(
+      actor.restaurantId,
+      tableId,
+      input.captainUserId,
+    );
+    if (!updated) {
+      throw new NotFoundException('Table not found');
+    }
+    return toRestaurantTable(updated);
+  }
 
   async list(actor: Actor, query: TableListQuery): Promise<TableListResponse> {
     const { page, pageSize, search, sectionId, statusId, isActive } = query;
@@ -53,6 +84,7 @@ export class TablesService {
   }
 
   async create(actor: Actor, input: CreateTableRequest): Promise<CreateTableResponse> {
+    if (input.captainUserId) this.assertMayAssignCaptain(actor);
     const details = await this.toTableDetails(actor.restaurantId, input);
     await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber);
 
@@ -87,6 +119,7 @@ export class TablesService {
     tableId: string,
     input: UpdateTableRequest,
   ): Promise<UpdateTableResponse> {
+    if (input.captainUserId !== undefined) this.assertMayAssignCaptain(actor);
     const existing = await this.findInRestaurant(actor.restaurantId, tableId);
     const details = await this.toPartialTableDetails(actor.restaurantId, input);
 
@@ -179,12 +212,15 @@ export class TablesService {
     await this.assertSectionExists(restaurantId, input.sectionId);
     const currentStatusId = input.currentStatusId ?? (await this.defaultStatusId(restaurantId));
     await this.assertStatusExists(restaurantId, currentStatusId);
+    const captainUserId = input.captainUserId ?? null;
+    await this.assertCaptainEligible(restaurantId, captainUserId);
 
     return {
       tableNumber: input.tableNumber,
       capacity: input.capacity,
       sectionId: input.sectionId,
       currentStatusId,
+      captainUserId,
     };
   }
 
@@ -195,11 +231,46 @@ export class TablesService {
     if (input.sectionId !== undefined) {
       await this.assertSectionExists(restaurantId, input.sectionId);
     }
+    if (input.captainUserId !== undefined) {
+      await this.assertCaptainEligible(restaurantId, input.captainUserId);
+    }
     return {
       ...(input.tableNumber !== undefined && { tableNumber: input.tableNumber }),
       ...(input.capacity !== undefined && { capacity: input.capacity }),
       ...(input.sectionId !== undefined && { sectionId: input.sectionId }),
+      ...(input.captainUserId !== undefined && { captainUserId: input.captainUserId }),
     };
+  }
+
+  /** Setting, changing or clearing a captain needs `table:assign-captain`, beyond `restaurant:write`. */
+  private assertMayAssignCaptain(actor: Actor): void {
+    if (!roleHasPermission(actor.role, Permission.TABLE_ASSIGN_CAPTAIN)) {
+      throw new ForbiddenException('Missing permission to assign a captain');
+    }
+  }
+
+  private async assertCaptainEligible(
+    restaurantId: string,
+    captainUserId: string | null,
+  ): Promise<void> {
+    if (captainUserId === null) return;
+    const user = await this.tablesRepository.findCaptainCandidate(captainUserId);
+    if (!user) {
+      throw new NotFoundException('Captain not found');
+    }
+    if (user.restaurantId !== restaurantId) {
+      throw new BadRequestException({
+        message: ['captainUserId: User does not belong to this restaurant'],
+      });
+    }
+    if (user.status !== 'ACTIVE') {
+      throw new BadRequestException({ message: ['captainUserId: User is not active'] });
+    }
+    if (!isEligibleCaptainRole(user.role.name)) {
+      throw new BadRequestException({
+        message: ['captainUserId: User is not eligible to be a captain'],
+      });
+    }
   }
 
   private async assertSectionExists(restaurantId: string, sectionId: string): Promise<void> {
@@ -252,7 +323,17 @@ function toRestaurantTable(record: TableRecord): RestaurantTable {
     isActive: record.isActive,
     section: record.section,
     currentStatus: record.currentStatus,
+    captainUserId: record.captainUserId,
+    captain: record.captain && {
+      id: record.captain.id,
+      name: record.captain.name,
+      role: record.captain.role.name,
+    },
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
+}
+
+function isEligibleCaptainRole(roleName: string): boolean {
+  return isRole(roleName) && roleHasPermission(roleName, Permission.TABLE_BE_CAPTAIN);
 }

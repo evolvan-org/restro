@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@rms/db';
+import { Prisma, UserStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
 
@@ -10,6 +10,8 @@ const restaurantTableSelect = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
+  captainUserId: true,
+  captain: { select: { id: true, name: true, role: { select: { name: true } } } },
   section: {
     select: {
       id: true,
@@ -43,6 +45,16 @@ const lifecycleStatusSelect = {
   sortOrder: true,
 } satisfies Prisma.TableStatusSelect;
 
+const captainCandidateSelect = {
+  id: true,
+  restaurantId: true,
+  name: true,
+  status: true,
+  role: { select: { name: true } },
+} satisfies Prisma.UserSelect;
+
+export type CaptainCandidate = Prisma.UserGetPayload<{ select: typeof captainCandidateSelect }>;
+
 export type TableRecord = Prisma.RestaurantTableGetPayload<{
   select: typeof restaurantTableSelect;
 }>;
@@ -66,6 +78,7 @@ export type TableDetails = {
   capacity: number;
   sectionId: string;
   currentStatusId: string;
+  captainUserId?: string | null;
 };
 
 export class TableNumberConflictError extends Error {
@@ -116,6 +129,33 @@ export class TablesRepository {
       where: { id: tableId, restaurantId },
       select: restaurantTableSelect,
     });
+  }
+
+  findCaptainCandidate(userId: string): Promise<CaptainCandidate | null> {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: captainCandidateSelect,
+    });
+  }
+
+  listActiveUsers(restaurantId: string): Promise<CaptainCandidate[]> {
+    return this.prisma.user.findMany({
+      where: { restaurantId, status: UserStatus.ACTIVE },
+      select: captainCandidateSelect,
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async updateCaptain(
+    restaurantId: string,
+    tableId: string,
+    captainUserId: string | null,
+  ): Promise<TableRecord | null> {
+    const { count } = await this.prisma.restaurantTable.updateMany({
+      where: { id: tableId, restaurantId },
+      data: { captainUserId },
+    });
+    return count === 0 ? null : this.findById(restaurantId, tableId);
   }
 
   findSection(restaurantId: string, sectionId: string): Promise<DiningSectionRecord | null> {

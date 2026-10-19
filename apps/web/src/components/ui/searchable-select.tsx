@@ -18,6 +18,12 @@ export type SearchableSelectProps = {
   'aria-invalid'?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Focus and open the dropdown as soon as it mounts. */
+  autoOpen?: boolean;
+  /** Attach the option list to `body` so clipping ancestors (scroll containers) can't hide it. */
+  dropdownInBody?: boolean;
+  /** Called whenever the dropdown closes (after a pick, Escape or clicking away). */
+  onClose?: () => void;
 };
 
 /**
@@ -34,14 +40,19 @@ export function SearchableSelect({
   'aria-invalid': invalid = false,
   disabled = false,
   className,
+  autoOpen = false,
+  dropdownInBody = false,
+  onClose,
 }: SearchableSelectProps): ReactElement {
   const selectRef = useRef<HTMLSelectElement>(null);
   const instanceRef = useRef<TomSelect | null>(null);
   const onChangeRef = useRef(onChange);
+  const onCloseRef = useRef(onClose);
   const latest = useRef({ options, value });
 
   useEffect(() => {
     onChangeRef.current = onChange;
+    onCloseRef.current = onClose;
     latest.current = { options, value };
   });
 
@@ -61,12 +72,35 @@ export function SearchableSelect({
       options: latest.current.options.map((option) => ({ ...option })),
       items: latest.current.value ? [latest.current.value] : [],
       onChange: (next: string) => onChangeRef.current(next),
+      ...(dropdownInBody && { dropdownParent: 'body' }),
+      onDropdownClose: () => onCloseRef.current?.(),
     });
     instanceRef.current = instance;
+    let reposition: (() => void) | null = null;
+    if (dropdownInBody) {
+      // Tom Select anchors a body-level list once on open; keep it glued to the control while
+      // layout settles and while any ancestor (e.g. the table's scroll container) scrolls.
+      instance.dropdown.style.margin = '0';
+      reposition = (): void => instance.positionDropdown();
+      instance.on('dropdown_open', () => {
+        requestAnimationFrame(() => instance.positionDropdown());
+        window.addEventListener('scroll', reposition!, true);
+        window.addEventListener('resize', reposition!);
+      });
+      instance.on('dropdown_close', () => {
+        window.removeEventListener('scroll', reposition!, true);
+        window.removeEventListener('resize', reposition!);
+      });
+    }
+    if (autoOpen) instance.focus();
 
     if (ariaLabel) instance.control_input.setAttribute('aria-label', ariaLabel);
 
     return () => {
+      if (reposition) {
+        window.removeEventListener('scroll', reposition, true);
+        window.removeEventListener('resize', reposition);
+      }
       instance.destroy();
       instanceRef.current = null;
     };

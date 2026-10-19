@@ -23,6 +23,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type AssignTableCaptainRequest,
+  assignTableCaptainRequestSchema,
+  type AssignTableCaptainResponse,
+  assignTableCaptainResponseSchema,
+  type CaptainOptionsResponse,
+  captainOptionsResponseSchema,
   type CreateTableRequest,
   createTableRequestSchema,
   type CreateTableResponse,
@@ -103,6 +109,21 @@ export class TablesController {
   })
   options(@CurrentActor() actor: Actor): Promise<TableOptionsResponse> {
     return this.tablesService.options(actor);
+  }
+
+  @Get('tables/captains')
+  @RequirePermissions(Permission.TABLE_ASSIGN_CAPTAIN)
+  @ApiOperation({
+    summary: 'List eligible captains',
+    description:
+      "Active users in the caller's restaurant whose role holds `table:be-captain`. Requires `table:assign-captain`.",
+  })
+  @ApiOkResponse({
+    description: 'Eligible captains',
+    schema: zodOpenApiSchema(captainOptionsResponseSchema),
+  })
+  listCaptains(@CurrentActor() actor: Actor): Promise<CaptainOptionsResponse> {
+    return this.tablesService.listCaptains(actor);
   }
 
   @Get('table-statuses')
@@ -202,6 +223,31 @@ export class TablesController {
     @Body(new ZodValidationPipe(updateTableActiveRequestSchema)) input: UpdateTableActiveRequest,
   ): Promise<UpdateTableActiveResponse> {
     return this.tablesService.updateActiveState(actor, id, input);
+  }
+
+  @Patch('tables/:id/captain')
+  @RequirePermissions(Permission.TABLE_ASSIGN_CAPTAIN)
+  @ApiOperation({
+    summary: 'Assign, change or clear a table captain',
+    description:
+      'Sets captainUserId on a table; null clears it. The captain must be an active user of the same restaurant whose role holds `table:be-captain`. Requires `table:assign-captain`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(assignTableCaptainRequestSchema) })
+  @ApiOkResponse({
+    description: 'The updated table with its embedded captain (null when unassigned)',
+    schema: zodOpenApiSchema(assignTableCaptainResponseSchema),
+  })
+  @ApiBadRequestResponse(
+    apiError('Invalid id or body, inactive, other-restaurant or ineligible user'),
+  )
+  @ApiNotFoundResponse(apiError('The table or captain does not exist'))
+  assignCaptain(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(assignTableCaptainRequestSchema))
+    input: AssignTableCaptainRequest,
+  ): Promise<AssignTableCaptainResponse> {
+    return this.tablesService.assignCaptain(actor, id, input);
   }
 
   @Patch('tables/:id/status')

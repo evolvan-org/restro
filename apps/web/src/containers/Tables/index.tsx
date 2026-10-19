@@ -5,6 +5,7 @@ import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Pencil, Plus, Search } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
+import TableCaptainAction from '@/components/TableCaptainAction';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,8 @@ export default function Tables(): ReactElement | null {
   const canRead = can(Permission.RESTAURANT_READ);
   const canWrite = can(Permission.RESTAURANT_WRITE);
   const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
-  const hasActions = canWrite || canChangeStatus;
+  const canAssignCaptain = can(Permission.TABLE_ASSIGN_CAPTAIN);
+  const hasActions = canWrite || canChangeStatus || canAssignCaptain;
 
   const [search, setSearch] = useState('');
   const [sectionId, setSectionId] = useState('');
@@ -171,6 +173,7 @@ export default function Tables(): ReactElement | null {
                 <TableHead>Section</TableHead>
                 <TableHead>Capacity</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Captain</TableHead>
                 <TableHead>State</TableHead>
                 {hasActions && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
@@ -182,6 +185,7 @@ export default function Tables(): ReactElement | null {
                   <TableCell>{table.section.name}</TableCell>
                   <TableCell>{table.capacity}</TableCell>
                   <TableCell>{table.currentStatus.name}</TableCell>
+                  <TableCell>{table.captain?.name ?? 'Unassigned'}</TableCell>
                   <TableCell>
                     <Badge variant={table.isActive ? 'default' : 'outline'}>
                       {table.isActive ? 'Active' : 'Inactive'}
@@ -189,17 +193,20 @@ export default function Tables(): ReactElement | null {
                   </TableCell>
                   {hasActions && (
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => showTableForm(table)}
-                          aria-label={`${canWrite ? 'Edit table' : 'Change status for table'} ${table.tableNumber}`}
-                        >
-                          <Pencil aria-hidden />
-                          {canWrite ? 'Edit' : 'Change status'}
-                        </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {canAssignCaptain && <TableCaptainAction table={table} />}
+                        {(canWrite || canChangeStatus) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => showTableForm(table)}
+                            aria-label={`${canWrite ? 'Edit table' : 'Change status for table'} ${table.tableNumber}`}
+                          >
+                            <Pencil aria-hidden />
+                            {canWrite ? 'Edit' : 'Change status'}
+                          </Button>
+                        )}
                         {canWrite && (
                           <Button
                             type="button"
@@ -219,7 +226,7 @@ export default function Tables(): ReactElement | null {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={hasActions ? 6 : 5}
+                    colSpan={hasActions ? 7 : 6}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {tables.isPending
