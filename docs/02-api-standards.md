@@ -34,6 +34,7 @@ Full details, including every `401` cause: [API Reference](04-api-reference.md#a
 
 - `2xx` responses return the resource or a resource envelope directly.
 - Timestamps are ISO-8601 strings (UTC).
+- Selectable-options endpoints are an exception to pagination: `GET /table-statuses` returns the complete array of active default and custom statuses for the caller's restaurant; `GET /tables/options` returns complete section/status options. `GET /table/statuses` remains the paginated status-management endpoint.
 - List endpoints use the `Paginated<T>` shape from `@rms/shared` (`{ data, meta }`). In the contract, extend `paginationQuerySchema` for the query (`page`, `pageSize` ≤ 100) and wrap the item schema with `paginatedResponseSchema(item)`; build `meta` with `buildPageMeta`.
 
 ## Error envelope

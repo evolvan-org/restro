@@ -19,7 +19,7 @@ import {
   type UpdateTableRequest,
   type UpdateTableResponse,
 } from '@rms/api-contract';
-import { buildPageMeta, isTableStatusTransitionAllowed } from '@rms/shared';
+import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import {
@@ -143,10 +143,8 @@ export class TablesService {
       throw new NotFoundException(`Table status ${input.statusCode} not found`);
     }
 
-    if (!isTableStatusTransitionAllowed(table.currentStatus.code, target.code)) {
-      throw new ConflictException(
-        `Table status cannot transition from ${table.currentStatus.code} to ${target.code}`,
-      );
+    if (table.currentStatus.id === target.id) {
+      return toRestaurantTable(table);
     }
 
     const updated = await this.tablesRepository.updateStatus(
@@ -160,9 +158,7 @@ export class TablesService {
       if (!current) {
         throw new NotFoundException('Table not found');
       }
-      throw new ConflictException(
-        `Table status cannot transition from ${current.currentStatus.code} to ${target.code}`,
-      );
+      throw new ConflictException('Table status changed; refresh and retry');
     }
 
     return toRestaurantTable(updated);

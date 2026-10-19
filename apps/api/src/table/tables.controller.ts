@@ -108,12 +108,12 @@ export class TablesController {
   @Get('table-statuses')
   @RequirePermissions(Permission.RESTAURANT_READ)
   @ApiOperation({
-    summary: 'List table lifecycle statuses',
+    summary: 'List selectable table statuses',
     description:
-      "Lists active lifecycle states for the caller's restaurant in display order. Requires `restaurant:read`.",
+      "Lists all active default and custom statuses for the caller's restaurant in display order. Requires `restaurant:read`.",
   })
   @ApiOkResponse({
-    description: 'Active table lifecycle statuses',
+    description: 'Active default and custom table statuses',
     schema: zodOpenApiSchema(tableLifecycleStatusListResponseSchema),
   })
   listLifecycleStatuses(@CurrentActor() actor: Actor): Promise<TableLifecycleStatusListResponse> {
@@ -207,8 +207,9 @@ export class TablesController {
   @Patch('tables/:id/status')
   @RequirePermissions(Permission.TABLE_UPDATE_STATUS)
   @ApiOperation({
-    summary: 'Transition a table lifecycle status',
-    description: 'Moves a table to a permitted lifecycle state. Requires `table:update-status`.',
+    summary: 'Change a table status',
+    description:
+      'Assigns any active default or custom status in the restaurant. Requires `table:update-status`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(transitionTableStatusRequestSchema) })
   @ApiOkResponse({
@@ -217,7 +218,7 @@ export class TablesController {
   })
   @ApiBadRequestResponse(apiError('Invalid table id or status code'))
   @ApiNotFoundResponse(apiError('The table or target status does not exist'))
-  @ApiConflictResponse(apiError('The requested status transition is not allowed'))
+  @ApiConflictResponse(apiError('The table status changed concurrently; refresh and retry'))
   transitionStatus(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

@@ -18,6 +18,7 @@ import {
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 
+import { TableQueryKey } from '../types/TableQueryKey';
 import { TableStatusQueryKey } from '../types/TableStatusQueryKey';
 
 const PAGE_SIZE = 100;
@@ -69,7 +70,11 @@ export function useCreateTableStatus(): UseMutationResult<
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Options] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]),
     onError: showApiError,
   });
 }
@@ -87,7 +92,11 @@ export function useUpdateTableStatus(): UseMutationResult<
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Options] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]),
     onError: showApiError,
   });
 }
@@ -105,7 +114,11 @@ export function useUpdateTableStatusActive(): UseMutationResult<
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Options] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]),
     onError: showApiError,
   });
 }
@@ -119,7 +132,11 @@ export function useArchiveTableStatus(): UseMutationResult<TableStatus, Error, s
       return tableStatusSchema.parse(response.data);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [TableStatusQueryKey.TableStatuses] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Options] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]),
     onError: showApiError,
   });
 }

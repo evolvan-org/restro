@@ -91,6 +91,11 @@ export function useTableOptions(enabled: boolean): UseQueryResult<TableOptionsRe
   });
 }
 
+export async function getTable(id: string): Promise<RestaurantTable> {
+  const response = await api.get(`/table/${id}`);
+  return restaurantTableSchema.parse(response.data);
+}
+
 export function useCreateTable(): UseMutationResult<
   CreateTableResponse,
   Error,
@@ -156,6 +161,12 @@ export function useTransitionTableStatus(): UseMutationResult<
       return restaurantTableSchema.parse(response.data);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
-    onError: showApiError,
+    onError: async (error) => {
+      showApiError(error);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Options] }),
+      ]);
+    },
   });
 }

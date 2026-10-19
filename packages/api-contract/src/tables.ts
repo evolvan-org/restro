@@ -1,6 +1,6 @@
-import { TABLE_STATUS_CODES } from '@rms/shared';
 import { z } from 'zod';
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
+import { tableStatusCodeSchema } from './table-statuses';
 
 const tableNumberSchema = z
   .string()
@@ -41,7 +41,8 @@ export const tableStatusSummarySchema = z
   })
   .strict();
 
-export const tableLifecycleStatusCodeSchema = z.enum(TABLE_STATUS_CODES);
+// Includes every restaurant-defined status code, not only the seeded defaults.
+export const tableLifecycleStatusCodeSchema = tableStatusCodeSchema;
 
 export const tableLifecycleStatusSchema = z
   .object({

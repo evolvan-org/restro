@@ -32,6 +32,8 @@ export default function Tables(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
   const canWrite = can(Permission.RESTAURANT_WRITE);
+  const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
+  const hasActions = canWrite || canChangeStatus;
 
   const [search, setSearch] = useState('');
   const [sectionId, setSectionId] = useState('');
@@ -170,7 +172,7 @@ export default function Tables(): ReactElement | null {
                 <TableHead>Capacity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>State</TableHead>
-                {canWrite && <TableHead className="text-right">Actions</TableHead>}
+                {hasActions && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -185,7 +187,7 @@ export default function Tables(): ReactElement | null {
                       {table.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  {canWrite && (
+                  {hasActions && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -193,19 +195,21 @@ export default function Tables(): ReactElement | null {
                           variant="ghost"
                           size="sm"
                           onClick={() => showTableForm(table)}
-                          aria-label={`Edit table ${table.tableNumber}`}
+                          aria-label={`${canWrite ? 'Edit table' : 'Change status for table'} ${table.tableNumber}`}
                         >
                           <Pencil aria-hidden />
-                          Edit
+                          {canWrite ? 'Edit' : 'Change status'}
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => showActiveModal(table)}
-                        >
-                          {table.isActive ? 'Deactivate' : 'Activate'}
-                        </Button>
+                        {canWrite && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => showActiveModal(table)}
+                          >
+                            {table.isActive ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   )}
@@ -215,7 +219,7 @@ export default function Tables(): ReactElement | null {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canWrite ? 6 : 5}
+                    colSpan={hasActions ? 6 : 5}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {tables.isPending
