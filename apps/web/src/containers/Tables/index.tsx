@@ -6,6 +6,7 @@ import { Pencil, Plus, Search } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
 import TableCaptainAction from '@/components/TableCaptainAction';
+import TableOrderAction from '@/components/TableOrderAction';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +36,8 @@ export default function Tables(): ReactElement | null {
   const canWrite = can(Permission.RESTAURANT_WRITE);
   const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
   const canAssignCaptain = can(Permission.TABLE_ASSIGN_CAPTAIN);
-  const hasActions = canWrite || canChangeStatus || canAssignCaptain;
+  const canReadOrders = can(Permission.ORDER_READ);
+  const hasActions = canWrite || canChangeStatus || canAssignCaptain || canReadOrders;
 
   const [search, setSearch] = useState('');
   const [sectionId, setSectionId] = useState('');
@@ -194,6 +196,13 @@ export default function Tables(): ReactElement | null {
                   {hasActions && (
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {canReadOrders && table.isActive && (
+                          <TableOrderAction
+                            tableId={table.id}
+                            tableNumber={table.tableNumber}
+                            canStart={can(Permission.ORDER_WRITE)}
+                          />
+                        )}
                         {canAssignCaptain && <TableCaptainAction table={table} />}
                         {(canWrite || canChangeStatus) && (
                           <Button

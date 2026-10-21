@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import type { ErrorResponse } from '@rms/api-contract';
+import { type ErrorResponse, orderAlreadyOpenErrorSchema } from '@rms/api-contract';
 import type { Request, Response } from 'express';
 
 type MappedDbError = { status: HttpStatus; message: string };
@@ -68,15 +68,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let message: string | string[] = dbError?.message ?? 'Internal server error';
     let error: string | undefined = dbError ? HttpStatus[dbError.status] : undefined;
+    let existingOrder: unknown;
 
     if (isHttp) {
       const res = exception.getResponse();
       if (typeof res === 'string') {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
-        const body = res as { message?: string | string[]; error?: string };
+        const body = res as {
+          message?: string | string[];
+          error?: string;
+          existingOrder?: unknown;
+        };
         message = body.message ?? exception.message;
         error = body.error;
+        existingOrder = body.existingOrder;
       }
     } else if (dbError) {
       this.logger.warn(
@@ -97,6 +103,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
     };
 
-    response.status(status).json(payload);
+    // Only the validated order-conflict extension may add data to the standard envelope.
+    const orderConflict = orderAlreadyOpenErrorSchema.safeParse({ ...payload, existingOrder });
+    response.status(status).json(orderConflict.success ? orderConflict.data : payload);
   }
 }

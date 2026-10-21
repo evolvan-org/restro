@@ -7,6 +7,7 @@ import { cn } from 'cn';
 import { type ReactElement, useState } from 'react';
 
 import FloorTile, { buildStatusColorMap, DEFAULT_STATUS_COLOR } from '@/components/FloorTile';
+import TableOrderAction from '@/components/TableOrderAction';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
@@ -146,6 +147,15 @@ export default function FloorBoard(): ReactElement | null {
                     key={table.id}
                     table={table}
                     colorClasses={colorMap[table.currentStatus.code] ?? DEFAULT_STATUS_COLOR}
+                    orderAction={
+                      can(Permission.ORDER_READ) && (
+                        <TableOrderAction
+                          tableId={table.id}
+                          tableNumber={table.tableNumber}
+                          canStart={can(Permission.ORDER_WRITE)}
+                        />
+                      )
+                    }
                   />
                 ))}
               </div>

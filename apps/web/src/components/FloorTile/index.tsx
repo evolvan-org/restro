@@ -60,9 +60,14 @@ export function buildStatusColorMap(
 type FloorTileProps = {
   table: RestaurantTable;
   colorClasses: StatusColorClasses;
+  orderAction?: ReactElement | false;
 };
 
-export default function FloorTile({ table, colorClasses }: FloorTileProps): ReactElement {
+export default function FloorTile({
+  table,
+  colorClasses,
+  orderAction,
+}: FloorTileProps): ReactElement {
   return (
     <Card size="sm" className={cn('border-l-4', colorClasses.border)}>
       <CardContent>
@@ -73,6 +78,7 @@ export default function FloorTile({ table, colorClasses }: FloorTileProps): Reac
         <p className="text-sm text-muted-foreground">
           {table.capacity} {table.capacity === 1 ? 'seat' : 'seats'}
         </p>
+        {orderAction && <div className="mt-3">{orderAction}</div>}
       </CardContent>
     </Card>
   );
