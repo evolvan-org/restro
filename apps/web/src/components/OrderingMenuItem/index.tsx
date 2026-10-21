@@ -15,7 +15,7 @@ type Props = {
   isAdding?: boolean;
 };
 
-/** Browse and search share the same display and the future add-item integration point. */
+/** Browse and search share the same display and the add-item integration point. */
 export default function OrderingMenuItem({ item, onAdd, isAdding }: Props): ReactElement {
   async function handleAdd(): Promise<void> {
     if (!onAdd) return;
@@ -41,14 +41,13 @@ export default function OrderingMenuItem({ item, onAdd, isAdding }: Props): Reac
           {!item.isAvailable && <Badge variant="secondary">Unavailable</Badge>}
         </div>
       </div>
-      {item.isAvailable && (
+      {item.isAvailable && onAdd && (
         <Button
           type="button"
           size="sm"
           disabled={!onAdd || isAdding}
           onClick={handleAdd}
           aria-label={`Add ${item.name} to order`}
-          title={!onAdd ? 'Adding items is not available yet' : undefined}
         >
           Add
         </Button>

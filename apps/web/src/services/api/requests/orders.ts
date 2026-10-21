@@ -1,13 +1,23 @@
 import {
+  type AddOrderItemRequest,
+  addOrderItemRequestSchema,
   type CreateOrderRequest,
   createOrderRequestSchema,
   type Order,
   orderAlreadyOpenErrorSchema,
+  type OrderItem,
+  type OrderItemMutationResponse,
+  orderItemMutationResponseSchema,
+  orderItemSchema,
   orderSchema,
   type Reservation,
   reservationListResponseSchema,
   type RestaurantTable,
   restaurantTableSchema,
+  type UpdateOrderItemInstructionsRequest,
+  updateOrderItemInstructionsRequestSchema,
+  type UpdateOrderItemQuantityRequest,
+  updateOrderItemQuantityRequestSchema,
 } from '@rms/api-contract';
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import {
@@ -130,4 +140,109 @@ export function useOrderReservations(
     if (query.error) showApiError(query.error);
   }, [query.error, showApiError]);
   return query;
+}
+
+export function useAddOrderItem(): UseMutationResult<
+  OrderItemMutationResponse,
+  Error,
+  AddOrderItemRequest & { orderId: string }
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to add the order item.');
+  return useMutation<OrderItemMutationResponse, Error, AddOrderItemRequest & { orderId: string }>({
+    mutationFn: async ({
+      orderId,
+      ...input
+    }: AddOrderItemRequest & { orderId: string }): Promise<OrderItemMutationResponse> => {
+      const response = await api.post(
+        `/orders/${orderId}/items`,
+        addOrderItemRequestSchema.parse(input),
+      );
+      return orderItemMutationResponseSchema.parse(response.data);
+    },
+    onSuccess: async ({ order }) => {
+      const queryKey = [OrderQueryKey.Current, order.tableId];
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, order);
+    },
+    onError: async (error) => {
+      showApiError(error);
+      await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
+    },
+  });
+}
+
+export function useRemoveOrderItem(): UseMutationResult<
+  OrderItemMutationResponse,
+  Error,
+  { orderId: string; itemId: string }
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to remove the order item.');
+  return useMutation<OrderItemMutationResponse, Error, { orderId: string; itemId: string }>({
+    mutationFn: async ({
+      orderId,
+      itemId,
+    }: {
+      orderId: string;
+      itemId: string;
+    }): Promise<OrderItemMutationResponse> => {
+      const response = await api.delete(`/orders/${orderId}/items/${itemId}`);
+      return orderItemMutationResponseSchema.parse(response.data);
+    },
+    onSuccess: async ({ order }) => {
+      const queryKey = [OrderQueryKey.Current, order.tableId];
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, order);
+    },
+    onError: async (error) => {
+      showApiError(error);
+      // Refresh stale order state, including lines sent to the kitchen by another captain.
+      await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
+    },
+  });
+}
+
+type ItemEdit<T> = { orderId: string; itemId: string; input: T };
+
+function useOrderItemEdit<T>(
+  field: 'quantity' | 'instructions',
+  parse: (input: T) => T,
+): UseMutationResult<OrderItem, Error, ItemEdit<T>> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError(`Unable to update item ${field}.`);
+  return useMutation<OrderItem, Error, ItemEdit<T>>({
+    mutationFn: async ({ orderId, itemId, input }) => {
+      const response = await api.patch(`/orders/${orderId}/items/${itemId}/${field}`, parse(input));
+      return orderItemSchema.parse(response.data);
+    },
+    // Refetch server-derived order totals and preserve all other line updates.
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
+    },
+    onError: async (error) => {
+      showApiError(error);
+      await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
+    },
+  });
+}
+
+export function useUpdateOrderItemQuantity(): UseMutationResult<
+  OrderItem,
+  Error,
+  ItemEdit<UpdateOrderItemQuantityRequest>
+> {
+  return useOrderItemEdit('quantity', (input: UpdateOrderItemQuantityRequest) =>
+    updateOrderItemQuantityRequestSchema.parse(input),
+  );
+}
+
+export function useUpdateOrderItemInstructions(): UseMutationResult<
+  OrderItem,
+  Error,
+  ItemEdit<UpdateOrderItemInstructionsRequest>
+> {
+  return useOrderItemEdit('instructions', (input: UpdateOrderItemInstructionsRequest) =>
+    updateOrderItemInstructionsRequestSchema.parse(input),
+  );
 }

@@ -12,6 +12,8 @@ export const orderItemSchema = z
     name: z.string(),
     itemType: servingTypeSchema,
     quantity: z.number().int().positive(),
+    isSentToKitchen: z.boolean(),
+    lineTotal: z.string().describe('Quantity times snapshotted unit price, with 2 fraction digits'),
     unitPrice: z.string().describe('Price snapshot as a decimal string with 2 fraction digits'),
     specialInstructions: z.string().nullable(),
     status: z.enum(['ACTIVE', 'CANCELLED']),
@@ -34,6 +36,7 @@ export const orderSchema = z
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     items: z.array(orderItemSchema),
+    total: z.string().describe('Sum of ACTIVE lines as a decimal string with 2 fraction digits'),
   })
   .strict();
 
@@ -58,3 +61,42 @@ export type OrderItem = z.infer<typeof orderItemSchema>;
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type CurrentOrderQuery = z.infer<typeof currentOrderQuerySchema>;
 export type OrderAlreadyOpenError = z.infer<typeof orderAlreadyOpenErrorSchema>;
+
+/** Repeated additions always create separate lines, each with its own price snapshot. */
+export const addOrderItemRequestSchema = z
+  .object({
+    menuItemId: z.string().uuid(),
+    quantity: z.number().int().min(1).max(2147483647),
+    specialInstructions: z.string().max(255).optional(),
+  })
+  .strict();
+
+export const orderItemMutationResponseSchema = z
+  .object({
+    item: orderItemSchema,
+    order: orderSchema,
+  })
+  .strict();
+
+export type AddOrderItemRequest = z.infer<typeof addOrderItemRequestSchema>;
+export type OrderItemMutationResponse = z.infer<typeof orderItemMutationResponseSchema>;
+
+export const updateOrderItemQuantityRequestSchema = addOrderItemRequestSchema.pick({
+  quantity: true,
+});
+
+export const updateOrderItemInstructionsRequestSchema = z
+  .object({
+    specialInstructions: z
+      .string()
+      .trim()
+      .max(255)
+      .nullable()
+      .transform((value) => value || null),
+  })
+  .strict();
+
+export type UpdateOrderItemQuantityRequest = z.infer<typeof updateOrderItemQuantityRequestSchema>;
+export type UpdateOrderItemInstructionsRequest = z.infer<
+  typeof updateOrderItemInstructionsRequestSchema
+>;

@@ -19,6 +19,7 @@ const orderSelect = {
     select: {
       id: true,
       menuItemId: true,
+      kotItems: { select: { id: true }, take: 1 },
       menuItem: { select: { name: true, itemType: true } },
       quantity: true,
       unitPrice: true,
@@ -47,9 +48,97 @@ export type OrderOpeningContext = {
   create: (details: NewOrder) => Promise<OrderRecord>;
 };
 
+export type OrderItemMutationContext = {
+  order: Pick<OrderRecord, 'id' | 'status'> | null;
+  findMenuItem: (
+    id: string,
+  ) => Promise<{ id: string; price: Prisma.Decimal; isAvailable: boolean } | null>;
+  findItem: (id: string) => Promise<{
+    id: string;
+    status: OrderRecord['items'][number]['status'];
+    kotItems: { id: string }[];
+  } | null>;
+  add: (data: {
+    menuItemId: string;
+    quantity: number;
+    specialInstructions: string | null;
+    unitPrice: Prisma.Decimal;
+  }) => Promise<string>;
+  update: (
+    id: string,
+    data: { quantity: number } | { specialInstructions: string | null },
+  ) => Promise<void>;
+  cancel: (id: string) => Promise<void>;
+  refresh: () => Promise<OrderRecord>;
+};
+
 @Injectable()
 export class OrdersRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Item edits and future KOT/lifecycle writers must lock the order before checking state. */
+  withLockedOrder<T>(
+    restaurantId: string,
+    orderId: string,
+    mutate: (context: OrderItemMutationContext) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Read only the state needed by the guard while acquiring the lock. Loading the
+        // full order here duplicates the final refresh and adds relation queries under lock.
+        const orders = await tx.$queryRaw<Pick<OrderRecord, 'id' | 'status'>[]>`
+        SELECT id, status FROM orders
+        WHERE id = ${orderId}::uuid AND restaurant_id = ${restaurantId}::uuid
+        FOR UPDATE
+      `;
+        const order = orders[0] ?? null;
+        return mutate({
+          order,
+          findMenuItem: (id) =>
+            tx.menuItem.findFirst({
+              where: { id, restaurantId, isActive: true },
+              select: { id: true, price: true, isAvailable: true },
+            }),
+          findItem: async (id) => {
+            await tx.$queryRaw`SELECT id FROM order_items WHERE id = ${id}::uuid AND order_id = ${orderId}::uuid FOR UPDATE`;
+            return tx.orderItem.findFirst({
+              where: { id, orderId, order: { restaurantId } },
+              select: { id: true, status: true, kotItems: { select: { id: true }, take: 1 } },
+            });
+          },
+          add: async (data) => {
+            const item = await tx.orderItem.create({
+              data: { ...data, orderId, status: 'ACTIVE' },
+              select: { id: true },
+            });
+            return item.id;
+          },
+          update: async (id, data) => {
+            await tx.orderItem.update({
+              where: { id, orderId, order: { restaurantId } },
+              data,
+            });
+          },
+          cancel: async (id) => {
+            await tx.orderItem.update({
+              where: { id, orderId, order: { restaurantId } },
+              data: { status: 'CANCELLED' },
+            });
+          },
+          refresh: () =>
+            tx.order.findFirstOrThrow({
+              where: { id: orderId, restaurantId },
+              select: orderSelect,
+            }),
+        });
+      },
+      {
+        // Includes lock waits and the final relation reads; keep a bounded budget for
+        // slower database connections instead of Prisma's default five seconds.
+        timeout: 15_000,
+      },
+    );
+  }
 
   findCurrent(restaurantId: string, tableId: string): Promise<OrderRecord | null> {
     return this.prisma.order.findFirst({

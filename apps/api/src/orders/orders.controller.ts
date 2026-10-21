@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Header, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -13,13 +25,23 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type AddOrderItemRequest,
+  addOrderItemRequestSchema,
   type CreateOrderRequest,
   createOrderRequestSchema,
   type CurrentOrderQuery,
   currentOrderQuerySchema,
   type Order,
   orderAlreadyOpenErrorSchema,
+  type OrderItem,
+  type OrderItemMutationResponse,
+  orderItemMutationResponseSchema,
+  orderItemSchema,
   orderSchema,
+  type UpdateOrderItemInstructionsRequest,
+  updateOrderItemInstructionsRequestSchema,
+  type UpdateOrderItemQuantityRequest,
+  updateOrderItemQuantityRequestSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
@@ -30,6 +52,7 @@ import { PermissionsGuard } from '../common/auth/permissions.guard';
 import { RequirePermissions } from '../common/auth/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import { OrderItemsService } from './order-items.service';
 import { OrdersService } from './orders.service';
 
 @ApiTags('orders')
@@ -39,7 +62,10 @@ import { OrdersService } from './orders.service';
 @ApiForbiddenResponse(apiError('Missing order permission'))
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly service: OrdersService) {}
+  constructor(
+    private readonly service: OrdersService,
+    private readonly items: OrderItemsService,
+  ) {}
 
   @Post()
   @Header('Cache-Control', 'no-store')
@@ -73,5 +99,76 @@ export class OrdersController {
     @Query(new ZodValidationPipe(currentOrderQuerySchema)) query: CurrentOrderQuery,
   ): Promise<Order> {
     return this.service.current(actor, query.tableId);
+  }
+  @Post(':orderId/items')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: 'Add a separate order line with the current menu price snapshot' })
+  @ApiBody({ schema: zodOpenApiSchema(addOrderItemRequestSchema) })
+  @ApiCreatedResponse({ schema: zodOpenApiSchema(orderItemMutationResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid input or unavailable menu item'))
+  @ApiNotFoundResponse(apiError('Order or menu item not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Order is not open'))
+  addItem(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body(new ZodValidationPipe(addOrderItemRequestSchema)) input: AddOrderItemRequest,
+  ): Promise<OrderItemMutationResponse> {
+    return this.items.add(actor, orderId, input);
+  }
+
+  @Delete(':orderId/items/:itemId')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: 'Soft-cancel an unsent order line; repeated removal is a no-op' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderItemMutationResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid order or item id'))
+  @ApiNotFoundResponse(apiError('Order or line not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Order is not open or item has been sent to the kitchen'))
+  removeItem(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+  ): Promise<OrderItemMutationResponse> {
+    return this.items.remove(actor, orderId, itemId);
+  }
+  @Patch(':orderId/items/:itemId/quantity')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: 'Set the target quantity of an active, unsent order line' })
+  @ApiBody({ schema: zodOpenApiSchema(updateOrderItemQuantityRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderItemSchema) })
+  @ApiBadRequestResponse(apiError('Quantity must be a positive integer'))
+  @ApiNotFoundResponse(apiError('Order or item not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Order is not open, item is cancelled, or item has been sent'))
+  updateQuantity(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body(new ZodValidationPipe(updateOrderItemQuantityRequestSchema))
+    input: UpdateOrderItemQuantityRequest,
+  ): Promise<OrderItem> {
+    return this.items.updateQuantity(actor, orderId, itemId, input);
+  }
+
+  @Patch(':orderId/items/:itemId/instructions')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: 'Set or clear instructions on an active, unsent order line' })
+  @ApiBody({ schema: zodOpenApiSchema(updateOrderItemInstructionsRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderItemSchema) })
+  @ApiBadRequestResponse(
+    apiError('Instructions must be null or a string of at most 255 characters'),
+  )
+  @ApiNotFoundResponse(apiError('Order or item not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Order is not open, item is cancelled, or item has been sent'))
+  updateInstructions(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body(new ZodValidationPipe(updateOrderItemInstructionsRequestSchema))
+    input: UpdateOrderItemInstructionsRequest,
+  ): Promise<OrderItem> {
+    return this.items.updateInstructions(actor, orderId, itemId, input);
   }
 }

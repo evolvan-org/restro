@@ -101,7 +101,7 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
             <p className="text-sm text-muted-foreground">Searching menu...</p>
           ) : (
             <>
-              <ul className="grid gap-3 sm:grid-cols-2">
+              <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {(results.data?.data ?? []).map((item) => (
                   <OrderingMenuItem key={item.id} item={item} onAdd={onAdd} isAdding={isAdding} />
                 ))}
@@ -153,7 +153,7 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
               {groups.map(({ category, items: categoryItems }) => (
                 <section key={category.id} aria-label={category.name} className="space-y-3">
                   <h3 className="font-medium">{category.name}</h3>
-                  <ul className="grid gap-3 sm:grid-cols-2">
+                  <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                     {categoryItems.map((item) => (
                       <OrderingMenuItem
                         key={item.id}

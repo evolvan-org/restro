@@ -40,6 +40,7 @@ export const Permission = {
   // Orders
   ORDER_READ: 'order:read',
   ORDER_WRITE: 'order:write',
+  ORDER_UPDATE: 'order:update',
 
   // Kitchen order tickets
   KOT_READ: 'kot:read',

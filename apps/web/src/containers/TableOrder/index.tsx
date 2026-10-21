@@ -1,13 +1,15 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { currentOrderQuerySchema } from '@rms/api-contract';
+import { currentOrderQuerySchema, type MenuItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import Link from 'next/link';
-import type { ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
+import AddOrderItemDialog from '@/components/AddOrderItemDialog';
 import OrderingMenu from '@/components/OrderingMenu';
+import OrderItemEditors from '@/components/OrderItemEditors';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -15,10 +17,14 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import {
+  useAddOrderItem,
   useCurrentOrder,
   useOpenOrder,
   useOrderingTable,
   useOrderReservations,
+  useRemoveOrderItem,
+  useUpdateOrderItemInstructions,
+  useUpdateOrderItemQuantity,
 } from '@/services/api/requests/orders';
 
 import {
@@ -33,6 +39,17 @@ type Props = { tableId: string };
 export default function TableOrder({ tableId }: Props): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.ORDER_READ]);
   const { can } = usePermissions();
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const addItem = useAddOrderItem();
+  const removeItem = useRemoveOrderItem();
+  const updateQuantity = useUpdateOrderItemQuantity();
+  const updateInstructions = useUpdateOrderItemInstructions();
+  const isMutating =
+    addItem.isPending ||
+    removeItem.isPending ||
+    updateQuantity.isPending ||
+    updateInstructions.isPending;
+  const canUpdate = can(Permission.ORDER_UPDATE);
   const canWrite = can(Permission.ORDER_WRITE);
   const canReadMenu = can(Permission.MENU_READ);
   const isValidId = currentOrderQuerySchema.safeParse({ tableId }).success;
@@ -66,6 +83,9 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   if (!isAllowed) return null;
 
   const order = current.data;
+  const canEdit = canUpdate && order?.status === 'OPEN';
+  const activeItems = order?.items.filter((item) => item.status === 'ACTIVE') ?? [];
+  const cancelledItems = order?.items.filter((item) => item.status === 'CANCELLED') ?? [];
   const error = current.error ?? table.error;
   const tableNumber = order?.table.tableNumber ?? table.data?.tableNumber;
 
@@ -171,25 +191,128 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
       )}
 
       {order && (
-        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          {canReadMenu && <OrderingMenu />}
-          <section aria-label="Current order" className="space-y-4 rounded-lg border p-5">
+        <div className="grid items-start gap-8 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_18rem]">
+          <section
+            aria-label="Current order"
+            className="min-w-0 space-y-4 rounded-lg border p-5 md:order-2"
+          >
             <h2 className="text-xl font-semibold">Current order</h2>
-            {order.items.length === 0 && (
-              <p className="text-sm text-muted-foreground">No items in this order yet.</p>
+            {activeItems.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {canEdit && canReadMenu
+                  ? 'No active items. Add an item from the menu.'
+                  : 'No active items in this order.'}
+              </p>
             )}
             <ul className="space-y-3">
-              {order.items.map((item) => (
+              {activeItems.map((item) => (
                 <li key={item.id} className="space-y-1 text-sm">
                   <p className="font-medium">{item.name}</p>
                   <p className="text-muted-foreground">
-                    {item.quantity} × {item.unitPrice} · {item.status}
+                    {item.quantity} × {item.unitPrice} = {item.lineTotal}
                   </p>
+                  {canEdit && !item.isSentToKitchen && (
+                    <OrderItemEditors
+                      item={item}
+                      disabled={isMutating}
+                      onQuantity={async (input) => {
+                        await updateQuantity.mutateAsync({
+                          orderId: order.id,
+                          itemId: item.id,
+                          input,
+                        });
+                      }}
+                      onInstructions={async (input) => {
+                        await updateInstructions.mutateAsync({
+                          orderId: order.id,
+                          itemId: item.id,
+                          input,
+                        });
+                      }}
+                    />
+                  )}
+                  {(!canEdit || item.isSentToKitchen) && item.specialInstructions && (
+                    <p className="break-words">{item.specialInstructions}</p>
+                  )}
+                  {item.isSentToKitchen && <Badge variant="secondary">Sent to kitchen</Badge>}
+                  {canEdit && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isMutating || item.isSentToKitchen}
+                      aria-label={`Remove ${item.name} from order`}
+                      title={
+                        item.isSentToKitchen
+                          ? 'Items sent to the kitchen cannot be removed'
+                          : undefined
+                      }
+                      onClick={async () => {
+                        try {
+                          await removeItem.mutateAsync({ orderId: order.id, itemId: item.id });
+                        } catch {
+                          // The request hook reports the error and leaves the line available.
+                        }
+                      }}
+                    >
+                      {removeItem.isPending && removeItem.variables?.itemId === item.id
+                        ? 'Removing...'
+                        : 'Remove'}
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
+            <div aria-live="polite" className="flex justify-between border-t pt-4 font-semibold">
+              <span>Total</span>
+              <span>{order.total}</span>
+            </div>
+            {cancelledItems.length > 0 && (
+              <details className="border-t pt-3 text-sm text-muted-foreground">
+                <summary className="cursor-pointer">
+                  Cancelled items ({cancelledItems.length})
+                </summary>
+                <ul className="mt-3 space-y-2">
+                  {cancelledItems.map((item) => (
+                    <li key={item.id}>
+                      <p>
+                        {item.name} · {item.quantity} × {item.unitPrice}
+                      </p>
+                      {item.specialInstructions && (
+                        <p className="break-words">{item.specialInstructions}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </section>
+          {canReadMenu && (
+            <div className="min-w-0 md:order-1">
+              <OrderingMenu
+                onAdd={
+                  canEdit
+                    ? async (item) => {
+                        setSelectedItem(item);
+                      }
+                    : undefined
+                }
+                isAdding={isMutating}
+              />
+            </div>
+          )}
         </div>
+      )}
+      {selectedItem && order && canEdit && (
+        <AddOrderItemDialog
+          key={`${order.id}:${selectedItem.id}`}
+          item={selectedItem}
+          isPending={isMutating}
+          onClose={() => setSelectedItem(null)}
+          onAdd={async (input) => {
+            await addItem.mutateAsync({ ...input, orderId: order.id });
+          }}
+        />
       )}
     </main>
   );
