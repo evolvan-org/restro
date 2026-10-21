@@ -19,6 +19,7 @@ import type {
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { RealtimeService } from '../realtime/realtime.service';
 import { StockItemsRepository } from '../stock/stock-items.repository';
 import { type MenuItemRecord, MenuItemsRepository } from './menu-items.repository';
 
@@ -31,6 +32,7 @@ export class MenuItemsService {
   constructor(
     private readonly repository: MenuItemsRepository,
     private readonly stockItems: StockItemsRepository,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async list(actor: Actor, query: MenuItemListQuery): Promise<MenuItem[]> {
@@ -65,6 +67,7 @@ export class MenuItemsService {
 
     const { recipe, ...fields } = input;
     const created = await this.repository.create(restaurantId, fields, recipe);
+    await this.realtime.publishChange(restaurantId, 'menu-items');
     return toMenuItem(created);
   }
 
@@ -86,6 +89,7 @@ export class MenuItemsService {
     const { recipe, ...fields } = input;
     const updated = await this.repository.update(restaurantId, id, fields, recipe);
     if (!updated) throw new NotFoundException('Menu item not found');
+    await this.realtime.publishChange(restaurantId, 'menu-items');
     return toMenuItem(updated);
   }
 
@@ -100,7 +104,8 @@ export class MenuItemsService {
       input.isAvailable,
     );
     if (!updated) throw new NotFoundException('Menu item not found');
-    return toMenuItem(updated);
+    if (updated.changed) await this.realtime.publishChange(actor.restaurantId, 'menu-items');
+    return toMenuItem(updated.item);
   }
 
   async updatePrice(
@@ -110,6 +115,7 @@ export class MenuItemsService {
   ): Promise<MenuItem> {
     const updated = await this.repository.updatePrice(actor.restaurantId, id, input.price);
     if (!updated) throw new NotFoundException('Menu item not found');
+    await this.realtime.publishChange(actor.restaurantId, 'menu-items');
     return toMenuItem(updated);
   }
 
@@ -139,6 +145,7 @@ export class MenuItemsService {
         'The item or category changed. Refresh before updating classification.',
       );
     }
+    await this.realtime.publishChange(actor.restaurantId, 'menu-items');
     return toMenuItem(updated);
   }
 

@@ -15,6 +15,7 @@ import {
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../../common/auth/authenticated-request';
+import { RealtimeService } from '../../realtime/realtime.service';
 import {
   TableStatusCodeConflictError,
   type TableStatusDetails,
@@ -26,7 +27,10 @@ const CODE_IN_USE_MESSAGE = 'A table status with this code already exists';
 
 @Injectable()
 export class TableStatusesService {
-  constructor(private readonly repository: TableStatusesRepository) {}
+  constructor(
+    private readonly repository: TableStatusesRepository,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(actor: Actor, query: TableStatusListQuery): Promise<TableStatusListResponse> {
     const { page, pageSize } = query;
@@ -45,6 +49,7 @@ export class TableStatusesService {
     const created = await this.mapCodeConflict(() =>
       this.repository.create(actor.restaurantId, toDetails(input)),
     );
+    await this.realtime.publishChange(actor.restaurantId, 'table-statuses');
     return toTableStatus(created);
   }
 
@@ -62,6 +67,7 @@ export class TableStatusesService {
       this.repository.update(actor.restaurantId, statusId, toDetails(input)),
     );
     if (!updated) throw new NotFoundException('Table status not found');
+    await this.realtime.publishChange(actor.restaurantId, 'table-statuses');
     return toTableStatus(updated);
   }
 
@@ -79,6 +85,7 @@ export class TableStatusesService {
       input.isActive,
     );
     if (!updated) throw new NotFoundException('Table status not found');
+    await this.realtime.publishChange(actor.restaurantId, 'table-statuses');
     return toTableStatus(updated);
   }
 
@@ -91,6 +98,7 @@ export class TableStatusesService {
 
     const updated = await this.repository.updateActive(actor.restaurantId, statusId, false);
     if (!updated) throw new NotFoundException('Table status not found');
+    await this.realtime.publishChange(actor.restaurantId, 'table-statuses');
     return toTableStatus(updated);
   }
 

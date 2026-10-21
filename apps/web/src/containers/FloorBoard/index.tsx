@@ -15,8 +15,6 @@ import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useTableList, useTableOptions } from '@/services/api/requests/tables';
 
-const FLOOR_BOARD_REFRESH_MS = 12_000;
-
 type SectionGroup = {
   id: string;
   name: string;
@@ -41,7 +39,6 @@ export default function FloorBoard(): ReactElement | null {
       statusId: statusId || undefined,
     },
     canRead,
-    FLOOR_BOARD_REFRESH_MS,
   );
 
   if (!isAllowed) {
@@ -67,9 +64,7 @@ export default function FloorBoard(): ReactElement | null {
       <div className="mb-8">
         <p className="text-sm font-medium text-muted-foreground">Restaurant setup</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Live floor board</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Real-time table availability across the floor.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">Table availability across the floor.</p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">

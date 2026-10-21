@@ -5,6 +5,7 @@ import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
 
 import AppHeader from '@/components/AppHeader';
 import AppSidebar from '@/components/AppSidebar';
+import useRealtimeUpdates from '@/hooks/api/useRealtimeUpdates';
 import useAppLayout from '@/hooks/useAppLayout';
 import { useAccessToken } from '@/store/hooks/auth';
 
@@ -25,6 +26,7 @@ export default function ProtectedLayout({
   const router = useRouter();
   const pathname = usePathname();
   const accessToken = useAccessToken();
+  useRealtimeUpdates(accessToken);
   const { variant } = useAppLayout();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 

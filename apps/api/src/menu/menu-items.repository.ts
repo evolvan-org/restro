@@ -186,17 +186,18 @@ export class MenuItemsRepository {
     restaurantId: string,
     id: string,
     isAvailable: boolean,
-  ): Promise<MenuItemRecord | null> {
+  ): Promise<{ item: MenuItemRecord; changed: boolean } | null> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.menuItem.updateMany({
+      const updated = await tx.menuItem.updateMany({
         where: { id, restaurantId, isActive: true, isAvailable: { not: isAvailable } },
         data: { isAvailable },
       });
 
-      return tx.menuItem.findFirst({
+      const item = await tx.menuItem.findFirst({
         where: { id, restaurantId, isActive: true },
         select: menuItemSelect,
       });
+      return item ? { item, changed: updated.count > 0 } : null;
     });
   }
 

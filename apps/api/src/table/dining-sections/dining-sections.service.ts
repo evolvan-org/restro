@@ -16,6 +16,7 @@ import {
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../../common/auth/authenticated-request';
+import { RealtimeService } from '../../realtime/realtime.service';
 import {
   type DiningSectionDetails,
   type DiningSectionRecord,
@@ -26,7 +27,10 @@ const NAME_IN_USE_MESSAGE = 'A dining section with this name already exists';
 
 @Injectable()
 export class DiningSectionsService {
-  constructor(private readonly repository: DiningSectionsRepository) {}
+  constructor(
+    private readonly repository: DiningSectionsRepository,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(actor: Actor, query: DiningSectionListQuery): Promise<DiningSectionListResponse> {
     const { page, pageSize } = query;
@@ -45,6 +49,7 @@ export class DiningSectionsService {
     await this.assertNameAvailable(actor.restaurantId, input.name);
     const sortOrder = input.sortOrder ?? (await this.repository.nextSortOrder(actor.restaurantId));
     const created = await this.repository.create(actor.restaurantId, toDetails(input, sortOrder));
+    await this.realtime.publishChange(actor.restaurantId, 'dining-sections');
     return toDiningSection(created);
   }
 
@@ -61,6 +66,7 @@ export class DiningSectionsService {
       toDetails(input, input.sortOrder),
     );
     if (!updated) throw new NotFoundException('Dining section not found');
+    await this.realtime.publishChange(actor.restaurantId, 'dining-sections');
     return toDiningSection(updated);
   }
 
@@ -78,6 +84,7 @@ export class DiningSectionsService {
       input.isActive,
     );
     if (!updated) throw new NotFoundException('Dining section not found');
+    await this.realtime.publishChange(actor.restaurantId, 'dining-sections');
     return toDiningSection(updated);
   }
 
@@ -97,6 +104,7 @@ export class DiningSectionsService {
     }
 
     await this.repository.reorder(actor.restaurantId, input.orderedIds);
+    await this.realtime.publishChange(actor.restaurantId, 'dining-sections');
     const { items } = await this.repository.findPage(
       actor.restaurantId,
       0,

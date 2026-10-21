@@ -8,6 +8,10 @@ export const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   NEXT_PUBLIC_API_URL: z.string().url().optional(),
   WEB_ORIGIN: z.string().optional(),
+  PUSHER_APP_ID: z.string().min(1),
+  PUSHER_KEY: z.string().min(1),
+  PUSHER_SECRET: z.string().min(1),
+  PUSHER_CLUSTER: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

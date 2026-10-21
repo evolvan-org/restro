@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuthorizationModule } from '../common/auth/authorization.module';
 import { DatabaseModule } from '../common/database/database.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { DiningSectionsController } from './dining-sections/dining-sections.controller';
 import { DiningSectionsRepository } from './dining-sections/dining-sections.repository';
 import { DiningSectionsService } from './dining-sections/dining-sections.service';
@@ -13,7 +14,7 @@ import { TablesRepository } from './tables.repository';
 import { TablesService } from './tables.service';
 
 @Module({
-  imports: [DatabaseModule, AuthorizationModule],
+  imports: [DatabaseModule, AuthorizationModule, RealtimeModule],
   controllers: [TableStatusesController, DiningSectionsController, TablesController],
   providers: [
     TableStatusesService,

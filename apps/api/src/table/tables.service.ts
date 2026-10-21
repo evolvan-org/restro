@@ -27,6 +27,7 @@ import { isRole, Permission, roleHasPermission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { RealtimeService } from '../realtime/realtime.service';
 import {
   type TableDetails,
   TableNumberConflictError,
@@ -38,7 +39,10 @@ const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use';
 
 @Injectable()
 export class TablesService {
-  constructor(private readonly tablesRepository: TablesRepository) {}
+  constructor(
+    private readonly tablesRepository: TablesRepository,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async listCaptains(actor: Actor): Promise<CaptainOptionsResponse> {
     const users = await this.tablesRepository.listActiveUsers(actor.restaurantId);
@@ -63,6 +67,7 @@ export class TablesService {
     if (!updated) {
       throw new NotFoundException('Table not found');
     }
+    await this.realtime.publishChange(actor.restaurantId, 'tables');
     return toRestaurantTable(updated);
   }
 
@@ -92,6 +97,7 @@ export class TablesService {
       this.tablesRepository.create(actor.restaurantId, details),
     );
 
+    await this.realtime.publishChange(actor.restaurantId, 'tables');
     return toRestaurantTable(created);
   }
 
@@ -137,6 +143,7 @@ export class TablesService {
       throw new NotFoundException('Table not found');
     }
 
+    await this.realtime.publishChange(actor.restaurantId, 'tables');
     return toRestaurantTable(updated);
   }
 
@@ -159,6 +166,7 @@ export class TablesService {
       throw new NotFoundException('Table not found');
     }
 
+    await this.realtime.publishChange(actor.restaurantId, 'tables');
     return toRestaurantTable(updated);
   }
 
@@ -194,6 +202,7 @@ export class TablesService {
       throw new ConflictException('Table status changed; refresh and retry');
     }
 
+    await this.realtime.publishChange(actor.restaurantId, 'tables');
     return toRestaurantTable(updated);
   }
 

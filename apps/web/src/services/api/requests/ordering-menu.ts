@@ -16,8 +16,6 @@ import { api } from '@/lib/api';
 import { MenuCategoryQueryKey } from '../types/MenuCategoryQueryKey';
 import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 
-const MENU_REFRESH_MS = 5000;
-
 export function useOrderingCategories(enabled: boolean): UseQueryResult<MenuCategory[]> {
   const showApiError = useShowApiError('Unable to load menu categories.');
   const query = useQuery({
@@ -31,7 +29,6 @@ export function useOrderingCategories(enabled: boolean): UseQueryResult<MenuCate
     },
     enabled,
     staleTime: 0,
-    refetchInterval: MENU_REFRESH_MS,
   });
   useEffect(() => {
     if (query.error) showApiError(query.error);
@@ -50,7 +47,6 @@ export function useOrderingItems(enabled: boolean): UseQueryResult<MenuItem[]> {
     },
     enabled,
     staleTime: 0,
-    refetchInterval: MENU_REFRESH_MS,
   });
   useEffect(() => {
     if (query.error) showApiError(query.error);
@@ -84,7 +80,6 @@ export function useOrderingSearch(
     },
     enabled: enabled && text.length > 0 && text === debouncedText,
     staleTime: 0,
-    refetchInterval: MENU_REFRESH_MS,
   });
   useEffect(() => {
     if (query.error) showApiError(query.error);

@@ -13,13 +13,17 @@ import type {
 } from '@rms/api-contract';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { RealtimeService } from '../realtime/realtime.service';
 import { MenuCategoriesRepository, type MenuCategoryRecord } from './menu-categories.repository';
 
 const NAME_IN_USE_MESSAGE = 'A menu category with this name already exists';
 
 @Injectable()
 export class MenuCategoriesService {
-  constructor(private readonly repository: MenuCategoriesRepository) {}
+  constructor(
+    private readonly repository: MenuCategoriesRepository,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(actor: Actor, query: MenuCategoryListQuery): Promise<MenuCategory[]> {
     const categories = await this.repository.findAll(actor.restaurantId, query.activeOnly);
@@ -34,6 +38,7 @@ export class MenuCategoriesService {
       categoryType: input.categoryType,
       sortOrder,
     });
+    await this.realtime.publishChange(actor.restaurantId, 'menu-categories');
     return toMenuCategory(created);
   }
 
@@ -49,6 +54,7 @@ export class MenuCategoriesService {
 
     const updated = await this.repository.update(actor.restaurantId, categoryId, input);
     if (!updated) throw new NotFoundException('Menu category not found');
+    await this.realtime.publishChange(actor.restaurantId, 'menu-categories');
     return toMenuCategory(updated);
   }
 
@@ -64,6 +70,7 @@ export class MenuCategoriesService {
     }
 
     await this.repository.reorder(actor.restaurantId, input.orderedIds);
+    await this.realtime.publishChange(actor.restaurantId, 'menu-categories');
     const categories = await this.repository.findAll(actor.restaurantId, false);
     return categories.map(toMenuCategory);
   }
