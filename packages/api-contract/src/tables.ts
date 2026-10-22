@@ -54,6 +54,23 @@ export const tableCaptainSchema = z
   })
   .strict();
 
+export const tableActiveReservationSchema = z
+  .object({
+    id: z.string().uuid(),
+    reservationAt: z.string().datetime(),
+    partySize: z.number().int(),
+    status: z.enum(['BOOKED', 'SEATED']),
+    notes: z.string().nullable(),
+    guest: z
+      .object({
+        id: z.string().uuid(),
+        guestName: z.string(),
+        phoneNumber: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
 // Includes every restaurant-defined status code, not only the seeded defaults.
 export const tableLifecycleStatusCodeSchema = tableStatusCodeSchema;
 
@@ -83,6 +100,10 @@ export const restaurantTableSchema = z
     currentStatus: tableStatusSummarySchema,
     captainUserId: z.string().uuid().nullable(),
     captain: tableCaptainSchema.nullable(),
+    // UTC timestamp used by the floor-board elapsed timer.
+    statusChangedAt: z.string().datetime(),
+    activeReservation: tableActiveReservationSchema.nullable(),
+    openOrderId: z.string().uuid().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -161,6 +182,7 @@ export const transitionTableStatusResponseSchema = restaurantTableSchema;
 export type TableSection = z.infer<typeof tableSectionSchema>;
 export type TableStatusSummary = z.infer<typeof tableStatusSummarySchema>;
 export type TableCaptain = z.infer<typeof tableCaptainSchema>;
+export type TableActiveReservation = z.infer<typeof tableActiveReservationSchema>;
 export type AssignTableCaptainRequest = z.infer<typeof assignTableCaptainRequestSchema>;
 export type AssignTableCaptainResponse = z.infer<typeof assignTableCaptainResponseSchema>;
 export type CaptainOptionsResponse = z.infer<typeof captainOptionsResponseSchema>;

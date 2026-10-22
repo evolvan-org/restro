@@ -7,16 +7,17 @@ export const openOrderFormSchema = z.object({
 
 export type OpenOrderFormValues = z.infer<typeof openOrderFormSchema>;
 
-export function getOpenOrderFormDefaults(): OpenOrderFormValues {
-  return { reservationId: '' };
+export function getOpenOrderFormDefaults(reservationId = ''): OpenOrderFormValues {
+  return { reservationId };
 }
 
 export function toCreateOrderRequest(
   tableId: string,
   values: OpenOrderFormValues,
 ): CreateOrderRequest {
+  if (!values.reservationId) throw new Error('An active reservation is required');
   return {
     tableId,
-    ...(values.reservationId && { reservationId: values.reservationId }),
+    reservationId: values.reservationId,
   };
 }

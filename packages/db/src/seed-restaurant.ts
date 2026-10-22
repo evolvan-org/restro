@@ -40,7 +40,7 @@ const TABLE_STATUSES: readonly { code: string; name: string }[] = [
   { code: 'AVAILABLE', name: 'Available' },
   { code: 'RESERVED', name: 'Reserved' },
   { code: 'OCCUPIED', name: 'Occupied' },
-  { code: 'NEEDS_CLEANING', name: 'Needs Cleaning' },
+  { code: 'NEEDS_CLEANING', name: 'Cleaning' },
 ];
 
 const DINING_SECTION_NAME = 'Main Hall';

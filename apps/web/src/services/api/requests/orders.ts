@@ -1,6 +1,8 @@
 import {
   type AddOrderItemRequest,
   addOrderItemRequestSchema,
+  type CompleteOrderResponse,
+  completeOrderResponseSchema,
   type CreateOrderRequest,
   createOrderRequestSchema,
   type Order,
@@ -101,6 +103,26 @@ export function useOpenOrder(): UseMutationResult<Order, Error, CreateOrderReque
       const queryKey = [OrderQueryKey.Current, order.tableId];
       await queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData(queryKey, order);
+      await queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] });
+    },
+    onError: showApiError,
+  });
+}
+
+export function useCompleteOrder(): UseMutationResult<CompleteOrderResponse, Error, string> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to complete the order.');
+  return useMutation<CompleteOrderResponse, Error, string>({
+    mutationFn: async (orderId: string) => {
+      const response = await api.patch(`/orders/${orderId}/complete`);
+      return completeOrderResponseSchema.parse(response.data);
+    },
+    onSuccess: async (order) => {
+      queryClient.setQueryData([OrderQueryKey.Current, order.tableId], null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current, order.tableId] }),
+      ]);
     },
     onError: showApiError,
   });

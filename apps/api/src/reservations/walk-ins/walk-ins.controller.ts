@@ -40,7 +40,7 @@ export class WalkInsController {
   @ApiOperation({
     summary: 'Create a walk-in reservation',
     description:
-      'Creates or reuses a guest and immediately creates a SEATED reservation. Requires `reservation:write`.',
+      'Creates or reuses a guest, assigns an available table and atomically marks it occupied. Requires `reservation:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(createWalkInRequestSchema) })
   @ApiCreatedResponse({

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
+import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
 
 const orderSelect = {
   id: true,
@@ -46,6 +47,7 @@ export type OrderOpeningContext = {
   reservation: { id: string; tableId: string | null; status: string } | null;
   existingOrder: OrderRecord | null;
   create: (details: NewOrder) => Promise<OrderRecord>;
+  seatAndOccupy: () => Promise<void>;
 };
 
 export type OrderItemMutationContext = {
@@ -148,30 +150,33 @@ export class OrdersRepository {
     });
   }
 
+  findById(restaurantId: string, orderId: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findFirst({
+      where: { id: orderId, restaurantId },
+      select: orderSelect,
+    });
+  }
+
   /** All opening paths lock the same table before reading or inserting its open order. */
   withLockedTable(
     restaurantId: string,
     tableId: string,
-    reservationId: string | undefined,
+    reservationId: string,
     open: (context: OrderOpeningContext) => Promise<OrderRecord>,
   ): Promise<OrderRecord> {
     return this.prisma.$transaction(async (tx) => {
       // Match reservation editing's lock order: reservation first, then table.
-      if (reservationId) {
-        await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${reservationId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-      }
+      await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${reservationId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
 
       const table = await tx.restaurantTable.findFirst({
         where: { id: tableId, restaurantId },
         select: { id: true, isActive: true },
       });
-      const reservation = reservationId
-        ? await tx.reservation.findFirst({
-            where: { id: reservationId, restaurantId },
-            select: { id: true, tableId: true, status: true },
-          })
-        : null;
+      const reservation = await tx.reservation.findFirst({
+        where: { id: reservationId, restaurantId },
+        select: { id: true, tableId: true, status: true },
+      });
       const existingOrder = await tx.order.findFirst({
         where: { restaurantId, tableId, status: 'OPEN' },
         select: orderSelect,
@@ -187,7 +192,50 @@ export class OrdersRepository {
             data: { restaurantId, tableId, ...details },
             select: orderSelect,
           }),
+        seatAndOccupy: async () => {
+          if (reservation?.status === 'BOOKED') {
+            await tx.reservation.update({
+              where: { id: reservation.id, restaurantId },
+              data: { status: 'SEATED' },
+            });
+          }
+          await setTableLifecycleStatus(tx, restaurantId, tableId, 'OCCUPIED');
+        },
       });
+    });
+  }
+
+  complete(restaurantId: string, orderId: string): Promise<OrderRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const candidate = await tx.order.findFirst({
+        where: { id: orderId, restaurantId },
+        select: { tableId: true, reservationId: true },
+      });
+      if (!candidate) return null;
+
+      if (candidate.reservationId) {
+        await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${candidate.reservationId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      }
+      await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${candidate.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      const order = await tx.order.findFirst({
+        where: { id: orderId, restaurantId },
+        select: { id: true, tableId: true, reservationId: true, status: true },
+      });
+      if (!order || !['OPEN', 'SUBMITTED'].includes(order.status)) return null;
+
+      await tx.order.update({
+        where: { id: order.id, restaurantId },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      if (order.reservationId) {
+        await tx.reservation.updateMany({
+          where: { id: order.reservationId, restaurantId, status: 'SEATED' },
+          data: { status: 'COMPLETED' },
+        });
+      }
+      await setTableLifecycleStatus(tx, restaurantId, order.tableId, 'NEEDS_CLEANING');
+      return tx.order.findFirst({ where: { id: order.id, restaurantId }, select: orderSelect });
     });
   }
 }

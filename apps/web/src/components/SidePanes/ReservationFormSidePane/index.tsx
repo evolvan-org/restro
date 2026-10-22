@@ -1,7 +1,11 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createReservationRequestSchema, MAX_PARTY_SIZE } from '@rms/api-contract';
+import {
+  createReservationRequestSchema,
+  MAX_PARTY_SIZE,
+  type RestaurantTable,
+} from '@rms/api-contract';
 import { type ReactElement, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -17,6 +21,7 @@ import { useCreateReservation, useGuestLookup } from '@/services/api/requests/re
 import { useHideSidePane } from '@/store/hooks/sidepane';
 
 export type ReservationFormSidePaneProps = {
+  table?: Pick<RestaurantTable, 'id' | 'tableNumber' | 'capacity'>;
   onCancel?: () => void;
 };
 
@@ -37,11 +42,15 @@ function localDateTimeNow(): string {
 }
 
 export default function ReservationFormSidePane({
+  table,
   onCancel,
 }: ReservationFormSidePaneProps): ReactElement {
   const { mutateAsync: createReservation, isPending } = useCreateReservation();
   const hideSidePane = useHideSidePane();
   const existingGuestRef = useRef<{ guestName: string } | null>(null);
+
+  const defaultPartySize = table ? Math.min(2, table.capacity) : 2;
+
   const form = useForm<ReservationFormValues>({
     // An existing guest's stored name stands in for the name field, which is never overwritten.
     resolver: (values, context, options) =>
@@ -50,7 +59,13 @@ export default function ReservationFormSidePane({
         context,
         options,
       ),
-    defaultValues: { guestName: '', phoneNumber: '', partySize: 2, reservationAt: '', notes: '' },
+    defaultValues: {
+      guestName: '',
+      phoneNumber: '',
+      partySize: defaultPartySize,
+      reservationAt: '',
+      notes: '',
+    },
   });
   const { errors } = form.formState;
   const phoneNumber = form.watch('phoneNumber');
@@ -69,6 +84,7 @@ export default function ReservationFormSidePane({
       ...values,
       guestName: existingGuest?.guestName ?? values.guestName,
       reservationAt: new Date(values.reservationAt).toISOString(),
+      ...(table ? { tableId: table.id } : {}),
     });
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
@@ -95,6 +111,18 @@ export default function ReservationFormSidePane({
         <SheetTitle>New reservation</SheetTitle>
         <SheetDescription>Book a table for a guest at a future date and time.</SheetDescription>
       </SheetHeader>
+
+      {table && (
+        <div className="mx-4 mt-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+          <span className="font-medium">Table {table.tableNumber}</span>
+          <span className="ml-2 text-muted-foreground">
+            · {table.capacity} {table.capacity === 1 ? 'seat' : 'seats'}
+          </span>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            This table is locked for the booking.
+          </p>
+        </div>
+      )}
 
       <form id={FORM_ID} onSubmit={onSubmit} noValidate className="flex-1 overflow-y-auto px-4">
         <FieldGroup>

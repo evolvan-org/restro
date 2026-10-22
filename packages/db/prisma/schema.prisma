@@ -253,6 +253,8 @@ model RestaurantTable {
   tableNumber     String   @map("table_number") @db.VarChar(50)
   capacity        Int
   isActive        Boolean  @default(true) @map("is_active")
+  /// UTC timestamp of the last status transition.
+  statusChangedAt DateTime @default(now()) @map("status_changed_at") @db.Timestamptz(6)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

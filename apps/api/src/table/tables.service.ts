@@ -3,7 +3,10 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
 } from '@nestjs/common';
 import {
   type AssignTableCaptainRequest,
@@ -37,8 +40,34 @@ import {
 const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use';
 
 @Injectable()
-export class TablesService {
+export class TablesService implements OnApplicationBootstrap, OnApplicationShutdown {
+  private readonly logger = new Logger(TablesService.name);
+  private reconciliationTimer?: NodeJS.Timeout;
+  private isReconciling = false;
+
   constructor(private readonly tablesRepository: TablesRepository) {}
+
+  onApplicationBootstrap(): void {
+    this.reconciliationTimer = setInterval(() => void this.reconcileAllStatuses(), 60_000);
+    this.reconciliationTimer.unref();
+    void this.reconcileAllStatuses();
+  }
+
+  onApplicationShutdown(): void {
+    if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
+  }
+
+  private async reconcileAllStatuses(): Promise<void> {
+    if (this.isReconciling) return;
+    this.isReconciling = true;
+    try {
+      await this.tablesRepository.reconcileAllStatuses();
+    } catch (error) {
+      this.logger.error('Unable to reconcile table statuses', error);
+    } finally {
+      this.isReconciling = false;
+    }
+  }
 
   async listCaptains(actor: Actor): Promise<CaptainOptionsResponse> {
     const users = await this.tablesRepository.listActiveUsers(actor.restaurantId);
@@ -67,6 +96,7 @@ export class TablesService {
   }
 
   async list(actor: Actor, query: TableListQuery): Promise<TableListResponse> {
+    await this.tablesRepository.reconcileStatuses(actor.restaurantId);
     const { page, pageSize, search, sectionId, statusId, isActive } = query;
     const { items, total } = await this.tablesRepository.findPage(actor.restaurantId, {
       search: search || undefined,
@@ -316,6 +346,10 @@ export class TablesService {
 }
 
 function toRestaurantTable(record: TableRecord): RestaurantTable {
+  const activeReservation =
+    record.reservations.find((reservation) => reservation.status === 'SEATED') ??
+    record.reservations[0] ??
+    null;
   return {
     id: record.id,
     tableNumber: record.tableNumber,
@@ -329,6 +363,13 @@ function toRestaurantTable(record: TableRecord): RestaurantTable {
       name: record.captain.name,
       role: record.captain.role.name,
     },
+    statusChangedAt: record.statusChangedAt.toISOString(),
+    activeReservation: activeReservation && {
+      ...activeReservation,
+      status: activeReservation.status as 'BOOKED' | 'SEATED',
+      reservationAt: activeReservation.reservationAt.toISOString(),
+    },
+    openOrderId: record.orders[0]?.id ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };

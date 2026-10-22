@@ -27,6 +27,8 @@ import {
 import {
   type AddOrderItemRequest,
   addOrderItemRequestSchema,
+  type CompleteOrderResponse,
+  completeOrderResponseSchema,
   type CreateOrderRequest,
   createOrderRequestSchema,
   type CurrentOrderQuery,
@@ -67,10 +69,26 @@ export class OrdersController {
     private readonly items: OrderItemsService,
   ) {}
 
+  @Patch(':orderId/complete')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: 'Complete an order and mark its table as cleaning' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(completeOrderResponseSchema) })
+  @ApiNotFoundResponse(apiError('Order not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Only an open or submitted order can be completed'))
+  complete(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ): Promise<CompleteOrderResponse> {
+    return this.service.complete(actor, orderId);
+  }
+
   @Post()
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.ORDER_WRITE)
-  @ApiOperation({ summary: 'Open an order for a table without changing its table status' })
+  @ApiOperation({
+    summary: 'Open an order for an active reservation and mark its table occupied',
+  })
   @ApiBody({ schema: zodOpenApiSchema(createOrderRequestSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(orderSchema) })
   @ApiConflictResponse({

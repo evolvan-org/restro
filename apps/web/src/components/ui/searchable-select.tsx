@@ -78,12 +78,21 @@ export function SearchableSelect({
     instanceRef.current = instance;
     let reposition: (() => void) | null = null;
     if (dropdownInBody) {
-      // Tom Select anchors a body-level list once on open; keep it glued to the control while
-      // layout settles and while any ancestor (e.g. the table's scroll container) scrolls.
       instance.dropdown.style.margin = '0';
-      reposition = (): void => instance.positionDropdown();
+      instance.dropdown.style.zIndex = '100';
+      reposition = (): void => {
+        const rect = instance.control.getBoundingClientRect();
+        const dropdownHeight = instance.dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const openAbove = dropdownHeight > spaceBelow && rect.top > spaceBelow;
+        instance.dropdown.style.width = `${rect.width}px`;
+        instance.dropdown.style.left = `${rect.left + window.scrollX}px`;
+        instance.dropdown.style.top = `${
+          (openAbove ? rect.top - dropdownHeight : rect.bottom) + window.scrollY
+        }px`;
+      };
       instance.on('dropdown_open', () => {
-        requestAnimationFrame(() => instance.positionDropdown());
+        requestAnimationFrame(() => reposition?.());
         window.addEventListener('scroll', reposition!, true);
         window.addEventListener('resize', reposition!);
       });

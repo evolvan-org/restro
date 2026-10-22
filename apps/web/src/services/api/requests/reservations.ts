@@ -29,10 +29,16 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 
 import { ReservationQueryKey } from '../types/ReservationQueryKey';
+import { TableQueryKey } from '../types/TableQueryKey';
 
 type CancelReservationVariables = { id: string; input: CancelReservationRequest };
 type UpdateReservationVariables = { id: string; input: UpdateReservationRequest };
 type AssignReservationTableVariables = { id: string; input: AssignReservationTableRequest };
+
+export async function getReservation(id: string): Promise<Reservation> {
+  const response = await api.get(`/reservations/${id}`);
+  return reservationSchema.parse(response.data);
+}
 
 export function useAssignReservationTable(): UseMutationResult<
   AssignReservationTableResponse,
@@ -56,7 +62,10 @@ export function useAssignReservationTable(): UseMutationResult<
             data: current.data.map((item) => (item.id === reservation.id ? reservation : item)),
           },
       );
-      await queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]);
     },
     onError: showApiError,
   });
@@ -92,6 +101,7 @@ export function useUpdateReservation(): UseMutationResult<
           queryKey: [ReservationQueryKey.GuestLookup],
           refetchType: 'all',
         }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
       ]);
     },
     onError: showApiError,
@@ -116,10 +126,13 @@ export function useCancelReservation(): UseMutationResult<
     },
     onSuccess: async (): Promise<void> => {
       await queryClient.cancelQueries({ queryKey: [ReservationQueryKey.Reservations] });
-      await queryClient.invalidateQueries({
-        queryKey: [ReservationQueryKey.Reservations],
-        refetchType: 'all',
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [ReservationQueryKey.Reservations],
+          refetchType: 'all',
+        }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]);
     },
     onError: showApiError,
   });
@@ -155,7 +168,10 @@ export function useCreateReservation(): UseMutationResult<
       return reservationSchema.parse(response.data);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]),
     onError: showApiError,
   });
 }
@@ -169,7 +185,10 @@ export function useCreateWalkIn(): UseMutationResult<Reservation, Error, CreateW
       return reservationSchema.parse(response.data);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+      ]),
     onError: showApiError,
   });
 }

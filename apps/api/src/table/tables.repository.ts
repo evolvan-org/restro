@@ -2,16 +2,36 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, UserStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
+import { reconcileRestaurantTableStatuses } from '../common/database/table-lifecycle';
 
 const restaurantTableSelect = {
   id: true,
   tableNumber: true,
   capacity: true,
   isActive: true,
+  statusChangedAt: true,
   createdAt: true,
   updatedAt: true,
   captainUserId: true,
   captain: { select: { id: true, name: true, role: { select: { name: true } } } },
+  reservations: {
+    where: { status: { in: ['BOOKED', 'SEATED'] } },
+    select: {
+      id: true,
+      reservationAt: true,
+      partySize: true,
+      status: true,
+      notes: true,
+      guest: { select: { id: true, guestName: true, phoneNumber: true } },
+    },
+    orderBy: [{ reservationAt: 'asc' }, { id: 'asc' }],
+  },
+  orders: {
+    where: { status: { in: ['OPEN', 'SUBMITTED'] } },
+    select: { id: true },
+    orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    take: 1,
+  },
   section: {
     select: {
       id: true,
@@ -95,6 +115,22 @@ function isUniqueViolation(error: unknown): boolean {
 @Injectable()
 export class TablesRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  reconcileStatuses(restaurantId: string): Promise<void> {
+    return this.prisma.$transaction(async (tx) => {
+      await reconcileRestaurantTableStatuses(tx, restaurantId);
+    });
+  }
+
+  async reconcileAllStatuses(): Promise<void> {
+    const restaurants = await this.prisma.restaurantTable.findMany({
+      distinct: ['restaurantId'],
+      select: { restaurantId: true },
+    });
+    for (const { restaurantId } of restaurants) {
+      await this.reconcileStatuses(restaurantId);
+    }
+  }
 
   async findPage(
     restaurantId: string,
@@ -287,7 +323,7 @@ export class TablesRepository {
   ): Promise<TableRecord | null> {
     const { count } = await this.prisma.restaurantTable.updateMany({
       where: { id: tableId, restaurantId, currentStatusId: expectedCurrentStatusId },
-      data: { currentStatusId: targetStatusId },
+      data: { currentStatusId: targetStatusId, statusChangedAt: new Date() },
     });
     return count === 0 ? null : this.findById(restaurantId, tableId);
   }

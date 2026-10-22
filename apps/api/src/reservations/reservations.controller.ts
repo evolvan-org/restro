@@ -62,6 +62,16 @@ import { ReservationsService } from './reservations.service';
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
 
+  @Get(':id')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.RESERVATION_READ)
+  @ApiOperation({ summary: 'Get a reservation in the caller restaurant' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(reservationSchema) })
+  @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
+  get(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<Reservation> {
+    return this.service.get(actor, id);
+  }
+
   @Patch(':id/table')
   @RequirePermissions(Permission.RESERVATION_ASSIGN_TABLE)
   @ApiOperation({
@@ -93,11 +103,11 @@ export class ReservationsController {
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
-    summary: 'Modify a booked reservation',
+    summary: 'Modify a booked or seated reservation',
     description:
       'Partially updates the time, party size, notes or shared guest profile. ' +
       'Time and party-size edits revalidate table capacity and booking overlaps, excluding this reservation. ' +
-      'Only BOOKED reservations may be edited. Requires `reservation:write`.',
+      'SEATED reservations may change guest details, party size and notes, but not time. Requires `reservation:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateReservationRequestSchema) })
   @ApiOkResponse({
@@ -124,7 +134,7 @@ export class ReservationsController {
     summary: 'Cancel a reservation',
     description:
       "Cancels a reservation in the caller's restaurant, clears its held table and records an " +
-      'optional reason. CANCELLED and COMPLETED reservations return 409. Requires `reservation:write`.',
+      'optional reason. Active orders and terminal reservations return 409. Requires `reservation:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(cancelReservationRequestSchema) })
   @ApiOkResponse({
@@ -133,7 +143,7 @@ export class ReservationsController {
   })
   @ApiBadRequestResponse(apiError('Invalid reservation id or cancellation reason'))
   @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
-  @ApiConflictResponse(apiError('Cancelled or completed reservations cannot be cancelled'))
+  @ApiConflictResponse(apiError('The reservation has an active order or is already terminal'))
   cancel(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

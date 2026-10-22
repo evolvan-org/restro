@@ -82,7 +82,11 @@ export class ReservationsService {
         async (context) => {
           const { reservation } = context;
           if (!EDITABLE_RESERVATION_STATUSES.includes(reservation.status)) {
-            throw new ConflictException('Only booked reservations can be modified');
+            throw new ConflictException('Only booked or seated reservations can be modified');
+          }
+
+          if (reservation.status === 'SEATED' && input.reservationAt !== undefined) {
+            throw new ConflictException('A seated reservation time cannot be changed');
           }
 
           const reservationAt = input.reservationAt
@@ -136,17 +140,19 @@ export class ReservationsService {
     const allowedStatuses = reservationStatusSchema.options.filter(
       (status) => !TERMINAL_RESERVATION_STATUSES.includes(status),
     );
-    const reservation = await this.repository.updateForStatuses(
+    const result = await this.repository.cancel(
       actor.restaurantId,
       id,
       allowedStatuses,
-      { status: 'CANCELLED', tableId: null, cancellationReason: input.reason || null },
+      input.reason || null,
     );
-    if (reservation) return toReservation(reservation);
-
-    const existing = await this.repository.findById(actor.restaurantId, id);
-    if (!existing) throw new NotFoundException('Reservation not found');
-
+    if (result.outcome === 'cancelled') return toReservation(result.reservation);
+    if (result.outcome === 'not-found') throw new NotFoundException('Reservation not found');
+    if (result.outcome === 'active-order') {
+      throw new ConflictException(
+        'Complete or cancel the active order before cancelling this reservation',
+      );
+    }
     throw new ConflictException('Cancelled or completed reservations cannot be cancelled');
   }
 
@@ -162,6 +168,12 @@ export class ReservationsService {
       data: items.map(toReservation),
       meta: buildPageMeta(page, pageSize, total),
     };
+  }
+
+  async get(actor: Actor, id: string): Promise<Reservation> {
+    const reservation = await this.repository.findById(actor.restaurantId, id);
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    return toReservation(reservation);
   }
 
   async create(actor: Actor, input: CreateReservationRequest): Promise<Reservation> {

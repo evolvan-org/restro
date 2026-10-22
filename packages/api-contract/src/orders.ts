@@ -43,13 +43,15 @@ export const orderSchema = z
 export const createOrderRequestSchema = z
   .object({
     tableId: z.string().uuid('Table id must be a UUID'),
-    reservationId: z.string().uuid('Reservation id must be a UUID').optional(),
+    reservationId: z.string().uuid('Select an active reservation'),
   })
   .strict();
 
 export const currentOrderQuerySchema = z
   .object({ tableId: z.string().uuid('Table id must be a UUID') })
   .strict();
+
+export const completeOrderResponseSchema = orderSchema;
 
 /** Preserve the standard error fields while allowing the client to resume the existing order. */
 export const orderAlreadyOpenErrorSchema = errorResponseSchema
@@ -60,6 +62,7 @@ export type Order = z.infer<typeof orderSchema>;
 export type OrderItem = z.infer<typeof orderItemSchema>;
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
 export type CurrentOrderQuery = z.infer<typeof currentOrderQuerySchema>;
+export type CompleteOrderResponse = z.infer<typeof completeOrderResponseSchema>;
 export type OrderAlreadyOpenError = z.infer<typeof orderAlreadyOpenErrorSchema>;
 
 /** Repeated additions always create separate lines, each with its own price snapshot. */

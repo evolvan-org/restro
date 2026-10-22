@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { currentOrderQuerySchema, type MenuItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { type ReactElement, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -37,6 +38,7 @@ import {
 type Props = { tableId: string };
 
 export default function TableOrder({ tableId }: Props): ReactElement | null {
+  const searchParams = useSearchParams();
   const isAllowed = usePermissionGuard([Permission.ORDER_READ]);
   const { can } = usePermissions();
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -69,7 +71,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
     formState: { errors },
   } = useForm<OpenOrderFormValues>({
     resolver: zodResolver(openOrderFormSchema),
-    defaultValues: getOpenOrderFormDefaults(),
+    defaultValues: getOpenOrderFormDefaults(searchParams.get('reservationId') ?? ''),
   });
 
   async function onSubmit(values: OpenOrderFormValues): Promise<void> {
@@ -142,7 +144,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
               <p className="text-sm text-muted-foreground">Start an order for this table.</p>
               <div className="space-y-2">
                 <label htmlFor="order-reservation" className="text-sm font-medium">
-                  Reservation (optional)
+                  Reservation
                 </label>
                 <NativeSelect
                   id="order-reservation"
@@ -150,7 +152,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                   aria-invalid={Boolean(errors.reservationId)}
                   {...register('reservationId')}
                 >
-                  <NativeSelectOption value="">No reservation / walk-in</NativeSelectOption>
+                  <NativeSelectOption value="">Select an active reservation</NativeSelectOption>
                   {(reservations.data ?? []).map((reservation) => (
                     <NativeSelectOption key={reservation.id} value={reservation.id}>
                       {reservation.guest.guestName} ·{' '}
@@ -165,7 +167,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                 )}
                 {reservations.isError && (
                   <p role="alert" className="text-sm text-destructive">
-                    Reservations could not be loaded. You can retry or start without one.
+                    Reservations could not be loaded. Retry before starting the order.
                     <Button type="button" variant="link" onClick={() => reservations.refetch()}>
                       Retry reservations
                     </Button>

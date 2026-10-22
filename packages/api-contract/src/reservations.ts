@@ -55,7 +55,7 @@ export const TERMINAL_RESERVATION_STATUSES: readonly ReservationStatus[] = [
   'COMPLETED',
 ];
 
-export const EDITABLE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED'];
+export const EDITABLE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED', 'SEATED'];
 export const ACTIVE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED', 'SEATED'];
 
 export const guestSchema = z
@@ -127,6 +127,7 @@ export const createWalkInRequestSchema = z
     guestName: guestNameSchema,
     phoneNumber: guestPhoneSchema,
     partySize: partySizeSchema,
+    tableId: z.string().uuid('Table id must be a valid UUID'),
     notes: reservationNotesSchema,
   })
   .strict();
@@ -166,7 +167,8 @@ export const updateReservationRequestSchema = createReservationRequestSchema
   })
   .strict()
   .describe(
-    'Partial update of a BOOKED reservation. Supplied times must be in the future. ' +
+    'Partial update of a BOOKED or SEATED reservation. Supplied times must be in the future; ' +
+      'reservationAt cannot be changed after seating. ' +
       'Guest changes update the shared guest profile for all its reservations.',
   );
 
