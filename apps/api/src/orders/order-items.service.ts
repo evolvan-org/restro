@@ -14,7 +14,7 @@ import type {
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { toOrder } from './orders.mapper';
-import { type OrderItemMutationContext, OrdersRepository } from './orders.repository';
+import { type LockedOrderContext, OrdersRepository } from './orders.repository';
 
 @Injectable()
 export class OrderItemsService {
@@ -26,7 +26,7 @@ export class OrderItemsService {
     input: AddOrderItemRequest,
   ): Promise<OrderItemMutationResponse> {
     return this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
-      this.requireOpen(context);
+      this.requireMutable(context);
       const menuItem = await context.findMenuItem(input.menuItemId);
       if (!menuItem) throw new NotFoundException('Menu item not found');
       if (!menuItem.isAvailable) throw new BadRequestException('Menu item is unavailable');
@@ -42,7 +42,7 @@ export class OrderItemsService {
 
   remove(actor: Actor, orderId: string, itemId: string): Promise<OrderItemMutationResponse> {
     return this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
-      this.requireOpen(context);
+      this.requireMutable(context);
       const item = await context.findItem(itemId);
       if (!item) throw new NotFoundException('Order item not found');
       if (item.kotItems.length)
@@ -77,7 +77,7 @@ export class OrderItemsService {
     input: UpdateOrderItemQuantityRequest | UpdateOrderItemInstructionsRequest,
   ): Promise<OrderItem> {
     return this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
-      this.requireOpen(context);
+      this.requireMutable(context);
       const item = await context.findItem(itemId);
       if (!item) throw new NotFoundException('Order item not found');
       if (item.status !== 'ACTIVE') throw new ConflictException('Order item is cancelled');
@@ -88,13 +88,15 @@ export class OrderItemsService {
     });
   }
 
-  private requireOpen({ order }: OrderItemMutationContext): void {
+  private requireMutable({ order }: LockedOrderContext): void {
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'OPEN') throw new ConflictException('Order is not open');
+    if (!['OPEN', 'SUBMITTED'].includes(order.status)) {
+      throw new ConflictException('Order cannot be changed');
+    }
   }
 
   private async response(
-    context: OrderItemMutationContext,
+    context: LockedOrderContext,
     itemId: string,
   ): Promise<OrderItemMutationResponse> {
     const order = toOrder(await context.refresh());

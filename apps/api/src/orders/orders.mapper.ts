@@ -1,7 +1,7 @@
-import type { Order } from '@rms/api-contract';
+import type { Kot, Order } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import type { OrderRecord } from './orders.repository';
+import type { KotRecord, OrderRecord } from './orders.repository';
 
 export function toOrder(record: OrderRecord): Order {
   return {
@@ -20,6 +20,23 @@ export function toOrder(record: OrderRecord): Order {
       lineTotal: orderItemTotal(item).toFixed(2),
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
+    })),
+  };
+}
+
+export function toKot(record: KotRecord): Kot {
+  return {
+    id: record.id,
+    orderId: record.orderId,
+    kotNumber: record.kotNumber,
+    destination: record.destination,
+    status: record.status,
+    createdAt: record.createdAt.toISOString(),
+    items: record.items.map(({ orderItem, ...item }) => ({
+      ...item,
+      menuItemId: orderItem.menuItemId,
+      name: orderItem.menuItem.name,
+      specialInstructions: orderItem.specialInstructions,
     })),
   };
 }

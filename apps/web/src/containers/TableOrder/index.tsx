@@ -11,6 +11,7 @@ import { useForm } from 'react-hook-form';
 import AddOrderItemDialog from '@/components/AddOrderItemDialog';
 import OrderingMenu from '@/components/OrderingMenu';
 import OrderItemEditors from '@/components/OrderItemEditors';
+import SendOrderDialog from '@/components/SendOrderDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -20,6 +21,7 @@ import { getApiErrorMessage } from '@/lib/api-error';
 import {
   useAddOrderItem,
   useCurrentOrder,
+  useFireOrder,
   useOpenOrder,
   useOrderingTable,
   useOrderReservations,
@@ -46,11 +48,14 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   const removeItem = useRemoveOrderItem();
   const updateQuantity = useUpdateOrderItemQuantity();
   const updateInstructions = useUpdateOrderItemInstructions();
+  const fireOrder = useFireOrder();
+  const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
   const isMutating =
     addItem.isPending ||
     removeItem.isPending ||
     updateQuantity.isPending ||
-    updateInstructions.isPending;
+    updateInstructions.isPending ||
+    fireOrder.isPending;
   const canUpdate = can(Permission.ORDER_UPDATE);
   const canWrite = can(Permission.ORDER_WRITE);
   const canReadMenu = can(Permission.MENU_READ);
@@ -85,8 +90,9 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   if (!isAllowed) return null;
 
   const order = current.data;
-  const canEdit = canUpdate && order?.status === 'OPEN';
+  const canEdit = canUpdate && Boolean(order && ['OPEN', 'SUBMITTED'].includes(order.status));
   const activeItems = order?.items.filter((item) => item.status === 'ACTIVE') ?? [];
+  const unsentItems = activeItems.filter((item) => !item.isSentToKitchen);
   const cancelledItems = order?.items.filter((item) => item.status === 'CANCELLED') ?? [];
   const error = current.error ?? table.error;
   const tableNumber = order?.table.tableNumber ?? table.data?.tableNumber;
@@ -269,6 +275,19 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
               <span>Total</span>
               <span>{order.total}</span>
             </div>
+            {canEdit && unsentItems.length > 0 && (
+              <Button
+                type="button"
+                className="w-full"
+                disabled={isMutating}
+                onClick={() => {
+                  fireOrder.reset();
+                  setIsSendDialogOpen(true);
+                }}
+              >
+                Send to kitchen
+              </Button>
+            )}
             {cancelledItems.length > 0 && (
               <details className="border-t pt-3 text-sm text-muted-foreground">
                 <summary className="cursor-pointer">
@@ -313,6 +332,18 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
           onClose={() => setSelectedItem(null)}
           onAdd={async (input) => {
             await addItem.mutateAsync({ ...input, orderId: order.id });
+          }}
+        />
+      )}
+      {isSendDialogOpen && order && (
+        <SendOrderDialog
+          items={unsentItems}
+          result={fireOrder.data}
+          isPending={fireOrder.isPending}
+          onConfirm={() => fireOrder.mutateAsync(order.id)}
+          onClose={() => {
+            setIsSendDialogOpen(false);
+            fireOrder.reset();
           }}
         />
       )}

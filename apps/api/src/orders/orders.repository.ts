@@ -33,7 +33,33 @@ const orderSelect = {
   },
 } satisfies Prisma.OrderSelect;
 
+const kotSelect = {
+  id: true,
+  orderId: true,
+  kotNumber: true,
+  destination: true,
+  status: true,
+  createdAt: true,
+  items: {
+    select: {
+      id: true,
+      orderItemId: true,
+      quantity: true,
+      status: true,
+      orderItem: {
+        select: {
+          menuItemId: true,
+          specialInstructions: true,
+          menuItem: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  },
+} satisfies Prisma.KotSelect;
+
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
+export type KotRecord = Prisma.KotGetPayload<{ select: typeof kotSelect }>;
 
 type NewOrder = {
   createdByUserId: string;
@@ -50,7 +76,7 @@ export type OrderOpeningContext = {
   seatAndOccupy: () => Promise<void>;
 };
 
-export type OrderItemMutationContext = {
+export type LockedOrderContext = {
   order: Pick<OrderRecord, 'id' | 'status'> | null;
   findMenuItem: (
     id: string,
@@ -71,6 +97,21 @@ export type OrderItemMutationContext = {
     data: { quantity: number } | { specialInstructions: string | null },
   ) => Promise<void>;
   cancel: (id: string) => Promise<void>;
+  findUnsentItems: () => Promise<
+    {
+      id: string;
+      quantity: number;
+      menuItem: { itemType: 'FOOD' | 'BAR' };
+    }[]
+  >;
+  createKots: (
+    createdByUserId: string,
+    groups: {
+      destination: 'KITCHEN' | 'BAR';
+      items: { orderItemId: string; quantity: number }[];
+    }[],
+  ) => Promise<KotRecord[]>;
+  submit: () => Promise<void>;
   refresh: () => Promise<OrderRecord>;
 };
 
@@ -82,7 +123,7 @@ export class OrdersRepository {
   withLockedOrder<T>(
     restaurantId: string,
     orderId: string,
-    mutate: (context: OrderItemMutationContext) => Promise<T>,
+    mutate: (context: LockedOrderContext) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(
       async (tx) => {
@@ -127,6 +168,57 @@ export class OrdersRepository {
               data: { status: 'CANCELLED' },
             });
           },
+          findUnsentItems: () =>
+            tx.orderItem.findMany({
+              where: {
+                orderId,
+                order: { restaurantId },
+                status: 'ACTIVE',
+                kotItems: { none: {} },
+              },
+              select: {
+                id: true,
+                quantity: true,
+                menuItem: { select: { itemType: true } },
+              },
+              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            }),
+          createKots: async (createdByUserId, groups) => {
+            // Serialize the restaurant-wide human-readable sequence without adding a
+            // duplicate counter table. The existing unique constraint remains the backstop.
+            await tx.$queryRaw`SELECT id FROM restaurants WHERE id = ${restaurantId}::uuid FOR UPDATE`;
+            const rows = await tx.$queryRaw<{ currentNumber: bigint }[]>`
+              SELECT COALESCE(MAX(SUBSTRING(kot_number FROM 5)::bigint), 0) AS "currentNumber"
+              FROM kots
+              WHERE restaurant_id = ${restaurantId}::uuid
+                AND kot_number ~ '^KOT-[0-9]+$'
+            `;
+            const firstNumber = Number(rows[0]?.currentNumber ?? 0n) + 1;
+            return Promise.all(
+              groups.map((group, index) =>
+                tx.kot.create({
+                  data: {
+                    restaurantId,
+                    orderId,
+                    createdByUserId,
+                    kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
+                    destination: group.destination,
+                    status: 'PENDING',
+                    items: {
+                      create: group.items.map((item) => ({ ...item, status: 'PENDING' })),
+                    },
+                  },
+                  select: kotSelect,
+                }),
+              ),
+            );
+          },
+          submit: async () => {
+            await tx.order.update({
+              where: { id: orderId, restaurantId },
+              data: { status: 'SUBMITTED' },
+            });
+          },
           refresh: () =>
             tx.order.findFirstOrThrow({
               where: { id: orderId, restaurantId },
@@ -144,7 +236,7 @@ export class OrdersRepository {
 
   findCurrent(restaurantId: string, tableId: string): Promise<OrderRecord | null> {
     return this.prisma.order.findFirst({
-      where: { restaurantId, tableId, status: 'OPEN' },
+      where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
       select: orderSelect,
       orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
     });
@@ -178,7 +270,7 @@ export class OrdersRepository {
         select: { id: true, tableId: true, status: true },
       });
       const existingOrder = await tx.order.findFirst({
-        where: { restaurantId, tableId, status: 'OPEN' },
+        where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
         select: orderSelect,
         orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
       });

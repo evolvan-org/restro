@@ -33,6 +33,10 @@ import {
   createOrderRequestSchema,
   type CurrentOrderQuery,
   currentOrderQuerySchema,
+  type FireOrderRequest,
+  fireOrderRequestSchema,
+  type FireOrderResponse,
+  fireOrderResponseSchema,
   type Order,
   orderAlreadyOpenErrorSchema,
   type OrderItem,
@@ -107,16 +111,32 @@ export class OrdersController {
   @Get('current')
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.ORDER_READ)
-  @ApiOperation({ summary: 'Get the current open order for a table, including its items' })
+  @ApiOperation({ summary: 'Get the current active order for a table, including its items' })
   @ApiZodQuery(currentOrderQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(orderSchema) })
   @ApiBadRequestResponse(apiError('Invalid table id'))
-  @ApiNotFoundResponse(apiError('No open order for this table in the caller restaurant'))
+  @ApiNotFoundResponse(apiError('No active order for this table in the caller restaurant'))
   current(
     @CurrentActor() actor: Actor,
     @Query(new ZodValidationPipe(currentOrderQuerySchema)) query: CurrentOrderQuery,
   ): Promise<Order> {
     return this.service.current(actor, query.tableId);
+  }
+
+  @Post(':orderId/kots')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: "Send an order's unsent items to the kitchen and bar" })
+  @ApiBody({ schema: zodOpenApiSchema(fireOrderRequestSchema) })
+  @ApiCreatedResponse({ schema: zodOpenApiSchema(fireOrderResponseSchema) })
+  @ApiNotFoundResponse(apiError('Order not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Order cannot be sent or has no unsent items'))
+  fire(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body(new ZodValidationPipe(fireOrderRequestSchema)) _input: FireOrderRequest,
+  ): Promise<FireOrderResponse> {
+    return this.service.fire(actor, orderId);
   }
   @Post(':orderId/items')
   @Header('Cache-Control', 'no-store')
@@ -126,7 +146,7 @@ export class OrdersController {
   @ApiCreatedResponse({ schema: zodOpenApiSchema(orderItemMutationResponseSchema) })
   @ApiBadRequestResponse(apiError('Invalid input or unavailable menu item'))
   @ApiNotFoundResponse(apiError('Order or menu item not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('Order is not open'))
+  @ApiConflictResponse(apiError('Order cannot be changed'))
   addItem(
     @CurrentActor() actor: Actor,
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -142,7 +162,7 @@ export class OrdersController {
   @ApiOkResponse({ schema: zodOpenApiSchema(orderItemMutationResponseSchema) })
   @ApiBadRequestResponse(apiError('Invalid order or item id'))
   @ApiNotFoundResponse(apiError('Order or line not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('Order is not open or item has been sent to the kitchen'))
+  @ApiConflictResponse(apiError('Order cannot be changed or item has been sent to the kitchen'))
   removeItem(
     @CurrentActor() actor: Actor,
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -158,7 +178,9 @@ export class OrdersController {
   @ApiOkResponse({ schema: zodOpenApiSchema(orderItemSchema) })
   @ApiBadRequestResponse(apiError('Quantity must be a positive integer'))
   @ApiNotFoundResponse(apiError('Order or item not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('Order is not open, item is cancelled, or item has been sent'))
+  @ApiConflictResponse(
+    apiError('Order cannot be changed, item is cancelled, or item has been sent'),
+  )
   updateQuantity(
     @CurrentActor() actor: Actor,
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -179,7 +201,9 @@ export class OrdersController {
     apiError('Instructions must be null or a string of at most 255 characters'),
   )
   @ApiNotFoundResponse(apiError('Order or item not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('Order is not open, item is cancelled, or item has been sent'))
+  @ApiConflictResponse(
+    apiError('Order cannot be changed, item is cancelled, or item has been sent'),
+  )
   updateInstructions(
     @CurrentActor() actor: Actor,
     @Param('orderId', ParseUUIDPipe) orderId: string,

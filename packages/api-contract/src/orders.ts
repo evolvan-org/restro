@@ -103,3 +103,46 @@ export type UpdateOrderItemQuantityRequest = z.infer<typeof updateOrderItemQuant
 export type UpdateOrderItemInstructionsRequest = z.infer<
   typeof updateOrderItemInstructionsRequestSchema
 >;
+
+export const kotDestinationSchema = z.enum(['KITCHEN', 'BAR']);
+export const kotStatusSchema = z.enum(['PENDING', 'PREPARING', 'READY', 'COMPLETED']);
+
+export const kotItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    orderItemId: z.string().uuid(),
+    menuItemId: z.string().uuid(),
+    name: z.string(),
+    quantity: z.number().int().positive(),
+    specialInstructions: z.string().nullable(),
+    status: kotStatusSchema,
+  })
+  .strict();
+
+export const kotSchema = z
+  .object({
+    id: z.string().uuid(),
+    orderId: z.string().uuid(),
+    kotNumber: z.string().regex(/^KOT-\d{6,}$/),
+    destination: kotDestinationSchema,
+    status: kotStatusSchema,
+    createdAt: z.string().datetime(),
+    items: z.array(kotItemSchema),
+  })
+  .strict();
+
+export const fireOrderRequestSchema = z.object({}).strict();
+
+export const fireOrderResponseSchema = z
+  .object({
+    kots: z.array(kotSchema).min(1).max(2),
+    order: orderSchema,
+  })
+  .strict();
+
+export type KotDestination = z.infer<typeof kotDestinationSchema>;
+export type KotStatus = z.infer<typeof kotStatusSchema>;
+export type KotItem = z.infer<typeof kotItemSchema>;
+export type Kot = z.infer<typeof kotSchema>;
+export type FireOrderRequest = z.infer<typeof fireOrderRequestSchema>;
+export type FireOrderResponse = z.infer<typeof fireOrderResponseSchema>;

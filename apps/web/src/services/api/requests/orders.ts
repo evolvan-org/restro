@@ -5,6 +5,9 @@ import {
   completeOrderResponseSchema,
   type CreateOrderRequest,
   createOrderRequestSchema,
+  fireOrderRequestSchema,
+  type FireOrderResponse,
+  fireOrderResponseSchema,
   type Order,
   orderAlreadyOpenErrorSchema,
   type OrderItem,
@@ -67,7 +70,7 @@ export function useCurrentOrder(tableId: string, enabled: boolean): UseQueryResu
         const response = await api.get('/orders/current', { params: { tableId }, signal });
         return orderSchema.parse(response.data);
       } catch (error) {
-        // No open order is an expected state on a table's first visit.
+        // No active order is an expected state on a table's first visit.
         if (axios.isAxiosError(error) && error.response?.status === 404) return null;
         throw error;
       }
@@ -125,6 +128,26 @@ export function useCompleteOrder(): UseMutationResult<CompleteOrderResponse, Err
       ]);
     },
     onError: showApiError,
+  });
+}
+
+export function useFireOrder(): UseMutationResult<FireOrderResponse, Error, string> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to send the order.');
+  return useMutation<FireOrderResponse, Error, string>({
+    mutationFn: async (orderId: string) => {
+      const response = await api.post(`/orders/${orderId}/kots`, fireOrderRequestSchema.parse({}));
+      return fireOrderResponseSchema.parse(response.data);
+    },
+    onSuccess: async ({ order }) => {
+      const queryKey = [OrderQueryKey.Current, order.tableId];
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, order);
+    },
+    onError: async (error) => {
+      showApiError(error);
+      await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
+    },
   });
 }
 
