@@ -64,7 +64,8 @@ export default function AddOrderItemDialog({
         <DialogHeader>
           <DialogTitle>Add {item.name}</DialogTitle>
           <DialogDescription>
-            Menu price: {item.price}. Each addition creates a separate line. The current menu price
+            Menu price: {item.price}. Adding an item already on the order with the same note
+            increases its quantity, and only the new units go to the kitchen. The current menu price
             is confirmed when added.
           </DialogDescription>
         </DialogHeader>

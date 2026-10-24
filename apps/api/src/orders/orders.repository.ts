@@ -20,7 +20,7 @@ const orderSelect = {
     select: {
       id: true,
       menuItemId: true,
-      kotItems: { select: { id: true }, take: 1 },
+      kotItems: { select: { quantity: true } },
       menuItem: { select: { name: true, itemType: true } },
       quantity: true,
       unitPrice: true,
@@ -84,8 +84,14 @@ export type LockedOrderContext = {
   findItem: (id: string) => Promise<{
     id: string;
     status: OrderRecord['items'][number]['status'];
-    kotItems: { id: string }[];
+    quantity: number;
+    kotItems: { quantity: number }[];
   } | null>;
+  findMergeableItem: (match: {
+    menuItemId: string;
+    specialInstructions: string | null;
+    unitPrice: Prisma.Decimal;
+  }) => Promise<{ id: string; quantity: number } | null>;
   add: (data: {
     menuItemId: string;
     quantity: number;
@@ -97,10 +103,11 @@ export type LockedOrderContext = {
     data: { quantity: number } | { specialInstructions: string | null },
   ) => Promise<void>;
   cancel: (id: string) => Promise<void>;
-  findUnsentItems: () => Promise<
+  findActiveItems: () => Promise<
     {
       id: string;
       quantity: number;
+      kotItems: { quantity: number }[];
       menuItem: { itemType: 'FOOD' | 'BAR' };
     }[]
   >;
@@ -146,9 +153,27 @@ export class OrdersRepository {
             await tx.$queryRaw`SELECT id FROM order_items WHERE id = ${id}::uuid AND order_id = ${orderId}::uuid FOR UPDATE`;
             return tx.orderItem.findFirst({
               where: { id, orderId, order: { restaurantId } },
-              select: { id: true, status: true, kotItems: { select: { id: true }, take: 1 } },
+              select: {
+                id: true,
+                status: true,
+                quantity: true,
+                kotItems: { select: { quantity: true } },
+              },
             });
           },
+          findMergeableItem: ({ menuItemId, specialInstructions, unitPrice }) =>
+            tx.orderItem.findFirst({
+              where: {
+                orderId,
+                order: { restaurantId },
+                menuItemId,
+                specialInstructions,
+                unitPrice,
+                status: 'ACTIVE',
+              },
+              select: { id: true, quantity: true },
+              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            }),
           add: async (data) => {
             const item = await tx.orderItem.create({
               data: { ...data, orderId, status: 'ACTIVE' },
@@ -168,17 +193,17 @@ export class OrdersRepository {
               data: { status: 'CANCELLED' },
             });
           },
-          findUnsentItems: () =>
+          findActiveItems: () =>
             tx.orderItem.findMany({
               where: {
                 orderId,
                 order: { restaurantId },
                 status: 'ACTIVE',
-                kotItems: { none: {} },
               },
               select: {
                 id: true,
                 quantity: true,
+                kotItems: { select: { quantity: true } },
                 menuItem: { select: { itemType: true } },
               },
               orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],

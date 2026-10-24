@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 
 import TableCaptainAction from '@/components/TableCaptainAction';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { useCompleteOrder } from '@/services/api/requests/orders';
 import { getReservation } from '@/services/api/requests/reservations';
 import { useTransitionTableStatus } from '@/services/api/requests/tables';
@@ -94,6 +95,7 @@ type FloorTileProps = {
   canUpdateOrder: boolean;
   canAssignCaptain: boolean;
   canTransitionStatus: boolean;
+  statuses: readonly { id: string; code: string; name: string }[];
   onWalkInClick: (table: RestaurantTable) => void;
 };
 
@@ -116,6 +118,27 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
       toast.error('Unable to load the reservation.');
     }
   }
+
+  function changeStatus(code: string): void {
+    if (code === statusCode) return;
+    void transitionStatus.mutateAsync({ id: table.id, input: { statusCode: code } });
+  }
+
+  const primaryAction =
+    statusCode === 'AVAILABLE' && props.canReserve ? (
+      <Button size="sm" className="w-full" onClick={() => props.onWalkInClick(table)}>
+        Create walk-in
+      </Button>
+    ) : null;
+  const orderLink =
+    reservation && props.canViewOrder && statusCode !== 'AVAILABLE' ? (
+      <Link
+        href={`/orders/tables/${table.id}?reservationId=${reservation.id}`}
+        className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full')}
+      >
+        {table.openOrderId ? 'View order' : props.canStartOrder ? 'Start order' : 'View order'}
+      </Link>
+    ) : null;
 
   const details = (
     <>
@@ -200,54 +223,82 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
         >
           <Popover.Popup className="max-h-[calc(100dvh-1.5rem)] w-72 overflow-y-auto rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-lg focus:outline-none">
             {details}
-            <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
-              {statusCode === 'AVAILABLE' && props.canReserve && (
-                <Button size="sm" onClick={() => props.onWalkInClick(table)}>
-                  Create walk-in
-                </Button>
+            <div className="mt-3 space-y-3 border-t pt-3">
+              {(primaryAction || orderLink) && (
+                <div className="grid gap-2">
+                  {primaryAction}
+                  {orderLink}
+                </div>
               )}
-              {reservation && props.canEditReservation && (
-                <Button size="sm" variant="outline" onClick={() => void editReservation()}>
-                  Edit reservation
-                </Button>
+              {(reservation && props.canEditReservation) ||
+              (table.openOrderId && props.canUpdateOrder) ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {reservation && props.canEditReservation && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void editReservation()}
+                    >
+                      Edit reservation
+                    </Button>
+                  )}
+                  {table.openOrderId && props.canUpdateOrder && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      disabled={isBusy}
+                      onClick={() => void completeOrder.mutateAsync(table.openOrderId!)}
+                    >
+                      Complete order
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+              {(props.canTransitionStatus || props.canAssignCaptain) && (
+                <div className="space-y-2 border-t pt-3">
+                  {statusCode === 'NEEDS_CLEANING' && props.canTransitionStatus && (
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      disabled={isBusy}
+                      onClick={() => changeStatus('AVAILABLE')}
+                    >
+                      Mark available
+                    </Button>
+                  )}
+                  {props.canTransitionStatus && (
+                    <div className="space-y-1">
+                      <label
+                        htmlFor={`table-status-${table.id}`}
+                        className="text-xs font-medium text-muted-foreground"
+                      >
+                        Change status
+                      </label>
+                      <NativeSelect
+                        id={`table-status-${table.id}`}
+                        size="sm"
+                        className="w-full"
+                        disabled={isBusy}
+                        value={table.currentStatus.code}
+                        onChange={(event) => changeStatus(event.target.value)}
+                      >
+                        {props.statuses.map((status) => (
+                          <NativeSelectOption key={status.id} value={status.code}>
+                            {status.name}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                  )}
+                  {props.canAssignCaptain && (
+                    <div className="[&>div]:w-full">
+                      <TableCaptainAction table={table} />
+                    </div>
+                  )}
+                </div>
               )}
-              {reservation && props.canViewOrder && statusCode !== 'AVAILABLE' && (
-                <Link
-                  href={`/orders/tables/${table.id}?reservationId=${reservation.id}`}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  {table.openOrderId
-                    ? 'View order'
-                    : props.canStartOrder
-                      ? 'Start order'
-                      : 'View order'}
-                </Link>
-              )}
-              {table.openOrderId && props.canUpdateOrder && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isBusy}
-                  onClick={() => void completeOrder.mutateAsync(table.openOrderId!)}
-                >
-                  Complete order
-                </Button>
-              )}
-              {statusCode === 'NEEDS_CLEANING' && props.canTransitionStatus && (
-                <Button
-                  size="sm"
-                  disabled={isBusy}
-                  onClick={() =>
-                    void transitionStatus.mutateAsync({
-                      id: table.id,
-                      input: { statusCode: 'AVAILABLE' },
-                    })
-                  }
-                >
-                  Mark available
-                </Button>
-              )}
-              {props.canAssignCaptain && <TableCaptainAction table={table} />}
             </div>
           </Popover.Popup>
         </Popover.Positioner>

@@ -13,7 +13,7 @@ import {
 } from '@rms/api-contract';
 
 import type { Actor } from '../common/auth/authenticated-request';
-import { toKot, toOrder } from './orders.mapper';
+import { sentQuantity, toKot, toOrder } from './orders.mapper';
 import { OrdersRepository } from './orders.repository';
 
 @Injectable()
@@ -77,7 +77,10 @@ export class OrdersService {
         throw new ConflictException('Only an open or submitted order can be sent');
       }
 
-      const unsentItems = await context.findUnsentItems();
+      // A line may be partly sent: only the quantity not yet on a KOT goes out now.
+      const unsentItems = (await context.findActiveItems())
+        .map((item) => ({ ...item, quantity: item.quantity - sentQuantity(item.kotItems) }))
+        .filter((item) => item.quantity > 0);
       if (!unsentItems.length) throw new ConflictException('No unsent items to send');
 
       const kitchenItems = unsentItems

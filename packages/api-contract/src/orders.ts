@@ -12,7 +12,11 @@ export const orderItemSchema = z
     name: z.string(),
     itemType: servingTypeSchema,
     quantity: z.number().int().positive(),
-    isSentToKitchen: z.boolean(),
+    sentQuantity: z
+      .number()
+      .int()
+      .min(0)
+      .describe('Units already on a KOT; the remainder (quantity - sentQuantity) is unsent'),
     lineTotal: z.string().describe('Quantity times snapshotted unit price, with 2 fraction digits'),
     unitPrice: z.string().describe('Price snapshot as a decimal string with 2 fraction digits'),
     specialInstructions: z.string().nullable(),
@@ -65,7 +69,11 @@ export type CurrentOrderQuery = z.infer<typeof currentOrderQuerySchema>;
 export type CompleteOrderResponse = z.infer<typeof completeOrderResponseSchema>;
 export type OrderAlreadyOpenError = z.infer<typeof orderAlreadyOpenErrorSchema>;
 
-/** Repeated additions always create separate lines, each with its own price snapshot. */
+/**
+ * Adding an item identical to an active line (same item, note and price snapshot) raises that
+ * line's quantity, even if part of it was already sent; the next KOT carries only the unsent
+ * remainder. Otherwise it creates a new line with its own price snapshot.
+ */
 export const addOrderItemRequestSchema = z
   .object({
     menuItemId: z.string().uuid(),

@@ -92,7 +92,9 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   const order = current.data;
   const canEdit = canUpdate && Boolean(order && ['OPEN', 'SUBMITTED'].includes(order.status));
   const activeItems = order?.items.filter((item) => item.status === 'ACTIVE') ?? [];
-  const unsentItems = activeItems.filter((item) => !item.isSentToKitchen);
+  const unsentItems = activeItems
+    .filter((item) => item.quantity > item.sentQuantity)
+    .map((item) => ({ ...item, quantity: item.quantity - item.sentQuantity }));
   const cancelledItems = order?.items.filter((item) => item.status === 'CANCELLED') ?? [];
   const error = current.error ?? table.error;
   const tableNumber = order?.table.tableNumber ?? table.data?.tableNumber;
@@ -219,7 +221,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                   <p className="text-muted-foreground">
                     {item.quantity} × {item.unitPrice} = {item.lineTotal}
                   </p>
-                  {canEdit && !item.isSentToKitchen && (
+                  {canEdit && (
                     <OrderItemEditors
                       item={item}
                       disabled={isMutating}
@@ -239,19 +241,25 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                       }}
                     />
                   )}
-                  {(!canEdit || item.isSentToKitchen) && item.specialInstructions && (
+                  {(!canEdit || item.sentQuantity > 0) && item.specialInstructions && (
                     <p className="break-words">{item.specialInstructions}</p>
                   )}
-                  {item.isSentToKitchen && <Badge variant="secondary">Sent to kitchen</Badge>}
+                  {item.sentQuantity > 0 && (
+                    <Badge variant="secondary">
+                      {item.sentQuantity === item.quantity
+                        ? 'Sent to kitchen'
+                        : `${item.sentQuantity} of ${item.quantity} sent to kitchen`}
+                    </Badge>
+                  )}
                   {canEdit && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={isMutating || item.isSentToKitchen}
+                      disabled={isMutating || item.sentQuantity > 0}
                       aria-label={`Remove ${item.name} from order`}
                       title={
-                        item.isSentToKitchen
+                        item.sentQuantity > 0
                           ? 'Items sent to the kitchen cannot be removed'
                           : undefined
                       }

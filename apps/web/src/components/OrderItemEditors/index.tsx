@@ -54,9 +54,12 @@ export default function OrderItemEditors({
       // Preserve the draft; the request hook reports the error.
     }
   });
+  // Units already on a KOT cannot be taken back, so the line may only grow past them.
+  const minQuantity = Math.max(1, item.sentQuantity);
   const step = (delta: number): void => {
     const value = quantity.getValues('quantity');
-    if (!Number.isInteger(value) || value + delta < 1 || value + delta > 2147483647) return;
+    if (!Number.isInteger(value) || value + delta < minQuantity || value + delta > 2147483647)
+      return;
     quantity.setValue('quantity', value + delta, { shouldDirty: true });
     void saveQuantity();
   };
@@ -69,6 +72,8 @@ export default function OrderItemEditors({
     }
   });
   const draftQuantity = quantity.watch('quantity');
+  const quantityField = quantity.register('quantity', { valueAsNumber: true });
+  const instructionsField = instructions.register('specialInstructions');
 
   return (
     <div className="space-y-3 py-2">
@@ -81,7 +86,7 @@ export default function OrderItemEditors({
             type="button"
             variant="outline"
             size="icon-sm"
-            disabled={busy || !Number.isInteger(draftQuantity) || draftQuantity <= 1}
+            disabled={busy || !Number.isInteger(draftQuantity) || draftQuantity <= minQuantity}
             aria-label={`Decrease quantity of ${item.name}`}
             onClick={() => step(-1)}
           >
@@ -90,14 +95,18 @@ export default function OrderItemEditors({
           <Input
             id={`quantity-${item.id}`}
             type="number"
-            min={1}
+            min={minQuantity}
             max={2147483647}
             step={1}
             className="h-8 w-16"
             disabled={busy}
             aria-invalid={Boolean(quantity.formState.errors.quantity)}
             aria-describedby={`quantity-error-${item.id}`}
-            {...quantity.register('quantity', { valueAsNumber: true })}
+            {...quantityField}
+            onBlur={(event) => {
+              void quantityField.onBlur(event);
+              if (quantity.formState.isDirty && !busy) void saveQuantity();
+            }}
           />
           <Button
             type="button"
@@ -122,46 +131,53 @@ export default function OrderItemEditors({
           {quantity.formState.errors.quantity?.message}
         </FieldError>
       </form>
-      <form onSubmit={saveInstructions} noValidate className="space-y-1">
-        <label htmlFor={`instructions-${item.id}`} className="text-xs font-medium">
-          Special instructions
-        </label>
-        <Textarea
-          id={`instructions-${item.id}`}
-          rows={2}
-          maxLength={255}
-          disabled={busy}
-          placeholder="e.g. No onions"
-          aria-invalid={Boolean(instructions.formState.errors.specialInstructions)}
-          aria-describedby={`instructions-error-${item.id}`}
-          {...instructions.register('specialInstructions')}
-        />
-        <FieldError id={`instructions-error-${item.id}`}>
-          {instructions.formState.errors.specialInstructions?.message}
-        </FieldError>
-        <div className="flex gap-1">
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            disabled={busy || !instructions.formState.isDirty}
-          >
-            Save note
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={busy || !instructions.watch('specialInstructions')}
-            onClick={() => {
-              instructions.setValue('specialInstructions', null, { shouldDirty: true });
-              void saveInstructions();
+      {item.sentQuantity === 0 && (
+        <form onSubmit={saveInstructions} noValidate className="space-y-1">
+          <label htmlFor={`instructions-${item.id}`} className="text-xs font-medium">
+            Special instructions
+          </label>
+          <Textarea
+            id={`instructions-${item.id}`}
+            rows={2}
+            maxLength={255}
+            disabled={busy}
+            placeholder="e.g. No onions"
+            aria-invalid={Boolean(instructions.formState.errors.specialInstructions)}
+            aria-describedby={`instructions-error-${item.id}`}
+            {...instructionsField}
+            onBlur={(event) => {
+              void instructionsField.onBlur(event);
+              // Persist a pending note on blur so sending to the kitchen never drops it.
+              if (instructions.formState.isDirty && !busy) void saveInstructions();
             }}
-          >
-            Clear note
-          </Button>
-        </div>
-      </form>
+          />
+          <FieldError id={`instructions-error-${item.id}`}>
+            {instructions.formState.errors.specialInstructions?.message}
+          </FieldError>
+          <div className="flex gap-1">
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={busy || !instructions.formState.isDirty}
+            >
+              Save note
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={busy || !instructions.watch('specialInstructions')}
+              onClick={() => {
+                instructions.setValue('specialInstructions', null, { shouldDirty: true });
+                void saveInstructions();
+              }}
+            >
+              Clear note
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

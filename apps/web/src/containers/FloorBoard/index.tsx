@@ -181,6 +181,7 @@ export default function FloorBoard(): ReactElement | null {
                     canUpdateOrder={canUpdateOrder}
                     canAssignCaptain={canAssignCaptain}
                     canTransitionStatus={canTransitionStatus}
+                    statuses={statuses}
                     onWalkInClick={(t) =>
                       showWalkInForm({
                         id: t.id,

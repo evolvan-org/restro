@@ -13,8 +13,8 @@ export function toOrder(record: OrderRecord): Order {
     updatedAt: record.updatedAt.toISOString(),
     items: record.items.map(({ menuItem, kotItems, ...item }) => ({
       ...item,
+      sentQuantity: sentQuantity(kotItems),
       name: menuItem.name,
-      isSentToKitchen: kotItems.length > 0,
       itemType: menuItem.itemType,
       unitPrice: item.unitPrice.toFixed(2),
       lineTotal: orderItemTotal(item).toFixed(2),
@@ -39,6 +39,10 @@ export function toKot(record: KotRecord): Kot {
       specialInstructions: orderItem.specialInstructions,
     })),
   };
+}
+
+export function sentQuantity(kotItems: { quantity: number }[]): number {
+  return kotItems.reduce((total, kotItem) => total + kotItem.quantity, 0);
 }
 
 /** Use persisted snapshots and decimal arithmetic; cancelled lines remain visible as history. */
