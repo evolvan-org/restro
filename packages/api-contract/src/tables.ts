@@ -1,6 +1,6 @@
-import { TABLE_STATUS_CODES } from '@rms/shared';
 import { z } from 'zod';
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
+import { tableStatusCodeSchema } from './table-statuses';
 
 const tableNumberSchema = z
   .string()
@@ -26,6 +26,11 @@ const optionalUuidSchema = z.preprocess(
   z.string().uuid('Select a status').optional(),
 );
 
+const optionalCaptainIdSchema = z.preprocess(
+  (value) => (value === '' ? null : value),
+  z.string().uuid('Captain id must be a valid UUID').nullable().optional(),
+);
+
 export const tableSectionSchema = z
   .object({
     id: z.string().uuid(),
@@ -41,7 +46,33 @@ export const tableStatusSummarySchema = z
   })
   .strict();
 
-export const tableLifecycleStatusCodeSchema = z.enum(TABLE_STATUS_CODES);
+export const tableCaptainSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    role: z.string(),
+  })
+  .strict();
+
+export const tableActiveReservationSchema = z
+  .object({
+    id: z.string().uuid(),
+    reservationAt: z.string().datetime(),
+    partySize: z.number().int(),
+    status: z.enum(['BOOKED', 'SEATED']),
+    notes: z.string().nullable(),
+    guest: z
+      .object({
+        id: z.string().uuid(),
+        guestName: z.string(),
+        phoneNumber: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+// Includes every restaurant-defined status code, not only the seeded defaults.
+export const tableLifecycleStatusCodeSchema = tableStatusCodeSchema;
 
 export const tableLifecycleStatusSchema = z
   .object({
@@ -67,6 +98,12 @@ export const restaurantTableSchema = z
     isActive: z.boolean(),
     section: tableSectionSchema,
     currentStatus: tableStatusSummarySchema,
+    captainUserId: z.string().uuid().nullable(),
+    captain: tableCaptainSchema.nullable(),
+    // UTC timestamp used by the floor-board elapsed timer.
+    statusChangedAt: z.string().datetime(),
+    activeReservation: tableActiveReservationSchema.nullable(),
+    openOrderId: z.string().uuid().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -94,6 +131,9 @@ const tableDetailsSchema = z
       .max(100, 'Capacity must not exceed 100'),
     sectionId: z.string().uuid('Select a section'),
     currentStatusId: optionalUuidSchema,
+    captainUserId: optionalCaptainIdSchema.describe(
+      'Optional captain responsible for the table; null clears it.',
+    ),
   })
   .strict();
 
@@ -103,8 +143,11 @@ export const updateTableRequestSchema = tableDetailsSchema
   .omit({ currentStatusId: true })
   .partial()
   .refine(
-    ({ tableNumber, capacity, sectionId }) =>
-      tableNumber !== undefined || capacity !== undefined || sectionId !== undefined,
+    ({ tableNumber, capacity, sectionId, captainUserId }) =>
+      tableNumber !== undefined ||
+      capacity !== undefined ||
+      sectionId !== undefined ||
+      captainUserId !== undefined,
     { message: 'At least one field must be provided for update' },
   );
 
@@ -113,6 +156,16 @@ export const updateTableActiveRequestSchema = z
     isActive: z.boolean(),
   })
   .strict();
+
+export const assignTableCaptainRequestSchema = z
+  .object({
+    captainUserId: z.string().uuid('Captain id must be a valid UUID').nullable(),
+  })
+  .strict()
+  .describe('Assign or change a table captain; null clears the assignment.');
+
+export const assignTableCaptainResponseSchema = restaurantTableSchema;
+export const captainOptionsResponseSchema = z.array(tableCaptainSchema);
 
 export const tableListResponseSchema = paginatedResponseSchema(restaurantTableSchema);
 export const tableOptionsResponseSchema = z
@@ -128,6 +181,11 @@ export const transitionTableStatusResponseSchema = restaurantTableSchema;
 
 export type TableSection = z.infer<typeof tableSectionSchema>;
 export type TableStatusSummary = z.infer<typeof tableStatusSummarySchema>;
+export type TableCaptain = z.infer<typeof tableCaptainSchema>;
+export type TableActiveReservation = z.infer<typeof tableActiveReservationSchema>;
+export type AssignTableCaptainRequest = z.infer<typeof assignTableCaptainRequestSchema>;
+export type AssignTableCaptainResponse = z.infer<typeof assignTableCaptainResponseSchema>;
+export type CaptainOptionsResponse = z.infer<typeof captainOptionsResponseSchema>;
 export type TableLifecycleStatusCode = z.infer<typeof tableLifecycleStatusCodeSchema>;
 export type TableLifecycleStatus = z.infer<typeof tableLifecycleStatusSchema>;
 export type TableLifecycleStatusListResponse = z.infer<

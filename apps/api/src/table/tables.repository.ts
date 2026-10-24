@@ -1,16 +1,37 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@rms/db';
-import { isTableStatusCode, TABLE_STATUS_CODES, type TableStatusCode } from '@rms/shared';
+import { Prisma, UserStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
+import { reconcileRestaurantTableStatuses } from '../common/database/table-lifecycle';
 
 const restaurantTableSelect = {
   id: true,
   tableNumber: true,
   capacity: true,
   isActive: true,
+  statusChangedAt: true,
   createdAt: true,
   updatedAt: true,
+  captainUserId: true,
+  captain: { select: { id: true, name: true, role: { select: { name: true } } } },
+  reservations: {
+    where: { status: { in: ['BOOKED', 'SEATED'] } },
+    select: {
+      id: true,
+      reservationAt: true,
+      partySize: true,
+      status: true,
+      notes: true,
+      guest: { select: { id: true, guestName: true, phoneNumber: true } },
+    },
+    orderBy: [{ reservationAt: 'asc' }, { id: 'asc' }],
+  },
+  orders: {
+    where: { status: { in: ['OPEN', 'SUBMITTED'] } },
+    select: { id: true },
+    orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    take: 1,
+  },
   section: {
     select: {
       id: true,
@@ -44,17 +65,24 @@ const lifecycleStatusSelect = {
   sortOrder: true,
 } satisfies Prisma.TableStatusSelect;
 
+const captainCandidateSelect = {
+  id: true,
+  restaurantId: true,
+  name: true,
+  status: true,
+  role: { select: { name: true } },
+} satisfies Prisma.UserSelect;
+
+export type CaptainCandidate = Prisma.UserGetPayload<{ select: typeof captainCandidateSelect }>;
+
 export type TableRecord = Prisma.RestaurantTableGetPayload<{
   select: typeof restaurantTableSelect;
 }>;
 export type DiningSectionRecord = Prisma.DiningSectionGetPayload<{ select: typeof sectionSelect }>;
 export type TableStatusRecord = Prisma.TableStatusGetPayload<{ select: typeof statusSelect }>;
-type LifecycleStatusRow = Prisma.TableStatusGetPayload<{
+export type LifecycleStatusRecord = Prisma.TableStatusGetPayload<{
   select: typeof lifecycleStatusSelect;
 }>;
-export type LifecycleStatusRecord = Omit<LifecycleStatusRow, 'code'> & {
-  code: TableStatusCode;
-};
 
 export type TablePageFilters = {
   search?: string;
@@ -70,6 +98,7 @@ export type TableDetails = {
   capacity: number;
   sectionId: string;
   currentStatusId: string;
+  captainUserId?: string | null;
 };
 
 export class TableNumberConflictError extends Error {
@@ -86,6 +115,22 @@ function isUniqueViolation(error: unknown): boolean {
 @Injectable()
 export class TablesRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  reconcileStatuses(restaurantId: string): Promise<void> {
+    return this.prisma.$transaction(async (tx) => {
+      await reconcileRestaurantTableStatuses(tx, restaurantId);
+    });
+  }
+
+  async reconcileAllStatuses(): Promise<void> {
+    const restaurants = await this.prisma.restaurantTable.findMany({
+      distinct: ['restaurantId'],
+      select: { restaurantId: true },
+    });
+    for (const { restaurantId } of restaurants) {
+      await this.reconcileStatuses(restaurantId);
+    }
+  }
 
   async findPage(
     restaurantId: string,
@@ -120,6 +165,33 @@ export class TablesRepository {
       where: { id: tableId, restaurantId },
       select: restaurantTableSelect,
     });
+  }
+
+  findCaptainCandidate(userId: string): Promise<CaptainCandidate | null> {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: captainCandidateSelect,
+    });
+  }
+
+  listActiveUsers(restaurantId: string): Promise<CaptainCandidate[]> {
+    return this.prisma.user.findMany({
+      where: { restaurantId, status: UserStatus.ACTIVE },
+      select: captainCandidateSelect,
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async updateCaptain(
+    restaurantId: string,
+    tableId: string,
+    captainUserId: string | null,
+  ): Promise<TableRecord | null> {
+    const { count } = await this.prisma.restaurantTable.updateMany({
+      where: { id: tableId, restaurantId },
+      data: { captainUserId },
+    });
+    return count === 0 ? null : this.findById(restaurantId, tableId);
   }
 
   findSection(restaurantId: string, sectionId: string): Promise<DiningSectionRecord | null> {
@@ -161,30 +233,24 @@ export class TablesRepository {
   }
 
   async findLifecycleStatuses(restaurantId: string): Promise<LifecycleStatusRecord[]> {
-    const statuses = await this.prisma.tableStatus.findMany({
+    return this.prisma.tableStatus.findMany({
       where: {
         restaurantId,
         isActive: true,
-        isSystem: true,
-        code: { in: [...TABLE_STATUS_CODES] },
       },
       select: lifecycleStatusSelect,
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { code: 'asc' }],
     });
-    return statuses.filter((status): status is LifecycleStatusRecord =>
-      isTableStatusCode(status.code),
-    );
   }
 
   async findLifecycleStatus(
     restaurantId: string,
-    code: TableStatusCode,
+    code: string,
   ): Promise<LifecycleStatusRecord | null> {
-    const status = await this.prisma.tableStatus.findFirst({
-      where: { restaurantId, code, isActive: true, isSystem: true },
+    return this.prisma.tableStatus.findFirst({
+      where: { restaurantId, code, isActive: true },
       select: lifecycleStatusSelect,
     });
-    return status ? { ...status, code } : null;
   }
 
   async isTableNumberTaken(
@@ -257,7 +323,7 @@ export class TablesRepository {
   ): Promise<TableRecord | null> {
     const { count } = await this.prisma.restaurantTable.updateMany({
       where: { id: tableId, restaurantId, currentStatusId: expectedCurrentStatusId },
-      data: { currentStatusId: targetStatusId },
+      data: { currentStatusId: targetStatusId, statusChangedAt: new Date() },
     });
     return count === 0 ? null : this.findById(restaurantId, tableId);
   }

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
 
-const statusCodeSchema = z
+export const tableStatusCodeSchema = z
   .string()
   .trim()
   .min(1, 'Code is required')
@@ -34,7 +34,7 @@ export const tableStatusListResponseSchema = paginatedResponseSchema(tableStatus
 
 const tableStatusFieldsSchema = z
   .object({
-    code: statusCodeSchema,
+    code: tableStatusCodeSchema,
     name: statusNameSchema,
   })
   .strict();

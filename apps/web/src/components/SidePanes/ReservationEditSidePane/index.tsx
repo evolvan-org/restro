@@ -150,11 +150,15 @@ export default function ReservationEditSidePane({
             <Input
               id="reservation-edit-at"
               type="datetime-local"
-              disabled={isPending}
+              disabled={isPending || reservation.status === 'SEATED'}
               aria-invalid={Boolean(errors.reservationAt)}
               {...form.register('reservationAt')}
             />
-            <FieldDescription>{settings.hints.reservationAt}</FieldDescription>
+            <FieldDescription>
+              {reservation.status === 'SEATED'
+                ? 'Reservation time is locked after the guest is seated.'
+                : settings.hints.reservationAt}
+            </FieldDescription>
             <FieldError>{errors.reservationAt?.message}</FieldError>
           </Field>
 

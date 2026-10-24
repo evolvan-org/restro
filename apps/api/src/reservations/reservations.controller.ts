@@ -24,18 +24,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
-  type AssignReservationCaptainRequest,
-  assignReservationCaptainRequestSchema,
-  type AssignReservationCaptainResponse,
-  assignReservationCaptainResponseSchema,
   type AssignReservationTableRequest,
   assignReservationTableRequestSchema,
   type AssignReservationTableResponse,
   assignReservationTableResponseSchema,
   type CancelReservationRequest,
   cancelReservationRequestSchema,
-  type CaptainOptionsResponse,
-  captainOptionsResponseSchema,
   type CreateReservationRequest,
   createReservationRequestSchema,
   type Reservation,
@@ -68,48 +62,14 @@ import { ReservationsService } from './reservations.service';
 export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
 
-  @Get('captains')
+  @Get(':id')
   @Header('Cache-Control', 'no-store')
-  @RequirePermissions(Permission.RESERVATION_ASSIGN_CAPTAIN)
-  @ApiOperation({
-    summary: 'List eligible captains',
-    description:
-      "Active users in the caller's restaurant whose role holds `reservation:be-captain`. " +
-      'Requires `reservation:assign-captain`.',
-  })
-  @ApiOkResponse({
-    description: 'Eligible captains',
-    schema: zodOpenApiSchema(captainOptionsResponseSchema),
-  })
-  listCaptains(@CurrentActor() actor: Actor): Promise<CaptainOptionsResponse> {
-    return this.service.listCaptains(actor);
-  }
-
-  @Patch(':id/captain')
-  @Header('Cache-Control', 'no-store')
-  @RequirePermissions(Permission.RESERVATION_ASSIGN_CAPTAIN)
-  @ApiOperation({
-    summary: 'Assign, reassign or unassign a reservation captain',
-    description:
-      'Sets captainUserId on a BOOKED or SEATED reservation; null clears it. The captain must be an ' +
-      'active user of the same restaurant whose role holds `reservation:be-captain`. ' +
-      'Requires `reservation:assign-captain`.',
-  })
-  @ApiBody({ schema: zodOpenApiSchema(assignReservationCaptainRequestSchema) })
-  @ApiOkResponse({
-    description: 'The updated reservation with its embedded captain (null when unassigned)',
-    schema: zodOpenApiSchema(assignReservationCaptainResponseSchema),
-  })
-  @ApiBadRequestResponse(apiError('Invalid id or body, inactive user or ineligible role'))
-  @ApiNotFoundResponse(apiError('The reservation or captain does not exist in your restaurant'))
-  @ApiConflictResponse(apiError('The reservation is not active'))
-  assignCaptain(
-    @CurrentActor() actor: Actor,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(assignReservationCaptainRequestSchema))
-    input: AssignReservationCaptainRequest,
-  ): Promise<AssignReservationCaptainResponse> {
-    return this.service.assignCaptain(actor, id, input);
+  @RequirePermissions(Permission.RESERVATION_READ)
+  @ApiOperation({ summary: 'Get a reservation in the caller restaurant' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(reservationSchema) })
+  @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
+  get(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<Reservation> {
+    return this.service.get(actor, id);
   }
 
   @Patch(':id/table')
@@ -143,11 +103,11 @@ export class ReservationsController {
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.RESERVATION_WRITE)
   @ApiOperation({
-    summary: 'Modify a booked reservation',
+    summary: 'Modify a booked or seated reservation',
     description:
       'Partially updates the time, party size, notes or shared guest profile. ' +
       'Time and party-size edits revalidate table capacity and booking overlaps, excluding this reservation. ' +
-      'Only BOOKED reservations may be edited. Requires `reservation:write`.',
+      'SEATED reservations may change guest details, party size and notes, but not time. Requires `reservation:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateReservationRequestSchema) })
   @ApiOkResponse({
@@ -174,7 +134,7 @@ export class ReservationsController {
     summary: 'Cancel a reservation',
     description:
       "Cancels a reservation in the caller's restaurant, clears its held table and records an " +
-      'optional reason. CANCELLED and COMPLETED reservations return 409. Requires `reservation:write`.',
+      'optional reason. Active orders and terminal reservations return 409. Requires `reservation:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(cancelReservationRequestSchema) })
   @ApiOkResponse({
@@ -183,7 +143,7 @@ export class ReservationsController {
   })
   @ApiBadRequestResponse(apiError('Invalid reservation id or cancellation reason'))
   @ApiNotFoundResponse(apiError('No reservation with this id in your restaurant'))
-  @ApiConflictResponse(apiError('Cancelled or completed reservations cannot be cancelled'))
+  @ApiConflictResponse(apiError('The reservation has an active order or is already terminal'))
   cancel(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

@@ -1,10 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
 } from '@nestjs/common';
 import {
+  type AssignTableCaptainRequest,
+  type AssignTableCaptainResponse,
+  type CaptainOptionsResponse,
   type CreateTableRequest,
   type CreateTableResponse,
   type RestaurantTable,
@@ -19,7 +26,8 @@ import {
   type UpdateTableRequest,
   type UpdateTableResponse,
 } from '@rms/api-contract';
-import { buildPageMeta, isTableStatusTransitionAllowed } from '@rms/shared';
+import { isRole, Permission, roleHasPermission } from '@rms/permissions';
+import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import {
@@ -32,10 +40,63 @@ import {
 const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use';
 
 @Injectable()
-export class TablesService {
+export class TablesService implements OnApplicationBootstrap, OnApplicationShutdown {
+  private readonly logger = new Logger(TablesService.name);
+  private reconciliationTimer?: NodeJS.Timeout;
+  private isReconciling = false;
+
   constructor(private readonly tablesRepository: TablesRepository) {}
 
+  onApplicationBootstrap(): void {
+    this.reconciliationTimer = setInterval(() => void this.reconcileAllStatuses(), 60_000);
+    this.reconciliationTimer.unref();
+    void this.reconcileAllStatuses();
+  }
+
+  onApplicationShutdown(): void {
+    if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
+  }
+
+  private async reconcileAllStatuses(): Promise<void> {
+    if (this.isReconciling) return;
+    this.isReconciling = true;
+    try {
+      await this.tablesRepository.reconcileAllStatuses();
+    } catch (error) {
+      this.logger.error('Unable to reconcile table statuses', error);
+    } finally {
+      this.isReconciling = false;
+    }
+  }
+
+  async listCaptains(actor: Actor): Promise<CaptainOptionsResponse> {
+    const users = await this.tablesRepository.listActiveUsers(actor.restaurantId);
+    return users
+      .filter((user) => isEligibleCaptainRole(user.role.name))
+      .map((user) => ({ id: user.id, name: user.name, role: user.role.name }));
+  }
+
+  async assignCaptain(
+    actor: Actor,
+    tableId: string,
+    input: AssignTableCaptainRequest,
+  ): Promise<AssignTableCaptainResponse> {
+    await this.findInRestaurant(actor.restaurantId, tableId);
+    await this.assertCaptainEligible(actor.restaurantId, input.captainUserId);
+
+    const updated = await this.tablesRepository.updateCaptain(
+      actor.restaurantId,
+      tableId,
+      input.captainUserId,
+    );
+    if (!updated) {
+      throw new NotFoundException('Table not found');
+    }
+    return toRestaurantTable(updated);
+  }
+
   async list(actor: Actor, query: TableListQuery): Promise<TableListResponse> {
+    await this.tablesRepository.reconcileStatuses(actor.restaurantId);
     const { page, pageSize, search, sectionId, statusId, isActive } = query;
     const { items, total } = await this.tablesRepository.findPage(actor.restaurantId, {
       search: search || undefined,
@@ -53,6 +114,7 @@ export class TablesService {
   }
 
   async create(actor: Actor, input: CreateTableRequest): Promise<CreateTableResponse> {
+    if (input.captainUserId) this.assertMayAssignCaptain(actor);
     const details = await this.toTableDetails(actor.restaurantId, input);
     await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber);
 
@@ -87,6 +149,7 @@ export class TablesService {
     tableId: string,
     input: UpdateTableRequest,
   ): Promise<UpdateTableResponse> {
+    if (input.captainUserId !== undefined) this.assertMayAssignCaptain(actor);
     const existing = await this.findInRestaurant(actor.restaurantId, tableId);
     const details = await this.toPartialTableDetails(actor.restaurantId, input);
 
@@ -143,10 +206,8 @@ export class TablesService {
       throw new NotFoundException(`Table status ${input.statusCode} not found`);
     }
 
-    if (!isTableStatusTransitionAllowed(table.currentStatus.code, target.code)) {
-      throw new ConflictException(
-        `Table status cannot transition from ${table.currentStatus.code} to ${target.code}`,
-      );
+    if (table.currentStatus.id === target.id) {
+      return toRestaurantTable(table);
     }
 
     const updated = await this.tablesRepository.updateStatus(
@@ -160,9 +221,7 @@ export class TablesService {
       if (!current) {
         throw new NotFoundException('Table not found');
       }
-      throw new ConflictException(
-        `Table status cannot transition from ${current.currentStatus.code} to ${target.code}`,
-      );
+      throw new ConflictException('Table status changed; refresh and retry');
     }
 
     return toRestaurantTable(updated);
@@ -183,12 +242,15 @@ export class TablesService {
     await this.assertSectionExists(restaurantId, input.sectionId);
     const currentStatusId = input.currentStatusId ?? (await this.defaultStatusId(restaurantId));
     await this.assertStatusExists(restaurantId, currentStatusId);
+    const captainUserId = input.captainUserId ?? null;
+    await this.assertCaptainEligible(restaurantId, captainUserId);
 
     return {
       tableNumber: input.tableNumber,
       capacity: input.capacity,
       sectionId: input.sectionId,
       currentStatusId,
+      captainUserId,
     };
   }
 
@@ -199,11 +261,46 @@ export class TablesService {
     if (input.sectionId !== undefined) {
       await this.assertSectionExists(restaurantId, input.sectionId);
     }
+    if (input.captainUserId !== undefined) {
+      await this.assertCaptainEligible(restaurantId, input.captainUserId);
+    }
     return {
       ...(input.tableNumber !== undefined && { tableNumber: input.tableNumber }),
       ...(input.capacity !== undefined && { capacity: input.capacity }),
       ...(input.sectionId !== undefined && { sectionId: input.sectionId }),
+      ...(input.captainUserId !== undefined && { captainUserId: input.captainUserId }),
     };
+  }
+
+  /** Setting, changing or clearing a captain needs `table:assign-captain`, beyond `restaurant:write`. */
+  private assertMayAssignCaptain(actor: Actor): void {
+    if (!roleHasPermission(actor.role, Permission.TABLE_ASSIGN_CAPTAIN)) {
+      throw new ForbiddenException('Missing permission to assign a captain');
+    }
+  }
+
+  private async assertCaptainEligible(
+    restaurantId: string,
+    captainUserId: string | null,
+  ): Promise<void> {
+    if (captainUserId === null) return;
+    const user = await this.tablesRepository.findCaptainCandidate(captainUserId);
+    if (!user) {
+      throw new NotFoundException('Captain not found');
+    }
+    if (user.restaurantId !== restaurantId) {
+      throw new BadRequestException({
+        message: ['captainUserId: User does not belong to this restaurant'],
+      });
+    }
+    if (user.status !== 'ACTIVE') {
+      throw new BadRequestException({ message: ['captainUserId: User is not active'] });
+    }
+    if (!isEligibleCaptainRole(user.role.name)) {
+      throw new BadRequestException({
+        message: ['captainUserId: User is not eligible to be a captain'],
+      });
+    }
   }
 
   private async assertSectionExists(restaurantId: string, sectionId: string): Promise<void> {
@@ -249,6 +346,10 @@ export class TablesService {
 }
 
 function toRestaurantTable(record: TableRecord): RestaurantTable {
+  const activeReservation =
+    record.reservations.find((reservation) => reservation.status === 'SEATED') ??
+    record.reservations[0] ??
+    null;
   return {
     id: record.id,
     tableNumber: record.tableNumber,
@@ -256,7 +357,24 @@ function toRestaurantTable(record: TableRecord): RestaurantTable {
     isActive: record.isActive,
     section: record.section,
     currentStatus: record.currentStatus,
+    captainUserId: record.captainUserId,
+    captain: record.captain && {
+      id: record.captain.id,
+      name: record.captain.name,
+      role: record.captain.role.name,
+    },
+    statusChangedAt: record.statusChangedAt.toISOString(),
+    activeReservation: activeReservation && {
+      ...activeReservation,
+      status: activeReservation.status as 'BOOKED' | 'SEATED',
+      reservationAt: activeReservation.reservationAt.toISOString(),
+    },
+    openOrderId: record.orders[0]?.id ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
+}
+
+function isEligibleCaptainRole(roleName: string): boolean {
+  return isRole(roleName) && roleHasPermission(roleName, Permission.TABLE_BE_CAPTAIN);
 }

@@ -4,7 +4,7 @@ import type { RestaurantTable } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import { cn } from 'cn';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 
 import FloorTile, { buildStatusColorMap, DEFAULT_STATUS_COLOR } from '@/components/FloorTile';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,10 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useTableList, useTableOptions } from '@/services/api/requests/tables';
+import { useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
 const FLOOR_BOARD_REFRESH_MS = 12_000;
+const TIMER_TICK_MS = 60_000;
 
 type SectionGroup = {
   id: string;
@@ -22,13 +24,30 @@ type SectionGroup = {
   tables: RestaurantTable[];
 };
 
+function elapsedMinutes(statusChangedAt: string, nowMs: number): number {
+  return Math.max(0, (nowMs - new Date(statusChangedAt).getTime()) / 60_000);
+}
+
 export default function FloorBoard(): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
   const { can } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
+  const canReserve = can(Permission.RESERVATION_WRITE);
+  const canViewOrder = can(Permission.ORDER_READ);
+  const canStartOrder = can(Permission.ORDER_WRITE);
+  const canUpdateOrder = can(Permission.ORDER_UPDATE);
+  const canAssignCaptain = can(Permission.TABLE_ASSIGN_CAPTAIN);
+  const canTransitionStatus = can(Permission.TABLE_UPDATE_STATUS);
 
   const [sectionId, setSectionId] = useState('');
   const [statusId, setStatusId] = useState('');
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), TIMER_TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   const options = useTableOptions(canRead);
   const tables = useTableList(
@@ -42,6 +61,12 @@ export default function FloorBoard(): ReactElement | null {
     canRead,
     FLOOR_BOARD_REFRESH_MS,
   );
+
+  useEffect(() => {
+    if (!tables.isFetching) setNowMs(Date.now());
+  }, [tables.isFetching]);
+
+  const showWalkInForm = useShowWalkInFormSidePane();
 
   if (!isAllowed) {
     return null;
@@ -138,14 +163,32 @@ export default function FloorBoard(): ReactElement | null {
       ) : (
         <div className="space-y-8">
           {groups.map((group) => (
-            <section key={group.id}>
-              <h2 className="mb-3 text-sm font-medium text-muted-foreground">{group.name}</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <section key={group.id} className="rounded-xl border bg-muted/20 p-4">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                {group.name}
+              </h2>
+              <div className="grid justify-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(6.5rem,7.5rem))]">
                 {group.tables.map((table) => (
                   <FloorTile
                     key={table.id}
                     table={table}
                     colorClasses={colorMap[table.currentStatus.code] ?? DEFAULT_STATUS_COLOR}
+                    elapsedMinutes={elapsedMinutes(table.statusChangedAt, nowMs)}
+                    canReserve={canReserve}
+                    canEditReservation={canReserve}
+                    canViewOrder={canViewOrder}
+                    canStartOrder={canStartOrder}
+                    canUpdateOrder={canUpdateOrder}
+                    canAssignCaptain={canAssignCaptain}
+                    canTransitionStatus={canTransitionStatus}
+                    statuses={statuses}
+                    onWalkInClick={(t) =>
+                      showWalkInForm({
+                        id: t.id,
+                        tableNumber: t.tableNumber,
+                        capacity: t.capacity,
+                      })
+                    }
                   />
                 ))}
               </div>

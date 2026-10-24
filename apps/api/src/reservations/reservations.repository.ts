@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, ReservationStatus, UserStatus } from '@rms/db';
+import { Prisma, ReservationStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
+import { reconcileTableStatus, setTableLifecycleStatus } from '../common/database/table-lifecycle';
 import { guestSelect, GuestsRepository, type GuestUpdateDetails } from './guests/guests.repository';
 
 const reservationSelect = {
@@ -17,8 +18,6 @@ const reservationSelect = {
     },
   },
   createdByUserId: true,
-  captainUserId: true,
-  captain: { select: { id: true, name: true, role: { select: { name: true } } } },
   reservationAt: true,
   partySize: true,
   status: true,
@@ -45,22 +44,16 @@ export type WalkInDetails = {
   partySize: number;
   notes: string | null;
   reservationAt: Date;
+  tableId: string;
 };
 
-export type BookingDetails = WalkInDetails & { tableId: string | null };
-
-export type ReservationTransition = {
-  status: ReservationStatus;
-  tableId: string | null;
-  cancellationReason: string | null;
-};
+export type BookingDetails = Omit<WalkInDetails, 'tableId'> & { tableId: string | null };
 
 export type ReservationUpdateDetails = {
   tableId?: string | null;
   reservationAt?: Date;
   partySize?: number;
   notes?: string | null;
-  captainUserId?: string | null;
 };
 
 export type ReservationOverlapFilters = {
@@ -72,29 +65,18 @@ export type ReservationOverlapFilters = {
 };
 
 export type ReservationTableContext = {
-  findTable: (tableId: string) => Promise<{ capacity: number; isActive: boolean } | null>;
+  findTable: (tableId: string) => Promise<{
+    capacity: number;
+    isActive: boolean;
+    currentStatus: { code: string };
+  } | null>;
   findOverlap: (
     filters: ReservationOverlapFilters,
   ) => Promise<{ id: string; reservationAt: Date } | null>;
 };
 
-export type CaptainCandidate = {
-  id: string;
-  name: string;
-  status: UserStatus;
-  role: { name: string };
-};
-
-const captainCandidateSelect = {
-  id: true,
-  name: true,
-  status: true,
-  role: { select: { name: true } },
-} satisfies Prisma.UserSelect;
-
 export type ReservationEditContext = ReservationTableContext & {
   reservation: ReservationRecord;
-  findCaptainCandidate: (userId: string) => Promise<CaptainCandidate | null>;
   update: (
     data: ReservationUpdateDetails,
     guest?: GuestUpdateDetails,
@@ -112,14 +94,6 @@ export class ReservationsRepository {
     return this.prisma.reservation.findFirst({
       where: { id, restaurantId },
       select: reservationSelect,
-    });
-  }
-
-  listActiveUsers(restaurantId: string): Promise<CaptainCandidate[]> {
-    return this.prisma.user.findMany({
-      where: { restaurantId, status: UserStatus.ACTIVE },
-      select: captainCandidateSelect,
-      orderBy: { name: 'asc' },
     });
   }
 
@@ -149,11 +123,6 @@ export class ReservationsRepository {
       return edit({
         reservation,
         ...this.tableContext(tx, restaurantId),
-        findCaptainCandidate: (userId) =>
-          tx.user.findFirst({
-            where: { id: userId, restaurantId },
-            select: captainCandidateSelect,
-          }),
         update: async (data, guest) => {
           if (guest && Object.keys(guest).length > 0) {
             await this.guests.updateIn(tx, restaurantId, reservation.guestId, guest);
@@ -182,7 +151,7 @@ export class ReservationsRepository {
       findTable: (tableId) =>
         tx.restaurantTable.findFirst({
           where: { id: tableId, restaurantId },
-          select: { capacity: true, isActive: true },
+          select: { capacity: true, isActive: true, currentStatus: { select: { code: true } } },
         }),
       findOverlap: (filters) => this.findOverlapIn(tx, restaurantId, filters),
     };
@@ -205,24 +174,50 @@ export class ReservationsRepository {
     });
   }
 
-  /** Update only eligible rows, returning the same transaction's resource snapshot. */
-  updateForStatuses(
+  cancel(
     restaurantId: string,
     id: string,
     allowedStatuses: ReservationStatus[],
-    data: ReservationTransition,
-  ): Promise<ReservationRecord | null> {
+    cancellationReason: string | null,
+  ): Promise<
+    | { outcome: 'cancelled'; reservation: ReservationRecord }
+    | { outcome: 'active-order' | 'not-found' | 'terminal' }
+  > {
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.reservation.updateMany({
-        where: { id, restaurantId, status: { in: allowedStatuses } },
-        data,
-      });
-      if (updated.count === 0) return null;
-
-      return tx.reservation.findFirst({
+      await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      const existing = await tx.reservation.findFirst({
         where: { id, restaurantId },
+        select: { id: true, tableId: true, status: true },
+      });
+      if (!existing) return { outcome: 'not-found' };
+      if (!allowedStatuses.includes(existing.status)) return { outcome: 'terminal' };
+
+      if (existing.tableId) {
+        await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${existing.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      }
+
+      const activeOrder = await tx.order.findFirst({
+        where: {
+          restaurantId,
+          status: { in: ['OPEN', 'SUBMITTED'] },
+          OR: [
+            { reservationId: existing.id },
+            ...(existing.tableId ? [{ tableId: existing.tableId }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+      if (activeOrder) return { outcome: 'active-order' };
+
+      const reservation = await tx.reservation.update({
+        where: { id, restaurantId },
+        data: { status: 'CANCELLED', tableId: null, cancellationReason },
         select: reservationSelect,
       });
+      if (existing.tableId) {
+        await reconcileTableStatus(tx, restaurantId, existing.tableId);
+      }
+      return { outcome: 'cancelled', reservation };
     });
   }
 
@@ -253,8 +248,12 @@ export class ReservationsRepository {
     restaurantId: string,
     createdByUserId: string,
     details: WalkInDetails,
+    validate: (context: ReservationTableContext) => Promise<void>,
   ): Promise<ReservationRecord> {
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${details.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      await validate(this.tableContext(tx, restaurantId));
+
       const guest = await this.guests.findOrCreate(
         tx,
         restaurantId,
@@ -262,10 +261,13 @@ export class ReservationsRepository {
         details.phoneNumber,
       );
 
+      await setTableLifecycleStatus(tx, restaurantId, details.tableId, 'OCCUPIED');
+
       return tx.reservation.create({
         data: {
           restaurantId,
           guestId: guest.id,
+          tableId: details.tableId,
           createdByUserId,
           reservationAt: details.reservationAt,
           partySize: details.partySize,

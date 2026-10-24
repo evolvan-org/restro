@@ -159,12 +159,12 @@ model User {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   role       Role       @relation(fields: [roleId], references: [id]) // Restrict (default): can't delete a role in use
 
-  reservationsCreated   Reservation[] @relation("ReservationCreatedBy")
-  reservationsCaptained Reservation[] @relation("ReservationCaptain")
-  ordersCreated       Order[]       @relation("OrderCreatedBy")
-  kotsCreated         Kot[]         @relation("KotCreatedBy")
-  billsGenerated      Bill[]        @relation("BillGeneratedBy")
-  paymentsRecorded    Payment[]     @relation("PaymentRecordedBy")
+  reservationsCreated Reservation[]     @relation("ReservationCreatedBy")
+  tablesCaptained     RestaurantTable[] @relation("TableCaptain")
+  ordersCreated       Order[]           @relation("OrderCreatedBy")
+  kotsCreated         Kot[]             @relation("KotCreatedBy")
+  billsGenerated      Bill[]            @relation("BillGeneratedBy")
+  paymentsRecorded    Payment[]         @relation("PaymentRecordedBy")
 
   @@index([restaurantId])
   @@index([roleId])
@@ -249,15 +249,19 @@ model RestaurantTable {
   restaurantId    String   @map("restaurant_id") @db.Uuid
   sectionId       String   @map("section_id") @db.Uuid
   currentStatusId String   @map("current_status_id") @db.Uuid
+  captainUserId   String?  @map("captain_user_id") @db.Uuid
   tableNumber     String   @map("table_number") @db.VarChar(50)
   capacity        Int
   isActive        Boolean  @default(true) @map("is_active")
+  /// UTC timestamp of the last status transition.
+  statusChangedAt DateTime @default(now()) @map("status_changed_at") @db.Timestamptz(6)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant    Restaurant    @relation(fields: [restaurantId], references: [id])
   section       DiningSection @relation(fields: [sectionId], references: [id])
   currentStatus TableStatus   @relation(fields: [currentStatusId], references: [id])
+  captain       User?         @relation("TableCaptain", fields: [captainUserId], references: [id])
   reservations  Reservation[]
   orders        Order[]
 
@@ -267,6 +271,7 @@ model RestaurantTable {
   @@index([restaurantId])
   @@index([sectionId])
   @@index([currentStatusId])
+  @@index([captainUserId])
   @@map("restaurant_tables")
 }
 
@@ -295,7 +300,6 @@ model Reservation {
   guestId            String            @map("guest_id") @db.Uuid
   tableId            String?           @map("table_id") @db.Uuid
   createdByUserId    String            @map("created_by_user_id") @db.Uuid
-  captainUserId      String?           @map("captain_user_id") @db.Uuid
   reservationAt      DateTime          @map("reservation_at") @db.Timestamptz(6)
   partySize          Int               @map("party_size")
   status             ReservationStatus @default(BOOKED)
@@ -308,14 +312,12 @@ model Reservation {
   guest         Guest            @relation(fields: [guestId], references: [id])
   table         RestaurantTable? @relation(fields: [tableId], references: [id])
   createdByUser User             @relation("ReservationCreatedBy", fields: [createdByUserId], references: [id])
-  captain       User?            @relation("ReservationCaptain", fields: [captainUserId], references: [id])
   orders        Order[]
 
   @@index([restaurantId])
   @@index([guestId])
   @@index([tableId])
   @@index([createdByUserId])
-  @@index([captainUserId])
   @@map("reservations")
 }
 
