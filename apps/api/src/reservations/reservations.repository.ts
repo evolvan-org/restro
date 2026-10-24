@@ -2,10 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, ReservationStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
-import {
-  reconcileTableStatus,
-  setTableLifecycleStatus,
-} from '../common/database/table-lifecycle';
+import { reconcileTableStatus, setTableLifecycleStatus } from '../common/database/table-lifecycle';
 import { guestSelect, GuestsRepository, type GuestUpdateDetails } from './guests/guests.repository';
 
 const reservationSelect = {

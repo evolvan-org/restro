@@ -105,10 +105,6 @@ export async function reconcileTableStatus(
     db,
     restaurantId,
     tableId,
-    activeOrder || seatedReservation
-      ? 'OCCUPIED'
-      : protectedReservation
-        ? 'RESERVED'
-        : 'AVAILABLE',
+    activeOrder || seatedReservation ? 'OCCUPIED' : protectedReservation ? 'RESERVED' : 'AVAILABLE',
   );
 }
