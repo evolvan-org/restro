@@ -56,6 +56,9 @@ export default function useSetupAxios(instance: AxiosInstance) {
 
         if (status === 401) {
           logoutRef.current();
+        } else if (error.config?.errorDisplay === 'inline') {
+          // The query consumer owns presentation; authentication still logs out above.
+          return Promise.reject(error);
         } else if (status === 403) {
           // Authorization denied on an action — surface the reason (AC4).
           const message = (error.response?.data as ApiErrorBody | undefined)?.message;

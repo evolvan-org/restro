@@ -7,18 +7,21 @@ import {
   type RestaurantTable,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
-import { isTableStatusCode, isTableStatusTransitionAllowed } from '@rms/shared';
-import { type ReactElement } from 'react';
+import { isAxiosError } from 'axios';
+import { type ReactElement, useState } from 'react';
 import { type Resolver, useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import {
+  getTable,
+  useCaptainOptions,
   useCreateTable,
   useTableOptions,
   useTransitionTableStatus,
@@ -34,9 +37,10 @@ export type TableFormSidePaneProps = {
 const FORM_ID = 'table-form';
 
 export default function TableFormSidePane({
-  table,
+  table: initialTable,
   onCancel,
 }: TableFormSidePaneProps): ReactElement {
+  const [table, setTable] = useState(initialTable);
   const isEdit = table !== undefined;
   const options = useTableOptions(true);
   const { mutateAsync: createTable, isPending: isCreating } = useCreateTable();
@@ -44,6 +48,11 @@ export default function TableFormSidePane({
   const { mutateAsync: transitionStatus, isPending: isChangingStatus } = useTransitionTableStatus();
   const { can } = usePermissions();
   const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
+  const canConfigure = can(Permission.RESTAURANT_WRITE);
+  const isStatusOnly = isEdit && !canConfigure;
+  // Captains are saved through the table update call, which needs restaurant:write.
+  const canAssignCaptain = canConfigure && can(Permission.TABLE_ASSIGN_CAPTAIN);
+  const captains = useCaptainOptions(canAssignCaptain);
   const hideSidePane = useHideSidePane();
 
   const form = useForm<CreateTableRequest>({
@@ -54,6 +63,7 @@ export default function TableFormSidePane({
       capacity: table?.capacity ?? 2,
       sectionId: table?.section.id ?? '',
       currentStatusId: table?.currentStatus.id ?? '',
+      captainUserId: table?.captainUserId ?? null,
     },
   });
   const { errors } = form.formState;
@@ -62,42 +72,46 @@ export default function TableFormSidePane({
     let detailsSaved = false;
     try {
       if (table) {
-        const { currentStatusId, ...details } = values;
+        const { currentStatusId, captainUserId, ...details } = values;
+        const captainChanged = canAssignCaptain && (captainUserId ?? null) !== table.captainUserId;
         const statusChanged = currentStatusId !== table.currentStatus.id;
         const target = options.data?.statuses.find((status) => status.id === currentStatusId);
-        if (
-          statusChanged &&
-          (!canChangeStatus ||
-            !target ||
-            !isTableStatusCode(target.code) ||
-            !isTableStatusTransitionAllowed(table.currentStatus.code, target.code))
-        ) {
-          form.setError('currentStatusId', { message: 'Select an allowed status.' });
+        if (statusChanged && (!canChangeStatus || !target)) {
+          form.setError('currentStatusId', { message: 'Select an active status.' });
           return;
         }
         const configurationChanged =
           details.tableNumber !== table.tableNumber ||
           details.capacity !== table.capacity ||
-          details.sectionId !== table.section.id;
+          details.sectionId !== table.section.id ||
+          captainChanged;
         let currentStatus = table.currentStatus;
-        if (configurationChanged) {
-          const updated = await updateTable({ id: table.id, input: details });
+        if (canConfigure && configurationChanged) {
+          const updated = await updateTable({
+            id: table.id,
+            input: captainChanged ? { ...details, captainUserId: captainUserId ?? null } : details,
+          });
           currentStatus = updated.currentStatus;
           detailsSaved = true;
         }
-        if (
-          statusChanged &&
-          target &&
-          isTableStatusCode(target.code) &&
-          target.id !== currentStatus.id
-        ) {
+        if (statusChanged && target && target.id !== currentStatus.id) {
           await transitionStatus({ id: table.id, input: { statusCode: target.code } });
         }
-      } else {
-        await createTable(values);
+      } else if (canConfigure) {
+        await createTable({
+          ...values,
+          captainUserId: canAssignCaptain ? (values.captainUserId ?? null) : undefined,
+        });
       }
       hideSidePane();
     } catch (error) {
+      if (table && isAxiosError(error) && [404, 409].includes(error.response?.status ?? 0)) {
+        const [refreshed] = await Promise.allSettled([getTable(table.id), options.refetch()]);
+        if (refreshed.status === 'fulfilled') {
+          setTable(refreshed.value);
+          form.setValue('currentStatusId', refreshed.value.currentStatus.id);
+        }
+      }
       const message = getApiErrorMessage(error, 'Unable to save the table.');
       form.setError('root', {
         message: detailsSaved
@@ -110,16 +124,35 @@ export default function TableFormSidePane({
   const isSaving = form.formState.isSubmitting || isCreating || isUpdating || isChangingStatus;
   const sections = options.data?.sections ?? [];
   const statuses = options.data?.statuses ?? [];
+  const displayedSections = table
+    ? [table.section, ...sections.filter((section) => section.id !== table.section.id)]
+    : sections;
+  const captainOptions = [
+    { value: '', label: 'Unassigned' },
+    ...(table?.captain && !captains.data?.some((captain) => captain.id === table.captain?.id)
+      ? [{ value: table.captain.id, label: table.captain.name }]
+      : []),
+    ...(captains.data ?? []).map((captain) => ({ value: captain.id, label: captain.name })),
+  ];
   const displayedStatuses = table
-    ? [table.currentStatus, ...statuses.filter((status) => status.id !== table.currentStatus.id)]
+    ? [
+        statuses.find((status) => status.id === table.currentStatus.id) ?? table.currentStatus,
+        ...statuses.filter((status) => status.id !== table.currentStatus.id),
+      ]
     : statuses;
 
   return (
     <>
       <SheetHeader>
-        <SheetTitle>{isEdit ? 'Edit table' : 'Add table'}</SheetTitle>
+        <SheetTitle>
+          {isStatusOnly ? 'Change table status' : isEdit ? 'Edit table' : 'Add table'}
+        </SheetTitle>
         <SheetDescription>
-          {isEdit ? 'Update the table setup.' : 'Create a table for this restaurant floor.'}
+          {isStatusOnly
+            ? 'Choose an active status for this table.'
+            : isEdit
+              ? 'Update the table setup.'
+              : 'Create a table for this restaurant floor.'}
         </SheetDescription>
       </SheetHeader>
 
@@ -129,6 +162,7 @@ export default function TableFormSidePane({
             <FieldLabel htmlFor="table-number">Table number</FieldLabel>
             <Input
               id="table-number"
+              readOnly={!canConfigure}
               autoComplete="off"
               aria-invalid={Boolean(errors.tableNumber)}
               {...form.register('tableNumber')}
@@ -141,6 +175,7 @@ export default function TableFormSidePane({
             <FieldLabel htmlFor="table-capacity">Capacity</FieldLabel>
             <Input
               id="table-capacity"
+              readOnly={!canConfigure}
               type="number"
               min={1}
               max={100}
@@ -156,14 +191,14 @@ export default function TableFormSidePane({
             <NativeSelect
               id="table-section"
               className="w-full"
-              disabled={options.isPending}
+              disabled={options.isPending || !canConfigure}
               aria-invalid={Boolean(errors.sectionId)}
               {...form.register('sectionId')}
             >
               <NativeSelectOption value="" disabled>
                 {options.isPending ? 'Loading sections...' : 'Select Dining Section'}
               </NativeSelectOption>
-              {sections.map((section) => (
+              {displayedSections.map((section) => (
                 <NativeSelectOption key={section.id} value={section.id}>
                   {section.name}
                 </NativeSelectOption>
@@ -184,28 +219,50 @@ export default function TableFormSidePane({
               <NativeSelectOption value="" disabled={isEdit}>
                 {options.isPending ? 'Loading statuses...' : 'Use default status'}
               </NativeSelectOption>
-              {displayedStatuses.map((status) => {
-                const isUnavailable = Boolean(
-                  table &&
-                  status.id !== table.currentStatus.id &&
-                  !isTableStatusTransitionAllowed(table.currentStatus.code, status.code),
-                );
-                return (
-                  <NativeSelectOption key={status.id} value={status.id} disabled={isUnavailable}>
-                    {status.name}
-                    {isUnavailable ? ' (transition not allowed)' : ''}
-                  </NativeSelectOption>
-                );
-              })}
+              {displayedStatuses.map((status) => (
+                <NativeSelectOption key={status.id} value={status.id}>
+                  {status.name}
+                </NativeSelectOption>
+              ))}
             </NativeSelect>
-            {isEdit && (
+            {isEdit && canChangeStatus && (
               <FieldDescription>
-                All active statuses are shown. Only allowed transitions from the current status can
-                be selected.
+                Choose any active default or custom status for your restaurant.
               </FieldDescription>
             )}
             <FieldError>{errors.currentStatusId?.message}</FieldError>
           </Field>
+
+          {canAssignCaptain && (
+            <Field data-invalid={Boolean(errors.captainUserId)}>
+              <FieldLabel htmlFor="table-captain">Captain</FieldLabel>
+              {captains.isPending ? (
+                <p className="text-sm text-muted-foreground">Loading captains...</p>
+              ) : (
+                <SearchableSelect
+                  id="table-captain"
+                  value={form.watch('captainUserId') ?? ''}
+                  options={captainOptions}
+                  placeholder="Unassigned"
+                  aria-label="Captain"
+                  aria-invalid={Boolean(errors.captainUserId)}
+                  disabled={captains.isError}
+                  onChange={(next) =>
+                    form.setValue('captainUserId', next || null, { shouldDirty: true })
+                  }
+                />
+              )}
+              <FieldDescription>
+                Optional. Only active captains of this restaurant can be selected.
+              </FieldDescription>
+              {captains.isError && (
+                <p role="alert" className="text-sm text-destructive">
+                  Unable to load captains.
+                </p>
+              )}
+              <FieldError>{errors.captainUserId?.message}</FieldError>
+            </Field>
+          )}
 
           {errors.root && (
             <p role="alert" className="text-sm text-destructive">

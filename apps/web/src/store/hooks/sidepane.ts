@@ -73,19 +73,23 @@ export function useShowTableStatusFormSidePane(): (status?: TableStatus) => void
   };
 }
 
-/** Open the walk-in intake form. */
-export function useShowWalkInFormSidePane(): () => void {
+/** Open the walk-in intake form, optionally locking it to a floor-board table. */
+export function useShowWalkInFormSidePane(): (
+  table?: Pick<RestaurantTable, 'id' | 'tableNumber' | 'capacity'>,
+) => void {
   const showSidePane = useShowSidePane();
-  return () => {
-    showSidePane(SidePaneType.WalkInForm);
+  return (table) => {
+    showSidePane(SidePaneType.WalkInForm, table ? { table } : {});
   };
 }
 
-/** Open the booking form for a future reservation. */
-export function useShowReservationFormSidePane(): () => void {
+/** Open the booking form for a future reservation, optionally with a selected table. */
+export function useShowReservationFormSidePane(): (
+  table?: Pick<RestaurantTable, 'id' | 'tableNumber' | 'capacity'>,
+) => void {
   const showSidePane = useShowSidePane();
-  return () => {
-    showSidePane(SidePaneType.ReservationForm);
+  return (table) => {
+    showSidePane(SidePaneType.ReservationForm, table ? { table } : {});
   };
 }
 

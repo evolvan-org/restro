@@ -6,12 +6,9 @@ import {
 } from '@nestjs/common';
 import {
   ACTIVE_RESERVATION_STATUSES,
-  type AssignReservationCaptainRequest,
-  type AssignReservationCaptainResponse,
   type AssignReservationTableRequest,
   type AssignReservationTableResponse,
   type CancelReservationRequest,
-  type CaptainOptionsResponse,
   type CreateReservationRequest,
   EDITABLE_RESERVATION_STATUSES,
   type Reservation,
@@ -22,7 +19,6 @@ import {
   type UpdateReservationRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
-import { isRole, Permission, roleHasPermission } from '@rms/permissions';
 import {
   buildPageMeta,
   getReservationOverlapWindow,
@@ -45,48 +41,6 @@ type TableAllocation = {
 export class ReservationsService {
   constructor(private readonly repository: ReservationsRepository) {}
 
-  async assignCaptain(
-    actor: Actor,
-    id: string,
-    input: AssignReservationCaptainRequest,
-  ): Promise<AssignReservationCaptainResponse> {
-    const updated = await this.repository.withLockedReservation(
-      actor.restaurantId,
-      id,
-      async (context) => {
-        const { reservation } = context;
-        if (!ACTIVE_RESERVATION_STATUSES.includes(reservation.status)) {
-          throw new ConflictException('Only booked or seated reservations can change captains');
-        }
-
-        if (input.captainUserId !== null) {
-          // Tenant-scoped lookup: a user from another restaurant is indistinguishable from a missing one.
-          const user = await context.findCaptainCandidate(input.captainUserId);
-          if (!user) throw new NotFoundException('Captain not found');
-          if (user.status !== 'ACTIVE') {
-            throw new BadRequestException({ message: ['captainUserId: User is not active'] });
-          }
-          if (!isEligibleCaptainRole(user.role.name)) {
-            throw new BadRequestException({
-              message: ['captainUserId: User is not eligible to be a captain'],
-            });
-          }
-        }
-
-        return context.update({ captainUserId: input.captainUserId });
-      },
-    );
-    if (!updated) throw new NotFoundException('Reservation not found');
-    return toReservation(updated);
-  }
-
-  async listCaptains(actor: Actor): Promise<CaptainOptionsResponse> {
-    const users = await this.repository.listActiveUsers(actor.restaurantId);
-    return users
-      .filter((user) => isEligibleCaptainRole(user.role.name))
-      .map((user) => ({ id: user.id, name: user.name, role: user.role.name }));
-  }
-
   async assignTable(
     actor: Actor,
     id: string,
@@ -101,9 +55,17 @@ export class ReservationsService {
           throw new ConflictException('Only booked or seated reservations can change tables');
         }
 
+        if (input.tableId !== reservation.tableId && (await context.findActiveOrder())) {
+          throw new ConflictException(
+            'Complete the active order before changing or clearing its reservation table',
+          );
+        }
+
+        let captainUserId = reservation.captainUserId;
         if (input.tableId !== null) {
           const table = await context.findTable(input.tableId);
           if (!table) throw new NotFoundException('Table not found');
+          captainUserId = table.captainUserId;
           await this.assertTableAvailable(context, table, {
             tableId: input.tableId,
             partySize: reservation.partySize,
@@ -112,7 +74,7 @@ export class ReservationsService {
           });
         }
 
-        return context.update({ tableId: input.tableId });
+        return context.update({ tableId: input.tableId, captainUserId });
       },
       input.tableId,
     );
@@ -128,7 +90,11 @@ export class ReservationsService {
         async (context) => {
           const { reservation } = context;
           if (!EDITABLE_RESERVATION_STATUSES.includes(reservation.status)) {
-            throw new ConflictException('Only booked reservations can be modified');
+            throw new ConflictException('Only booked or seated reservations can be modified');
+          }
+
+          if (reservation.status === 'SEATED' && input.reservationAt !== undefined) {
+            throw new ConflictException('A seated reservation time cannot be changed');
           }
 
           const reservationAt = input.reservationAt
@@ -182,24 +148,27 @@ export class ReservationsService {
     const allowedStatuses = reservationStatusSchema.options.filter(
       (status) => !TERMINAL_RESERVATION_STATUSES.includes(status),
     );
-    const reservation = await this.repository.updateForStatuses(
+    const result = await this.repository.cancel(
       actor.restaurantId,
       id,
       allowedStatuses,
-      { status: 'CANCELLED', tableId: null, cancellationReason: input.reason || null },
+      input.reason || null,
     );
-    if (reservation) return toReservation(reservation);
-
-    const existing = await this.repository.findById(actor.restaurantId, id);
-    if (!existing) throw new NotFoundException('Reservation not found');
-
+    if (result.outcome === 'cancelled') return toReservation(result.reservation);
+    if (result.outcome === 'not-found') throw new NotFoundException('Reservation not found');
+    if (result.outcome === 'active-order') {
+      throw new ConflictException(
+        'Complete or cancel the active order before cancelling this reservation',
+      );
+    }
     throw new ConflictException('Cancelled or completed reservations cannot be cancelled');
   }
 
   async list(actor: Actor, query: ReservationListQuery): Promise<ReservationListResponse> {
-    const { page, pageSize, status } = query;
+    const { page, pageSize, status, tableId } = query;
     const { items, total } = await this.repository.findPage(actor.restaurantId, {
       status,
+      tableId,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
@@ -208,6 +177,12 @@ export class ReservationsService {
       data: items.map(toReservation),
       meta: buildPageMeta(page, pageSize, total),
     };
+  }
+
+  async get(actor: Actor, id: string): Promise<Reservation> {
+    const reservation = await this.repository.findById(actor.restaurantId, id);
+    if (!reservation) throw new NotFoundException('Reservation not found');
+    return toReservation(reservation);
   }
 
   async create(actor: Actor, input: CreateReservationRequest): Promise<Reservation> {
@@ -223,7 +198,7 @@ export class ReservationsService {
         tableId: input.tableId ?? null,
       },
       async (context) => {
-        if (!input.tableId) return;
+        if (!input.tableId) return { captainUserId: null };
         const table = await context.findTable(input.tableId);
         if (!table) {
           throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
@@ -233,6 +208,7 @@ export class ReservationsService {
           partySize: input.partySize,
           reservationAt: new Date(input.reservationAt),
         });
+        return { captainUserId: table.captainUserId };
       },
     );
 
@@ -265,8 +241,4 @@ export class ReservationsService {
       );
     }
   }
-}
-
-function isEligibleCaptainRole(roleName: string): boolean {
-  return isRole(roleName) && roleHasPermission(roleName, Permission.RESERVATION_BE_CAPTAIN);
 }

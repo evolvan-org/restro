@@ -5,6 +5,8 @@ import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Pencil, Plus, Search } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
+import TableCaptainAction from '@/components/TableCaptainAction';
+import TableOrderAction from '@/components/TableOrderAction';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +34,10 @@ export default function Tables(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
   const canWrite = can(Permission.RESTAURANT_WRITE);
+  const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
+  const canAssignCaptain = can(Permission.TABLE_ASSIGN_CAPTAIN);
+  const canReadOrders = can(Permission.ORDER_READ);
+  const hasActions = canWrite || canChangeStatus || canAssignCaptain || canReadOrders;
 
   const [search, setSearch] = useState('');
   const [sectionId, setSectionId] = useState('');
@@ -169,8 +175,9 @@ export default function Tables(): ReactElement | null {
                 <TableHead>Section</TableHead>
                 <TableHead>Capacity</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Captain</TableHead>
                 <TableHead>State</TableHead>
-                {canWrite && <TableHead className="text-right">Actions</TableHead>}
+                {hasActions && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -180,32 +187,45 @@ export default function Tables(): ReactElement | null {
                   <TableCell>{table.section.name}</TableCell>
                   <TableCell>{table.capacity}</TableCell>
                   <TableCell>{table.currentStatus.name}</TableCell>
+                  <TableCell>{table.captain?.name ?? 'Unassigned'}</TableCell>
                   <TableCell>
                     <Badge variant={table.isActive ? 'default' : 'outline'}>
                       {table.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  {canWrite && (
+                  {hasActions && (
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => showTableForm(table)}
-                          aria-label={`Edit table ${table.tableNumber}`}
-                        >
-                          <Pencil aria-hidden />
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => showActiveModal(table)}
-                        >
-                          {table.isActive ? 'Deactivate' : 'Activate'}
-                        </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {canReadOrders && table.isActive && (
+                          <TableOrderAction
+                            tableId={table.id}
+                            tableNumber={table.tableNumber}
+                            canStart={can(Permission.ORDER_WRITE)}
+                          />
+                        )}
+                        {canAssignCaptain && <TableCaptainAction table={table} />}
+                        {(canWrite || canChangeStatus) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => showTableForm(table)}
+                            aria-label={`${canWrite ? 'Edit table' : 'Change status for table'} ${table.tableNumber}`}
+                          >
+                            <Pencil aria-hidden />
+                            {canWrite ? 'Edit' : 'Change status'}
+                          </Button>
+                        )}
+                        {canWrite && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => showActiveModal(table)}
+                          >
+                            {table.isActive ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   )}
@@ -215,7 +235,7 @@ export default function Tables(): ReactElement | null {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canWrite ? 6 : 5}
+                    colSpan={hasActions ? 7 : 6}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {tables.isPending

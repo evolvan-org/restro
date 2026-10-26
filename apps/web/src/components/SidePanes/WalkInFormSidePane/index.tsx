@@ -5,6 +5,7 @@ import {
   type CreateWalkInRequest,
   createWalkInRequestSchema,
   MAX_PARTY_SIZE,
+  type RestaurantTable,
 } from '@rms/api-contract';
 import { type ReactElement, useRef } from 'react';
 import { useForm } from 'react-hook-form';
@@ -13,21 +14,28 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
 import { useCreateWalkIn, useGuestLookup } from '@/services/api/requests/reservations';
+import { useAssignableTables } from '@/services/api/requests/tables';
 import { useHideSidePane } from '@/store/hooks/sidepane';
 
 export type WalkInFormSidePaneProps = {
   onCancel?: () => void;
+  table?: Pick<RestaurantTable, 'id' | 'tableNumber' | 'capacity'>;
 };
 
 const FORM_ID = 'walk-in-form';
 
-export default function WalkInFormSidePane({ onCancel }: WalkInFormSidePaneProps): ReactElement {
+export default function WalkInFormSidePane({
+  onCancel,
+  table,
+}: WalkInFormSidePaneProps): ReactElement {
   const { mutateAsync: createWalkIn, isPending } = useCreateWalkIn();
   const hideSidePane = useHideSidePane();
   const existingGuestRef = useRef<{ guestName: string } | null>(null);
+  const tables = useAssignableTables(!table);
   const form = useForm<CreateWalkInRequest>({
     // An existing guest's stored name stands in for the name field, which is never overwritten.
     resolver: (values, context, options) =>
@@ -40,11 +48,13 @@ export default function WalkInFormSidePane({ onCancel }: WalkInFormSidePaneProps
       guestName: '',
       phoneNumber: '',
       partySize: 1,
+      tableId: table?.id ?? '',
       notes: '',
     },
   });
   const { errors } = form.formState;
   const phoneNumber = form.watch('phoneNumber');
+  const partySize = Number(form.watch('partySize')) || 1;
   const debouncedPhoneNumber = useDebouncedValue(phoneNumber.trim(), 700);
   const guestLookup = useGuestLookup(debouncedPhoneNumber);
   const existingGuest = guestLookup.data ?? null;
@@ -79,6 +89,39 @@ export default function WalkInFormSidePane({ onCancel }: WalkInFormSidePaneProps
 
       <form id={FORM_ID} onSubmit={onSubmit} noValidate className="flex-1 overflow-y-auto px-4">
         <FieldGroup>
+          <Field data-invalid={Boolean(errors.tableId)}>
+            <FieldLabel htmlFor="walk-in-table">Table</FieldLabel>
+            {table ? (
+              <Input
+                id="walk-in-table"
+                value={`Table ${table.tableNumber} · ${table.capacity} seats`}
+                readOnly
+                aria-readonly
+              />
+            ) : (
+              <NativeSelect
+                id="walk-in-table"
+                disabled={tables.isPending || isPending}
+                aria-invalid={Boolean(errors.tableId)}
+                {...form.register('tableId')}
+              >
+                <NativeSelectOption value="">Select an available table</NativeSelectOption>
+                {(tables.data ?? [])
+                  .filter(
+                    (candidate) =>
+                      candidate.currentStatus.code === 'AVAILABLE' &&
+                      candidate.capacity >= partySize,
+                  )
+                  .map((candidate) => (
+                    <NativeSelectOption key={candidate.id} value={candidate.id}>
+                      Table {candidate.tableNumber} · {candidate.capacity} seats
+                    </NativeSelectOption>
+                  ))}
+              </NativeSelect>
+            )}
+            <FieldError>{errors.tableId?.message}</FieldError>
+          </Field>
+
           <Field data-invalid={Boolean(errors.phoneNumber)}>
             <FieldLabel htmlFor="walk-in-phone">Phone number</FieldLabel>
             <Input

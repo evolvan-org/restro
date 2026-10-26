@@ -19,3 +19,4 @@ export * from './menu-categories';
 export * from './stock-items';
 export * from './menu-items';
 export * from './serving-types';
+export * from './orders';

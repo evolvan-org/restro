@@ -23,6 +23,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type AssignTableCaptainRequest,
+  assignTableCaptainRequestSchema,
+  type AssignTableCaptainResponse,
+  assignTableCaptainResponseSchema,
+  type CaptainOptionsResponse,
+  captainOptionsResponseSchema,
   type CreateTableRequest,
   createTableRequestSchema,
   type CreateTableResponse,
@@ -105,15 +111,30 @@ export class TablesController {
     return this.tablesService.options(actor);
   }
 
+  @Get('tables/captains')
+  @RequirePermissions(Permission.TABLE_ASSIGN_CAPTAIN)
+  @ApiOperation({
+    summary: 'List eligible captains',
+    description:
+      "Active users in the caller's restaurant whose role holds `table:be-captain`. Requires `table:assign-captain`.",
+  })
+  @ApiOkResponse({
+    description: 'Eligible captains',
+    schema: zodOpenApiSchema(captainOptionsResponseSchema),
+  })
+  listCaptains(@CurrentActor() actor: Actor): Promise<CaptainOptionsResponse> {
+    return this.tablesService.listCaptains(actor);
+  }
+
   @Get('table-statuses')
   @RequirePermissions(Permission.RESTAURANT_READ)
   @ApiOperation({
-    summary: 'List table lifecycle statuses',
+    summary: 'List selectable table statuses',
     description:
-      "Lists active lifecycle states for the caller's restaurant in display order. Requires `restaurant:read`.",
+      "Lists all active default and custom statuses for the caller's restaurant in display order. Requires `restaurant:read`.",
   })
   @ApiOkResponse({
-    description: 'Active table lifecycle statuses',
+    description: 'Active default and custom table statuses',
     schema: zodOpenApiSchema(tableLifecycleStatusListResponseSchema),
   })
   listLifecycleStatuses(@CurrentActor() actor: Actor): Promise<TableLifecycleStatusListResponse> {
@@ -204,11 +225,37 @@ export class TablesController {
     return this.tablesService.updateActiveState(actor, id, input);
   }
 
+  @Patch('tables/:id/captain')
+  @RequirePermissions(Permission.TABLE_ASSIGN_CAPTAIN)
+  @ApiOperation({
+    summary: 'Assign, change or clear a table captain',
+    description:
+      'Sets captainUserId on a table; null clears it. The captain must be an active user of the same restaurant whose role holds `table:be-captain`. Requires `table:assign-captain`.',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(assignTableCaptainRequestSchema) })
+  @ApiOkResponse({
+    description: 'The updated table with its embedded captain (null when unassigned)',
+    schema: zodOpenApiSchema(assignTableCaptainResponseSchema),
+  })
+  @ApiBadRequestResponse(
+    apiError('Invalid id or body, inactive, other-restaurant or ineligible user'),
+  )
+  @ApiNotFoundResponse(apiError('The table or captain does not exist'))
+  assignCaptain(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(assignTableCaptainRequestSchema))
+    input: AssignTableCaptainRequest,
+  ): Promise<AssignTableCaptainResponse> {
+    return this.tablesService.assignCaptain(actor, id, input);
+  }
+
   @Patch('tables/:id/status')
   @RequirePermissions(Permission.TABLE_UPDATE_STATUS)
   @ApiOperation({
-    summary: 'Transition a table lifecycle status',
-    description: 'Moves a table to a permitted lifecycle state. Requires `table:update-status`.',
+    summary: 'Change a table status',
+    description:
+      'Assigns any active default or custom status in the restaurant. Requires `table:update-status`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(transitionTableStatusRequestSchema) })
   @ApiOkResponse({
@@ -217,7 +264,7 @@ export class TablesController {
   })
   @ApiBadRequestResponse(apiError('Invalid table id or status code'))
   @ApiNotFoundResponse(apiError('The table or target status does not exist'))
-  @ApiConflictResponse(apiError('The requested status transition is not allowed'))
+  @ApiConflictResponse(apiError('The table status changed concurrently; refresh and retry'))
   transitionStatus(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

@@ -55,7 +55,7 @@ export const TERMINAL_RESERVATION_STATUSES: readonly ReservationStatus[] = [
   'COMPLETED',
 ];
 
-export const EDITABLE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED'];
+export const EDITABLE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED', 'SEATED'];
 export const ACTIVE_RESERVATION_STATUSES: readonly ReservationStatus[] = ['BOOKED', 'SEATED'];
 
 export const guestSchema = z
@@ -75,23 +75,14 @@ export const reservationTableSchema = restaurantTableSchema.pick({
   currentStatus: true,
 });
 
-export const reservationCaptainSchema = z
-  .object({
-    id: z.string().uuid(),
-    name: z.string(),
-    role: z.string(),
-  })
-  .strict();
-
 export const reservationSchema = z
   .object({
     id: z.string().uuid(),
     guestId: z.string().uuid(),
     tableId: z.string().uuid().nullable(),
     table: reservationTableSchema.nullable(),
-    createdByUserId: z.string().uuid(),
     captainUserId: z.string().uuid().nullable(),
-    captain: reservationCaptainSchema.nullable(),
+    createdByUserId: z.string().uuid(),
     reservationAt: z.string().datetime(),
     partySize: z.number().int(),
     status: reservationStatusSchema,
@@ -104,6 +95,7 @@ export const reservationSchema = z
   .strict();
 
 export const reservationListQuerySchema = paginationQuerySchema.extend({
+  tableId: z.string().uuid().optional(),
   status: reservationStatusSchema.optional(),
 });
 
@@ -124,17 +116,6 @@ export const assignReservationTableRequestSchema = z
 
 export const assignReservationTableResponseSchema = reservationSchema;
 
-export const assignReservationCaptainRequestSchema = z
-  .object({
-    captainUserId: z.string().uuid('Captain id must be a valid UUID').nullable(),
-  })
-  .strict()
-  .describe('Assign or reassign a captain; null clears the assignment. BOOKED and SEATED only.');
-
-export const assignReservationCaptainResponseSchema = reservationSchema;
-
-export const captainOptionsResponseSchema = z.array(reservationCaptainSchema);
-
 export const guestLookupQuerySchema = z
   .object({
     phoneNumber: guestPhoneSchema,
@@ -148,6 +129,7 @@ export const createWalkInRequestSchema = z
     guestName: guestNameSchema,
     phoneNumber: guestPhoneSchema,
     partySize: partySizeSchema,
+    tableId: z.string().uuid('Table id must be a valid UUID'),
     notes: reservationNotesSchema,
   })
   .strict();
@@ -187,7 +169,8 @@ export const updateReservationRequestSchema = createReservationRequestSchema
   })
   .strict()
   .describe(
-    'Partial update of a BOOKED reservation. Supplied times must be in the future. ' +
+    'Partial update of a BOOKED or SEATED reservation. Supplied times must be in the future; ' +
+      'reservationAt cannot be changed after seating. ' +
       'Guest changes update the shared guest profile for all its reservations.',
   );
 
@@ -196,12 +179,6 @@ export type Guest = z.infer<typeof guestSchema>;
 export type Reservation = z.infer<typeof reservationSchema>;
 export type AssignReservationTableRequest = z.infer<typeof assignReservationTableRequestSchema>;
 export type AssignReservationTableResponse = z.infer<typeof assignReservationTableResponseSchema>;
-export type ReservationCaptain = z.infer<typeof reservationCaptainSchema>;
-export type AssignReservationCaptainRequest = z.infer<typeof assignReservationCaptainRequestSchema>;
-export type AssignReservationCaptainResponse = z.infer<
-  typeof assignReservationCaptainResponseSchema
->;
-export type CaptainOptionsResponse = z.infer<typeof captainOptionsResponseSchema>;
 export type ReservationListQuery = z.infer<typeof reservationListQuerySchema>;
 export type ReservationListResponse = z.infer<typeof reservationListResponseSchema>;
 export type GuestLookupQuery = z.infer<typeof guestLookupQuerySchema>;
