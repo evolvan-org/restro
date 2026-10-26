@@ -8,6 +8,7 @@ export function toReservation(record: ReservationRecord): Reservation {
     id: record.id,
     guestId: record.guestId,
     tableId: record.tableId,
+    captainUserId: record.captainUserId,
     table: record.table,
     createdByUserId: record.createdByUserId,
     reservationAt: record.reservationAt.toISOString(),

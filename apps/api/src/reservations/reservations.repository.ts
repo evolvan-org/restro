@@ -9,6 +9,7 @@ const reservationSelect = {
   id: true,
   guestId: true,
   tableId: true,
+  captainUserId: true,
   table: {
     select: {
       id: true,
@@ -33,6 +34,7 @@ const reservationSelect = {
 export type ReservationRecord = Prisma.ReservationGetPayload<{ select: typeof reservationSelect }>;
 
 export type ReservationPageFilters = {
+  tableId?: string;
   status?: ReservationStatus;
   skip: number;
   take: number;
@@ -50,6 +52,7 @@ export type WalkInDetails = {
 export type BookingDetails = Omit<WalkInDetails, 'tableId'> & { tableId: string | null };
 
 export type ReservationUpdateDetails = {
+  captainUserId?: string | null;
   tableId?: string | null;
   reservationAt?: Date;
   partySize?: number;
@@ -66,6 +69,7 @@ export type ReservationOverlapFilters = {
 
 export type ReservationTableContext = {
   findTable: (tableId: string) => Promise<{
+    captainUserId: string | null;
     capacity: number;
     isActive: boolean;
     currentStatus: { code: string };
@@ -77,6 +81,7 @@ export type ReservationTableContext = {
 
 export type ReservationEditContext = ReservationTableContext & {
   reservation: ReservationRecord;
+  findActiveOrder: () => Promise<{ id: string } | null>;
   update: (
     data: ReservationUpdateDetails,
     guest?: GuestUpdateDetails,
@@ -122,6 +127,11 @@ export class ReservationsRepository {
 
       return edit({
         reservation,
+        findActiveOrder: () =>
+          tx.order.findFirst({
+            where: { restaurantId, reservationId: id, status: { in: ['OPEN', 'SUBMITTED'] } },
+            select: { id: true },
+          }),
         ...this.tableContext(tx, restaurantId),
         update: async (data, guest) => {
           if (guest && Object.keys(guest).length > 0) {
@@ -151,7 +161,12 @@ export class ReservationsRepository {
       findTable: (tableId) =>
         tx.restaurantTable.findFirst({
           where: { id: tableId, restaurantId },
-          select: { capacity: true, isActive: true, currentStatus: { select: { code: true } } },
+          select: {
+            captainUserId: true,
+            capacity: true,
+            isActive: true,
+            currentStatus: { select: { code: true } },
+          },
         }),
       findOverlap: (filters) => this.findOverlapIn(tx, restaurantId, filters),
     };
@@ -228,6 +243,7 @@ export class ReservationsRepository {
     const where: Prisma.ReservationWhereInput = {
       restaurantId,
       ...(filters.status && { status: filters.status }),
+      ...(filters.tableId && { tableId: filters.tableId }),
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -248,11 +264,11 @@ export class ReservationsRepository {
     restaurantId: string,
     createdByUserId: string,
     details: WalkInDetails,
-    validate: (context: ReservationTableContext) => Promise<void>,
+    validate: (context: ReservationTableContext) => Promise<{ captainUserId: string | null }>,
   ): Promise<ReservationRecord> {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${details.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-      await validate(this.tableContext(tx, restaurantId));
+      const { captainUserId } = await validate(this.tableContext(tx, restaurantId));
 
       const guest = await this.guests.findOrCreate(
         tx,
@@ -268,6 +284,7 @@ export class ReservationsRepository {
           restaurantId,
           guestId: guest.id,
           tableId: details.tableId,
+          captainUserId,
           createdByUserId,
           reservationAt: details.reservationAt,
           partySize: details.partySize,
@@ -288,14 +305,14 @@ export class ReservationsRepository {
     restaurantId: string,
     createdByUserId: string,
     details: BookingDetails,
-    validate: (context: ReservationTableContext) => Promise<void>,
+    validate: (context: ReservationTableContext) => Promise<{ captainUserId: string | null }>,
   ): Promise<ReservationRecord> {
     return this.prisma.$transaction(async (tx) => {
       if (details.tableId) {
         await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${details.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
       }
 
-      await validate(this.tableContext(tx, restaurantId));
+      const { captainUserId } = await validate(this.tableContext(tx, restaurantId));
 
       const guest = await this.guests.findOrCreate(
         tx,
@@ -309,6 +326,7 @@ export class ReservationsRepository {
           restaurantId,
           guestId: guest.id,
           tableId: details.tableId,
+          captainUserId,
           createdByUserId,
           reservationAt: details.reservationAt,
           partySize: details.partySize,

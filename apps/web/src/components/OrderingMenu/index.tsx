@@ -34,17 +34,21 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
   const page = useWatch({ control, name: 'page' });
   const debouncedSearch = useDebouncedValue(search, 300);
   const categories = useOrderingCategories(true);
-  const items = useOrderingItems(search.length === 0);
   const results = useOrderingSearch(search, debouncedSearch, page, true);
   const activeCategories = getOrderingCategories(categories.data ?? []);
   const selectedCategoryId = activeCategories.some((category) => category.id === categoryId)
     ? categoryId
     : '';
-  const groups = groupOrderingItems(activeCategories, items.data ?? [], selectedCategoryId);
+  const items = useOrderingItems(selectedCategoryId, page, search.length === 0);
+  const groups = groupOrderingItems(
+    activeCategories,
+    items.data?.data ?? [],
+    selectedCategoryId,
+  ).filter((group) => group.items.length > 0);
   const isSearching = search.length > 0;
   const isWaitingForSearch = search !== debouncedSearch || results.isPending;
   const error = categories.error ?? (isSearching ? results.error : items.error);
-  const meta = results.data?.meta;
+  const meta = isSearching ? results.data?.meta : items.data?.meta;
 
   return (
     <section aria-label="Ordering menu" className="space-y-4">
@@ -65,7 +69,10 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
           />
         </div>
         {!isSearching && (
-          <NativeSelect aria-label="Browse menu category" {...register('categoryId')}>
+          <NativeSelect
+            aria-label="Browse menu category"
+            {...register('categoryId', { onChange: () => setValue('page', 1) })}
+          >
             <NativeSelectOption value="">All categories</NativeSelectOption>
             {activeCategories.map((category) => (
               <NativeSelectOption key={category.id} value={category.id}>
@@ -109,33 +116,6 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
               {results.data?.data.length === 0 && (
                 <p className="text-sm text-muted-foreground">No menu items match your search.</p>
               )}
-              {meta && meta.totalPages > 1 && (
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <p>
-                    Page {meta.page} of {meta.totalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1 || results.isFetching}
-                      onClick={() => setValue('page', page - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={page >= meta.totalPages || results.isFetching}
-                      onClick={() => setValue('page', page + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
@@ -149,6 +129,9 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
             <>
               {activeCategories.length === 0 && (
                 <p className="text-sm text-muted-foreground">No menu categories are available.</p>
+              )}
+              {items.data?.data.length === 0 && (
+                <p className="text-sm text-muted-foreground">No menu items are available.</p>
               )}
               {groups.map(({ category, items: categoryItems }) => (
                 <section key={category.id} aria-label={category.name} className="space-y-3">
@@ -170,6 +153,35 @@ export default function OrderingMenu({ onAdd, isAdding }: Props): ReactElement {
               ))}
             </>
           )}
+        </div>
+      )}
+      {!error && meta && meta.totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <p>
+            Page {meta.page} of {meta.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 1 || (isSearching ? results.isFetching : items.isFetching)}
+              onClick={() => setValue('page', page - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                page >= meta.totalPages || (isSearching ? results.isFetching : items.isFetching)
+              }
+              onClick={() => setValue('page', page + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </section>

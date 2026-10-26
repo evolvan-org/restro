@@ -55,9 +55,17 @@ export class ReservationsService {
           throw new ConflictException('Only booked or seated reservations can change tables');
         }
 
+        if (input.tableId !== reservation.tableId && (await context.findActiveOrder())) {
+          throw new ConflictException(
+            'Complete the active order before changing or clearing its reservation table',
+          );
+        }
+
+        let captainUserId = reservation.captainUserId;
         if (input.tableId !== null) {
           const table = await context.findTable(input.tableId);
           if (!table) throw new NotFoundException('Table not found');
+          captainUserId = table.captainUserId;
           await this.assertTableAvailable(context, table, {
             tableId: input.tableId,
             partySize: reservation.partySize,
@@ -66,7 +74,7 @@ export class ReservationsService {
           });
         }
 
-        return context.update({ tableId: input.tableId });
+        return context.update({ tableId: input.tableId, captainUserId });
       },
       input.tableId,
     );
@@ -157,9 +165,10 @@ export class ReservationsService {
   }
 
   async list(actor: Actor, query: ReservationListQuery): Promise<ReservationListResponse> {
-    const { page, pageSize, status } = query;
+    const { page, pageSize, status, tableId } = query;
     const { items, total } = await this.repository.findPage(actor.restaurantId, {
       status,
+      tableId,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
@@ -189,7 +198,7 @@ export class ReservationsService {
         tableId: input.tableId ?? null,
       },
       async (context) => {
-        if (!input.tableId) return;
+        if (!input.tableId) return { captainUserId: null };
         const table = await context.findTable(input.tableId);
         if (!table) {
           throw new BadRequestException({ message: ['tableId: Table not found or inactive'] });
@@ -199,6 +208,7 @@ export class ReservationsService {
           partySize: input.partySize,
           reservationAt: new Date(input.reservationAt),
         });
+        return { captainUserId: table.captainUserId };
       },
     );
 

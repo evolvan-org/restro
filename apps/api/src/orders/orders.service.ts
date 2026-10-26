@@ -11,10 +11,11 @@ import {
   type FireOrderResponse,
   type Order,
 } from '@rms/api-contract';
+import { Prisma } from '@rms/db';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { sentQuantity, toKot, toOrder } from './orders.mapper';
-import { OrdersRepository } from './orders.repository';
+import { type KotRecord, OrdersRepository } from './orders.repository';
 
 @Injectable()
 export class OrdersService {
@@ -37,7 +38,7 @@ export class OrdersService {
         }
         if (existingOrder) {
           throw new ConflictException({
-            message: 'This table already has an active order',
+            message: 'This table or reservation already has an active order',
             error: 'Conflict',
             existingOrder: toOrder(existingOrder),
           });
@@ -70,33 +71,48 @@ export class OrdersService {
     return toOrder(record);
   }
 
-  fire(actor: Actor, orderId: string): Promise<FireOrderResponse> {
-    return this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
-      if (!context.order) throw new NotFoundException('Order not found');
-      if (!['OPEN', 'SUBMITTED'].includes(context.order.status)) {
-        throw new ConflictException('Only an open or submitted order can be sent');
+  async fire(actor: Actor, orderId: string): Promise<FireOrderResponse> {
+    let kots: KotRecord[];
+    try {
+      kots = await this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
+        if (!context.order) throw new NotFoundException('Order not found');
+        if (!['OPEN', 'SUBMITTED'].includes(context.order.status)) {
+          throw new ConflictException('Only an open or submitted order can be sent');
+        }
+
+        // A line may be partly sent: only the quantity not yet on a KOT goes out now.
+        const unsentItems = (await context.findActiveItems())
+          .map((item) => ({ ...item, quantity: item.quantity - sentQuantity(item.kotItems) }))
+          .filter((item) => item.quantity > 0);
+        if (!unsentItems.length) throw new ConflictException('No unsent items to send');
+
+        const kitchenItems = unsentItems
+          .filter((item) => item.menuItem.itemType === 'FOOD')
+          .map((item) => ({ orderItemId: item.id, quantity: item.quantity }));
+        const barItems = unsentItems
+          .filter((item) => item.menuItem.itemType === 'BAR')
+          .map((item) => ({ orderItemId: item.id, quantity: item.quantity }));
+        const groups = [
+          ...(kitchenItems.length
+            ? [{ destination: 'KITCHEN' as const, items: kitchenItems }]
+            : []),
+          ...(barItems.length ? [{ destination: 'BAR' as const, items: barItems }] : []),
+        ];
+
+        const kots = await context.createKots(actor.userId, groups);
+        await context.submit();
+        return kots;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException(
+          'A kitchen ticket number was already used. Retry sending the order.',
+        );
       }
-
-      // A line may be partly sent: only the quantity not yet on a KOT goes out now.
-      const unsentItems = (await context.findActiveItems())
-        .map((item) => ({ ...item, quantity: item.quantity - sentQuantity(item.kotItems) }))
-        .filter((item) => item.quantity > 0);
-      if (!unsentItems.length) throw new ConflictException('No unsent items to send');
-
-      const kitchenItems = unsentItems
-        .filter((item) => item.menuItem.itemType === 'FOOD')
-        .map((item) => ({ orderItemId: item.id, quantity: item.quantity }));
-      const barItems = unsentItems
-        .filter((item) => item.menuItem.itemType === 'BAR')
-        .map((item) => ({ orderItemId: item.id, quantity: item.quantity }));
-      const groups = [
-        ...(kitchenItems.length ? [{ destination: 'KITCHEN' as const, items: kitchenItems }] : []),
-        ...(barItems.length ? [{ destination: 'BAR' as const, items: barItems }] : []),
-      ];
-
-      const kots = await context.createKots(actor.userId, groups);
-      await context.submit();
-      return { kots: kots.map(toKot), order: toOrder(await context.refresh()) };
-    });
+      throw error;
+    }
+    const order = await this.repository.findById(actor.restaurantId, orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    return { kots: kots.map(toKot), order: toOrder(order) };
   }
 }

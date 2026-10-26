@@ -30,6 +30,7 @@ export default function SendOrderDialog({
   onClose,
 }: Props): ReactElement {
   async function submit(): Promise<void> {
+    if (isPending) return;
     try {
       await onConfirm();
     } catch {

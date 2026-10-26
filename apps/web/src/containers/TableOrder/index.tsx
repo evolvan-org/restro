@@ -5,12 +5,12 @@ import { currentOrderQuerySchema, type MenuItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import AddOrderItemDialog from '@/components/AddOrderItemDialog';
 import OrderingMenu from '@/components/OrderingMenu';
-import OrderItemEditors from '@/components/OrderItemEditors';
+import OrderItemEditors, { type OrderItemEditorsHandle } from '@/components/OrderItemEditors';
 import SendOrderDialog from '@/components/SendOrderDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,12 +43,16 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   const searchParams = useSearchParams();
   const isAllowed = usePermissionGuard([Permission.ORDER_READ]);
   const { can } = usePermissions();
+  // Editor handles expose the existing RHF drafts; no duplicate form/error state.
+  const itemEditors = useRef(new Map<string, OrderItemEditorsHandle>());
+  const preparingSend = useRef<Promise<void> | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const addItem = useAddOrderItem();
-  const removeItem = useRemoveOrderItem();
-  const updateQuantity = useUpdateOrderItemQuantity();
-  const updateInstructions = useUpdateOrderItemInstructions();
-  const fireOrder = useFireOrder();
+  const { mutateAsync: addOrderItem, ...addItem } = useAddOrderItem();
+  const { mutateAsync: removeOrderItem, ...removeItem } = useRemoveOrderItem();
+  const { mutateAsync: updateOrderItemQuantity, ...updateQuantity } = useUpdateOrderItemQuantity();
+  const { mutateAsync: updateOrderItemInstructions, ...updateInstructions } =
+    useUpdateOrderItemInstructions();
+  const { mutateAsync: sendOrder, ...fireOrder } = useFireOrder();
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
   const isMutating =
     addItem.isPending ||
@@ -84,6 +88,24 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
       await openOrder(toCreateOrderRequest(tableId, values));
     } catch {
       // useOpenOrder reports the API failure; retain the reservation choice for correction/retry.
+    }
+  }
+
+  async function prepareSend(): Promise<void> {
+    if (preparingSend.current) return preparingSend.current;
+    const pending = (async (): Promise<void> => {
+      // Reuse any blur-triggered save, and stop on validation or API failure.
+      for (const editor of [...itemEditors.current.values()]) {
+        if (!(await editor.save())) return;
+      }
+      fireOrder.reset();
+      setIsSendDialogOpen(true);
+    })();
+    preparingSend.current = pending;
+    try {
+      await pending;
+    } finally {
+      preparingSend.current = null;
     }
   }
 
@@ -223,17 +245,21 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                   </p>
                   {canEdit && (
                     <OrderItemEditors
+                      ref={(editor) => {
+                        if (editor) itemEditors.current.set(item.id, editor);
+                        else itemEditors.current.delete(item.id);
+                      }}
                       item={item}
-                      disabled={isMutating}
+                      disabled={isMutating || isSendDialogOpen}
                       onQuantity={async (input) => {
-                        await updateQuantity.mutateAsync({
+                        await updateOrderItemQuantity({
                           orderId: order.id,
                           itemId: item.id,
                           input,
                         });
                       }}
                       onInstructions={async (input) => {
-                        await updateInstructions.mutateAsync({
+                        await updateOrderItemInstructions({
                           orderId: order.id,
                           itemId: item.id,
                           input,
@@ -265,7 +291,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                       }
                       onClick={async () => {
                         try {
-                          await removeItem.mutateAsync({ orderId: order.id, itemId: item.id });
+                          await removeOrderItem({ orderId: order.id, itemId: item.id });
                         } catch {
                           // The request hook reports the error and leaves the line available.
                         }
@@ -288,10 +314,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                 type="button"
                 className="w-full"
                 disabled={isMutating}
-                onClick={() => {
-                  fireOrder.reset();
-                  setIsSendDialogOpen(true);
-                }}
+                onClick={() => void prepareSend()}
               >
                 Send to kitchen
               </Button>
@@ -339,7 +362,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
           isPending={isMutating}
           onClose={() => setSelectedItem(null)}
           onAdd={async (input) => {
-            await addItem.mutateAsync({ ...input, orderId: order.id });
+            await addOrderItem({ ...input, orderId: order.id });
           }}
         />
       )}
@@ -347,8 +370,8 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
         <SendOrderDialog
           items={unsentItems}
           result={fireOrder.data}
-          isPending={fireOrder.isPending}
-          onConfirm={() => fireOrder.mutateAsync(order.id)}
+          isPending={isMutating}
+          onConfirm={() => sendOrder(order.id)}
           onClose={() => {
             setIsSendDialogOpen(false);
             fireOrder.reset();

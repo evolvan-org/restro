@@ -31,6 +31,21 @@ export async function reconcileRestaurantTableStatuses(
   db: DatabaseClient,
   restaurantId: string,
 ): Promise<void> {
+  // Fail explicitly, as the single-table setter does, rather than silently skipping
+  // transitions when a required lifecycle status is unavailable.
+  const statuses = await db.tableStatus.findMany({
+    where: {
+      restaurantId,
+      isActive: true,
+      code: { in: ['AVAILABLE', 'RESERVED', 'OCCUPIED', 'NEEDS_CLEANING'] },
+    },
+    select: { code: true },
+  });
+  for (const code of ['AVAILABLE', 'RESERVED', 'OCCUPIED', 'NEEDS_CLEANING']) {
+    if (!statuses.some((status) => status.code === code)) {
+      throw new Error(`Active table status ${code} is not configured`);
+    }
+  }
   await db.$executeRaw`
     WITH desired AS (
       SELECT rt.id,
@@ -49,6 +64,7 @@ export async function reconcileRestaurantTableStatuses(
             SELECT 1 FROM reservations r
             WHERE r.table_id = rt.id AND r.restaurant_id = ${restaurantId}::uuid
               AND r.status = 'BOOKED'
+              AND r.reservation_at >= NOW()
               AND r.reservation_at <= NOW() + (${RESERVATION_DURATION_MINUTES} * INTERVAL '1 minute')
           ) THEN 'RESERVED'
           WHEN current_status.code IN ('RESERVED', 'OCCUPIED') THEN 'AVAILABLE'
@@ -80,7 +96,8 @@ export async function reconcileTableStatus(
   });
   if (!table || table.currentStatus.code === 'NEEDS_CLEANING') return;
 
-  const reservationWindowEnd = new Date(Date.now() + RESERVATION_DURATION_MINUTES * 60_000);
+  const now = new Date();
+  const reservationWindowEnd = new Date(now.getTime() + RESERVATION_DURATION_MINUTES * 60_000);
   const [activeOrder, seatedReservation, protectedReservation] = await Promise.all([
     db.order.findFirst({
       where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
@@ -95,7 +112,7 @@ export async function reconcileTableStatus(
         restaurantId,
         tableId,
         status: 'BOOKED',
-        reservationAt: { lte: reservationWindowEnd },
+        reservationAt: { gte: now, lte: reservationWindowEnd },
       },
       select: { id: true },
     }),

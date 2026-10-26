@@ -33,7 +33,6 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import axios from 'axios';
-import { useEffect } from 'react';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
@@ -45,29 +44,28 @@ export function useOrderingTable(
   tableId: string,
   enabled: boolean,
 ): UseQueryResult<RestaurantTable> {
-  const showApiError = useShowApiError('Unable to load this table.');
   const query = useQuery({
     queryKey: [TableQueryKey.Tables, 'ordering', tableId],
     queryFn: async ({ signal }): Promise<RestaurantTable> => {
-      const response = await api.get(`/table/${tableId}`, { signal });
+      const response = await api.get(`/table/${tableId}`, { signal, errorDisplay: 'inline' });
       return restaurantTableSchema.parse(response.data);
     },
     enabled,
     retry: false,
   });
-  useEffect(() => {
-    if (query.error) showApiError(query.error);
-  }, [query.error, showApiError]);
   return query;
 }
 
 export function useCurrentOrder(tableId: string, enabled: boolean): UseQueryResult<Order | null> {
-  const showApiError = useShowApiError('Unable to load the table order.');
   const query = useQuery({
     queryKey: [OrderQueryKey.Current, tableId],
     queryFn: async ({ signal }): Promise<Order | null> => {
       try {
-        const response = await api.get('/orders/current', { params: { tableId }, signal });
+        const response = await api.get('/orders/current', {
+          params: { tableId },
+          signal,
+          errorDisplay: 'inline',
+        });
         return orderSchema.parse(response.data);
       } catch (error) {
         // No active order is an expected state on a table's first visit.
@@ -80,9 +78,6 @@ export function useCurrentOrder(tableId: string, enabled: boolean): UseQueryResu
     staleTime: 0,
   });
 
-  useEffect(() => {
-    if (query.error) showApiError(query.error);
-  }, [query.error, showApiError]);
   return query;
 }
 
@@ -143,6 +138,7 @@ export function useFireOrder(): UseMutationResult<FireOrderResponse, Error, stri
       const queryKey = [OrderQueryKey.Current, order.tableId];
       await queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData(queryKey, order);
+      await queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] });
     },
     onError: async (error) => {
       showApiError(error);
@@ -151,12 +147,11 @@ export function useFireOrder(): UseMutationResult<FireOrderResponse, Error, stri
   });
 }
 
-/** Optional reservation selection must include later pages, not just the first 20 records. */
+/** Fetch only this table’s active reservations; retain paging for long booking histories. */
 export function useOrderReservations(
   tableId: string,
   enabled: boolean,
 ): UseQueryResult<Reservation[]> {
-  const showApiError = useShowApiError('Unable to load reservations for this table.');
   const query = useQuery({
     queryKey: [OrderQueryKey.Reservations, tableId],
     queryFn: async ({ signal }): Promise<Reservation[]> => {
@@ -166,11 +161,12 @@ export function useOrderReservations(
         let totalPages = 1;
         do {
           const response = await api.get('/reservations', {
-            params: { status, page, pageSize: MAX_PAGE_SIZE },
+            params: { tableId, status, page, pageSize: MAX_PAGE_SIZE },
             signal,
+            errorDisplay: 'inline',
           });
           const result = reservationListResponseSchema.parse(response.data);
-          reservations.push(...result.data.filter((item) => item.tableId === tableId));
+          reservations.push(...result.data);
           totalPages = result.meta.totalPages;
           page += 1;
         } while (page <= totalPages);
@@ -181,9 +177,6 @@ export function useOrderReservations(
     staleTime: 0,
   });
 
-  useEffect(() => {
-    if (query.error) showApiError(query.error);
-  }, [query.error, showApiError]);
   return query;
 }
 

@@ -284,14 +284,9 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     captainUserId: string | null,
   ): Promise<void> {
     if (captainUserId === null) return;
-    const user = await this.tablesRepository.findCaptainCandidate(captainUserId);
+    const user = await this.tablesRepository.findCaptainCandidate(restaurantId, captainUserId);
     if (!user) {
       throw new NotFoundException('Captain not found');
-    }
-    if (user.restaurantId !== restaurantId) {
-      throw new BadRequestException({
-        message: ['captainUserId: User does not belong to this restaurant'],
-      });
     }
     if (user.status !== 'ACTIVE') {
       throw new BadRequestException({ message: ['captainUserId: User is not active'] });

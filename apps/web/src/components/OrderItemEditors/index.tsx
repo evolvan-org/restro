@@ -8,7 +8,7 @@ import {
   type UpdateOrderItemQuantityRequest,
   updateOrderItemQuantityRequestSchema,
 } from '@rms/api-contract';
-import { type ReactElement, useEffect } from 'react';
+import { type ReactElement, type Ref, useEffect, useImperativeHandle, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,12 @@ import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
+export type OrderItemEditorsHandle = {
+  save: () => Promise<boolean>;
+};
+
 type Props = {
+  ref?: Ref<OrderItemEditorsHandle>;
   item: OrderItem;
   disabled: boolean;
   onQuantity: (input: UpdateOrderItemQuantityRequest) => Promise<void>;
@@ -24,13 +29,22 @@ type Props = {
 };
 
 export default function OrderItemEditors({
+  ref,
   item,
   disabled,
   onQuantity,
   onInstructions,
 }: Props): ReactElement {
+  const minQuantity = Math.max(1, item.sentQuantity);
   const quantity = useForm<UpdateOrderItemQuantityRequest>({
-    resolver: zodResolver(updateOrderItemQuantityRequestSchema),
+    resolver: zodResolver(
+      updateOrderItemQuantityRequestSchema.extend({
+        quantity: updateOrderItemQuantityRequestSchema.shape.quantity.min(
+          minQuantity,
+          `Quantity must be at least ${minQuantity}; these units have already been sent`,
+        ),
+      }),
+    ),
     defaultValues: { quantity: item.quantity },
   });
   const instructions = useForm<UpdateOrderItemInstructionsRequest>({
@@ -46,16 +60,33 @@ export default function OrderItemEditors({
     resetInstructions({ specialInstructions: item.specialInstructions ?? '' });
   }, [item.specialInstructions, resetInstructions]);
   const busy = disabled || quantity.formState.isSubmitting || instructions.formState.isSubmitting;
-  const saveQuantity = quantity.handleSubmit(async (input) => {
+  const quantitySave = useRef<Promise<boolean> | null>(null);
+  const instructionsSave = useRef<Promise<boolean> | null>(null);
+
+  async function saveQuantity(): Promise<boolean> {
+    if (quantitySave.current) return quantitySave.current;
+    if (!quantity.getFieldState('quantity').isDirty) return true;
+    const pending = (async (): Promise<boolean> => {
+      let saved = false;
+      await quantity.handleSubmit(async (input) => {
+        try {
+          await onQuantity(input);
+          quantity.reset(input);
+          saved = true;
+        } catch {
+          // The request hook reports the failure. Retain the draft and block sending.
+        }
+      })();
+      return saved;
+    })();
+    quantitySave.current = pending;
     try {
-      await onQuantity(input);
-      quantity.reset(input);
-    } catch {
-      // Preserve the draft; the request hook reports the error.
+      return await pending;
+    } finally {
+      quantitySave.current = null;
     }
-  });
+  }
   // Units already on a KOT cannot be taken back, so the line may only grow past them.
-  const minQuantity = Math.max(1, item.sentQuantity);
   const step = (delta: number): void => {
     const value = quantity.getValues('quantity');
     if (!Number.isInteger(value) || value + delta < minQuantity || value + delta > 2147483647)
@@ -63,21 +94,50 @@ export default function OrderItemEditors({
     quantity.setValue('quantity', value + delta, { shouldDirty: true });
     void saveQuantity();
   };
-  const saveInstructions = instructions.handleSubmit(async (input) => {
+  async function saveInstructions(): Promise<boolean> {
+    if (instructionsSave.current) return instructionsSave.current;
+    if (!instructions.getFieldState('specialInstructions').isDirty) return true;
+    const pending = (async (): Promise<boolean> => {
+      let saved = false;
+      await instructions.handleSubmit(async (input) => {
+        try {
+          await onInstructions(input);
+          instructions.reset({ specialInstructions: input.specialInstructions ?? '' });
+          saved = true;
+        } catch {
+          // The request hook reports the failure. Retain the draft and block sending.
+        }
+      })();
+      return saved;
+    })();
+    instructionsSave.current = pending;
     try {
-      await onInstructions(input);
-      instructions.reset({ specialInstructions: input.specialInstructions ?? '' });
-    } catch {
-      // Preserve the draft; the request hook reports the error.
+      return await pending;
+    } finally {
+      instructionsSave.current = null;
     }
-  });
+  }
+
+  useImperativeHandle(ref, () => ({
+    save: async () => {
+      if (!(await saveQuantity())) return false;
+      return item.sentQuantity === 0 ? saveInstructions() : true;
+    },
+  }));
   const draftQuantity = quantity.watch('quantity');
   const quantityField = quantity.register('quantity', { valueAsNumber: true });
   const instructionsField = instructions.register('specialInstructions');
 
   return (
     <div className="space-y-3 py-2">
-      <form onSubmit={saveQuantity} noValidate className="space-y-1">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void saveQuantity();
+        }}
+        noValidate
+        className="space-y-1"
+      >
         <label htmlFor={`quantity-${item.id}`} className="text-xs font-medium">
           Quantity
         </label>
@@ -132,7 +192,14 @@ export default function OrderItemEditors({
         </FieldError>
       </form>
       {item.sentQuantity === 0 && (
-        <form onSubmit={saveInstructions} noValidate className="space-y-1">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveInstructions();
+          }}
+          noValidate
+          className="space-y-1"
+        >
           <label htmlFor={`instructions-${item.id}`} className="text-xs font-medium">
             Special instructions
           </label>

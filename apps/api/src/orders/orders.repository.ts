@@ -295,7 +295,11 @@ export class OrdersRepository {
         select: { id: true, tableId: true, status: true },
       });
       const existingOrder = await tx.order.findFirst({
-        where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
+        where: {
+          restaurantId,
+          OR: [{ tableId }, { reservationId }],
+          status: { in: ['OPEN', 'SUBMITTED'] },
+        },
         select: orderSelect,
         orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
       });

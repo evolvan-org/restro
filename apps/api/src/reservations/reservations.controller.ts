@@ -80,6 +80,7 @@ export class ReservationsController {
       'Sets tableId on a BOOKED or SEATED reservation; null clears it. ' +
       'Checks tenant ownership, active state, capacity and overlapping BOOKED/SEATED reservations. ' +
       `The service window is ${RESERVATION_DURATION_MINUTES} minutes; touching boundaries are allowed. ` +
+      'Blocks changing or clearing the table while a linked order is active. ' +
       'Does not change reservation status or table status. Requires `reservation:assign-table`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(assignReservationTableRequestSchema) })
@@ -89,7 +90,9 @@ export class ReservationsController {
   })
   @ApiBadRequestResponse(apiError('Invalid id or body, inactive table or insufficient capacity'))
   @ApiNotFoundResponse(apiError('The reservation or table does not exist in your restaurant'))
-  @ApiConflictResponse(apiError('The reservation is not active or the table has an overlap'))
+  @ApiConflictResponse(
+    apiError('The reservation is not active, has an active order, or the table has an overlap'),
+  )
   assignTable(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

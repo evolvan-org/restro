@@ -81,6 +81,7 @@ export const reservationSchema = z
     guestId: z.string().uuid(),
     tableId: z.string().uuid().nullable(),
     table: reservationTableSchema.nullable(),
+    captainUserId: z.string().uuid().nullable(),
     createdByUserId: z.string().uuid(),
     reservationAt: z.string().datetime(),
     partySize: z.number().int(),
@@ -94,6 +95,7 @@ export const reservationSchema = z
   .strict();
 
 export const reservationListQuerySchema = paginationQuerySchema.extend({
+  tableId: z.string().uuid().optional(),
   status: reservationStatusSchema.optional(),
 });
 

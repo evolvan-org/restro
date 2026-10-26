@@ -167,9 +167,9 @@ export class TablesRepository {
     });
   }
 
-  findCaptainCandidate(userId: string): Promise<CaptainCandidate | null> {
-    return this.prisma.user.findUnique({
-      where: { id: userId },
+  findCaptainCandidate(restaurantId: string, userId: string): Promise<CaptainCandidate | null> {
+    return this.prisma.user.findFirst({
+      where: { id: userId, restaurantId },
       select: captainCandidateSelect,
     });
   }

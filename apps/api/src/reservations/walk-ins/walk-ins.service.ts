@@ -46,6 +46,7 @@ export class WalkInsService {
           ...getReservationOverlapWindow(now),
         });
         if (overlap) throw new ConflictException('This table is reserved within 90 minutes');
+        return { captainUserId: table.captainUserId };
       },
     );
     return toReservation(created);
