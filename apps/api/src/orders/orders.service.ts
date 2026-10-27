@@ -10,9 +10,12 @@ import {
   type CompleteOrderResponse,
   type CreateOrderRequest,
   type FireOrderResponse,
+  KOT_STATUS_TRANSITIONS,
   type KotQueueQuery,
   type KotQueueResponse,
   type Order,
+  type UpdateKotStatusRequest,
+  type UpdateKotStatusResponse,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
@@ -73,6 +76,27 @@ export class OrdersService {
       ...new Set(query.status ?? ACTIVE_KOT_STATUSES),
     ]);
     return records.map(toKotQueueItem);
+  }
+
+  async updateKotStatus(
+    actor: Actor,
+    kotId: string,
+    input: UpdateKotStatusRequest,
+  ): Promise<UpdateKotStatusResponse> {
+    const record = await this.repository.withLockedKot(
+      actor.restaurantId,
+      kotId,
+      async (context) => {
+        if (!context.kot) throw new NotFoundException('KOT not found');
+        if (!KOT_STATUS_TRANSITIONS[context.kot.status].includes(input.status)) {
+          throw new ConflictException(
+            `A KOT cannot move from ${context.kot.status} to ${input.status}`,
+          );
+        }
+        return context.setStatus(input.status);
+      },
+    );
+    return toKot(record);
   }
 
   async current(actor: Actor, tableId: string): Promise<Order> {

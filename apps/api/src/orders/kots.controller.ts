@@ -1,8 +1,21 @@
-import { Controller, Get, Header, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
+  ApiConflictResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -13,6 +26,10 @@ import {
   kotQueueQuerySchema,
   type KotQueueResponse,
   kotQueueResponseSchema,
+  type UpdateKotStatusRequest,
+  updateKotStatusRequestSchema,
+  type UpdateKotStatusResponse,
+  updateKotStatusResponseSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
@@ -29,7 +46,7 @@ import { OrdersService } from './orders.service';
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
-@ApiForbiddenResponse(apiError('Missing kot:read permission'))
+@ApiForbiddenResponse(apiError('Missing the permission required by this route'))
 @Controller('kots')
 export class KotsController {
   constructor(private readonly service: OrdersService) {}
@@ -50,5 +67,24 @@ export class KotsController {
     @Query(new ZodValidationPipe(kotQueueQuerySchema)) query: KotQueueQuery,
   ): Promise<KotQueueResponse> {
     return this.service.kotQueue(actor, query);
+  }
+
+  @Patch(':id/status')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.KOT_UPDATE_STATUS)
+  @ApiOperation({
+    summary: 'Advance a KOT to its next status and set all of its items to match',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(updateKotStatusRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(updateKotStatusResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid id or status'))
+  @ApiNotFoundResponse(apiError('KOT not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('The KOT cannot move to that status from its current one'))
+  updateStatus(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateKotStatusRequestSchema)) input: UpdateKotStatusRequest,
+  ): Promise<UpdateKotStatusResponse> {
+    return this.service.updateKotStatus(actor, id, input);
   }
 }

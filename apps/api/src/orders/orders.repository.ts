@@ -129,6 +129,12 @@ export type LockedOrderContext = {
   refresh: () => Promise<OrderRecord>;
 };
 
+export type LockedKotContext = {
+  kot: { id: string; status: KotStatus } | null;
+  /** Writes the KOT and every one of its items in this transaction; completedAt is stamped on COMPLETED. */
+  setStatus: (status: KotStatus) => Promise<KotRecord>;
+};
+
 @Injectable()
 export class OrdersRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -285,6 +291,33 @@ export class OrdersRepository {
       select: kotQueueSelect,
       // FIFO: the station works the oldest ticket first (the opposite of a newest-first list).
       orderBy: [{ createdAt: 'asc' }, { kotNumber: 'asc' }],
+    });
+  }
+
+  /** The row lock makes concurrent taps on the same ticket validate against the latest status. */
+  withLockedKot<T>(
+    restaurantId: string,
+    kotId: string,
+    mutate: (context: LockedKotContext) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      const kots = await tx.$queryRaw<{ id: string; status: KotStatus }[]>`
+        SELECT id, status FROM kots
+        WHERE id = ${kotId}::uuid AND restaurant_id = ${restaurantId}::uuid
+        FOR UPDATE
+      `;
+      const kot = kots[0] ?? null;
+      return mutate({
+        kot,
+        setStatus: async (status) => {
+          await tx.kotItem.updateMany({ where: { kotId }, data: { status } });
+          return tx.kot.update({
+            where: { id: kotId },
+            data: { status, ...(status === 'COMPLETED' && { completedAt: new Date() }) },
+            select: kotSelect,
+          });
+        },
+      });
     });
   }
 

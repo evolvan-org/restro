@@ -183,3 +183,20 @@ export const kotQueueResponseSchema = z.array(kotQueueItemSchema);
 export type KotQueueItem = z.infer<typeof kotQueueItemSchema>;
 export type KotQueueQuery = z.infer<typeof kotQueueQuerySchema>;
 export type KotQueueResponse = z.infer<typeof kotQueueResponseSchema>;
+
+/** Ticket-level lifecycle: each status may only move to the next one (no skipping, no undo). */
+export const KOT_STATUS_TRANSITIONS: Record<KotStatus, readonly KotStatus[]> = {
+  PENDING: ['PREPARING'],
+  PREPARING: ['READY'],
+  READY: ['COMPLETED'],
+  COMPLETED: [],
+};
+
+export const updateKotStatusRequestSchema = z
+  .object({ status: z.enum(['PREPARING', 'READY', 'COMPLETED']) })
+  .strict();
+
+export const updateKotStatusResponseSchema = kotSchema;
+
+export type UpdateKotStatusRequest = z.infer<typeof updateKotStatusRequestSchema>;
+export type UpdateKotStatusResponse = z.infer<typeof updateKotStatusResponseSchema>;
