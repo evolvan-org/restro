@@ -154,3 +154,32 @@ export type KotItem = z.infer<typeof kotItemSchema>;
 export type Kot = z.infer<typeof kotSchema>;
 export type FireOrderRequest = z.infer<typeof fireOrderRequestSchema>;
 export type FireOrderResponse = z.infer<typeof fireOrderResponseSchema>;
+
+/** The statuses a station screen works: everything not yet COMPLETED. */
+export const ACTIVE_KOT_STATUSES = ['PENDING', 'PREPARING', 'READY'] as const satisfies KotStatus[];
+
+/** A single `status=X` arrives as a string and a repeated one as an array; normalise to an array. */
+const repeatableStatusSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? [value] : value),
+  z.array(kotStatusSchema).min(1).optional(),
+);
+
+export const kotQueueItemSchema = kotSchema
+  .extend({ tableNumber: z.string().describe('Table number of the owning order') })
+  .strict();
+
+export const kotQueueQuerySchema = z
+  .object({
+    destination: kotDestinationSchema.describe('Station whose queue to read'),
+    status: repeatableStatusSchema.describe(
+      'Repeatable; defaults to the active set (PENDING, PREPARING, READY)',
+    ),
+  })
+  .strict();
+
+/** Oldest-first (FIFO), so the station works the oldest ticket first. */
+export const kotQueueResponseSchema = z.array(kotQueueItemSchema);
+
+export type KotQueueItem = z.infer<typeof kotQueueItemSchema>;
+export type KotQueueQuery = z.infer<typeof kotQueueQuerySchema>;
+export type KotQueueResponse = z.infer<typeof kotQueueResponseSchema>;

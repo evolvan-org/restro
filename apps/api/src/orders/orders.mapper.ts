@@ -1,7 +1,7 @@
-import type { Kot, Order } from '@rms/api-contract';
+import type { Kot, KotQueueItem, Order } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import type { KotRecord, OrderRecord } from './orders.repository';
+import type { KotQueueRecord, KotRecord, OrderRecord } from './orders.repository';
 
 export function toOrder(record: OrderRecord): Order {
   return {
@@ -39,6 +39,10 @@ export function toKot(record: KotRecord): Kot {
       specialInstructions: orderItem.specialInstructions,
     })),
   };
+}
+
+export function toKotQueueItem({ order, ...record }: KotQueueRecord): KotQueueItem {
+  return { ...toKot(record), tableNumber: order.table.tableNumber };
 }
 
 export function sentQuantity(kotItems: { quantity: number }[]): number {

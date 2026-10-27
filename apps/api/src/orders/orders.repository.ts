@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { KotDestination, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -58,8 +59,14 @@ const kotSelect = {
   },
 } satisfies Prisma.KotSelect;
 
+const kotQueueSelect = {
+  ...kotSelect,
+  order: { select: { table: { select: { tableNumber: true } } } },
+} satisfies Prisma.KotSelect;
+
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 export type KotRecord = Prisma.KotGetPayload<{ select: typeof kotSelect }>;
+export type KotQueueRecord = Prisma.KotGetPayload<{ select: typeof kotQueueSelect }>;
 
 type NewOrder = {
   createdByUserId: string;
@@ -264,6 +271,20 @@ export class OrdersRepository {
       where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
       select: orderSelect,
       orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  /** One query: items and the order's table come from the include, so there is no per-KOT lookup. */
+  findKotQueue(
+    restaurantId: string,
+    destination: KotDestination,
+    statuses: KotStatus[],
+  ): Promise<KotQueueRecord[]> {
+    return this.prisma.kot.findMany({
+      where: { restaurantId, destination, status: { in: statuses } },
+      select: kotQueueSelect,
+      // FIFO: the station works the oldest ticket first (the opposite of a newest-first list).
+      orderBy: [{ createdAt: 'asc' }, { kotNumber: 'asc' }],
     });
   }
 

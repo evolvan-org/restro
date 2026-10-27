@@ -5,16 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ACTIVE_KOT_STATUSES,
   ACTIVE_RESERVATION_STATUSES,
   type CompleteOrderResponse,
   type CreateOrderRequest,
   type FireOrderResponse,
+  type KotQueueQuery,
+  type KotQueueResponse,
   type Order,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import type { Actor } from '../common/auth/authenticated-request';
-import { sentQuantity, toKot, toOrder } from './orders.mapper';
+import { sentQuantity, toKot, toKotQueueItem, toOrder } from './orders.mapper';
 import { type KotRecord, OrdersRepository } from './orders.repository';
 
 @Injectable()
@@ -63,6 +66,13 @@ export class OrdersService {
     const existing = await this.repository.findById(actor.restaurantId, orderId);
     if (!existing) throw new NotFoundException('Order not found');
     throw new ConflictException('Only an open or submitted order can be completed');
+  }
+
+  async kotQueue(actor: Actor, query: KotQueueQuery): Promise<KotQueueResponse> {
+    const records = await this.repository.findKotQueue(actor.restaurantId, query.destination, [
+      ...new Set(query.status ?? ACTIVE_KOT_STATUSES),
+    ]);
+    return records.map(toKotQueueItem);
   }
 
   async current(actor: Actor, tableId: string): Promise<Order> {
