@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { KotDestination, KotStatus } from '@rms/api-contract';
+import type { KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -17,6 +17,7 @@ const orderSelect = {
   completedAt: true,
   createdAt: true,
   updatedAt: true,
+  kots: { select: { status: true } },
   items: {
     select: {
       id: true,
@@ -61,7 +62,7 @@ const kotSelect = {
 
 const kotQueueSelect = {
   ...kotSelect,
-  order: { select: { table: { select: { tableNumber: true } } } },
+  order: { select: { table: { select: { id: true, tableNumber: true } } } },
 } satisfies Prisma.KotSelect;
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
@@ -130,9 +131,9 @@ export type LockedOrderContext = {
 };
 
 export type LockedKotContext = {
-  kot: { id: string; status: KotStatus } | null;
+  kot: KotQueueRecord | null;
   /** Writes the KOT and every one of its items in this transaction; completedAt is stamped on COMPLETED. */
-  setStatus: (status: KotStatus) => Promise<KotRecord>;
+  setStatus: (status: KotStatus) => Promise<KotQueueRecord>;
 };
 
 @Injectable()
@@ -280,42 +281,62 @@ export class OrdersRepository {
     });
   }
 
-  /** One query: items and the order's table come from the include, so there is no per-KOT lookup. */
-  findKotQueue(
+  async findKotQueue(
     restaurantId: string,
-    destination: KotDestination,
-    statuses: KotStatus[],
-  ): Promise<KotQueueRecord[]> {
-    return this.prisma.kot.findMany({
-      where: { restaurantId, destination, status: { in: statuses } },
-      select: kotQueueSelect,
-      // FIFO: the station works the oldest ticket first (the opposite of a newest-first list).
-      orderBy: [{ createdAt: 'asc' }, { kotNumber: 'asc' }],
-    });
+    query: KotQueueQuery,
+  ): Promise<{ items: KotQueueRecord[]; total: number }> {
+    const where: Prisma.KotWhereInput = {
+      restaurantId,
+      destination: query.destination,
+      status: { in: [...query.status] },
+    };
+    const [items, total] = await this.prisma.$transaction(
+      [
+        this.prisma.kot.findMany({
+          where,
+          select: kotQueueSelect,
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+        }),
+        this.prisma.kot.count({ where }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    return { items, total };
   }
 
-  /** The row lock makes concurrent taps on the same ticket validate against the latest status. */
   withLockedKot<T>(
     restaurantId: string,
-    kotId: string,
-    mutate: (context: LockedKotContext) => Promise<T>,
+    id: string,
+    action: (context: LockedKotContext) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
-      const kots = await tx.$queryRaw<{ id: string; status: KotStatus }[]>`
-        SELECT id, status FROM kots
-        WHERE id = ${kotId}::uuid AND restaurant_id = ${restaurantId}::uuid
-        FOR UPDATE
-      `;
-      const kot = kots[0] ?? null;
-      return mutate({
-        kot,
+      const candidate = await tx.kot.findFirst({
+        where: { id, restaurantId },
+        select: { orderId: true },
+      });
+      if (candidate) {
+        // Share the existing order lock with firing/completion before locking the ticket.
+        await tx.$queryRaw`SELECT id FROM orders WHERE id = ${candidate.orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM kots WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      }
+      const ticket = await tx.kot.findFirst({
+        where: { id, restaurantId },
+        select: kotQueueSelect,
+      });
+      return action({
+        kot: ticket,
         setStatus: async (status) => {
-          await tx.kotItem.updateMany({ where: { kotId }, data: { status } });
-          return tx.kot.update({
-            where: { id: kotId },
-            data: { status, ...(status === 'COMPLETED' && { completedAt: new Date() }) },
-            select: kotSelect,
+          await tx.kot.update({
+            where: { id, restaurantId },
+            data: { status, completedAt: status === 'COMPLETED' ? new Date() : null },
           });
+          await tx.kotItem.updateMany({
+            where: { kotId: id, kot: { restaurantId } },
+            data: { status },
+          });
+          return tx.kot.findFirstOrThrow({ where: { id, restaurantId }, select: kotQueueSelect });
         },
       });
     });

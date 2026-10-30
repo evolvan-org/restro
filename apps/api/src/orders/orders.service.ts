@@ -5,7 +5,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  ACTIVE_KOT_STATUSES,
   ACTIVE_RESERVATION_STATUSES,
   type CompleteOrderResponse,
   type CreateOrderRequest,
@@ -18,14 +17,19 @@ import {
   type UpdateKotStatusResponse,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
+import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { NotificationsService } from '../notifications/notifications.service';
 import { sentQuantity, toKot, toKotQueueItem, toOrder } from './orders.mapper';
 import { type KotRecord, OrdersRepository } from './orders.repository';
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly repository: OrdersRepository) {}
+  constructor(
+    private readonly repository: OrdersRepository,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(actor: Actor, input: CreateOrderRequest): Promise<Order> {
     const record = await this.repository.withLockedTable(
@@ -72,10 +76,11 @@ export class OrdersService {
   }
 
   async kotQueue(actor: Actor, query: KotQueueQuery): Promise<KotQueueResponse> {
-    const records = await this.repository.findKotQueue(actor.restaurantId, query.destination, [
-      ...new Set(query.status ?? ACTIVE_KOT_STATUSES),
-    ]);
-    return records.map(toKotQueueItem);
+    const { items, total } = await this.repository.findKotQueue(actor.restaurantId, query);
+    return {
+      data: items.map(toKotQueueItem),
+      meta: buildPageMeta(query.page, query.pageSize, total),
+    };
   }
 
   async updateKotStatus(
@@ -88,6 +93,11 @@ export class OrdersService {
       kotId,
       async (context) => {
         if (!context.kot) throw new NotFoundException('KOT not found');
+        if (context.kot.status !== input.expectedStatus) {
+          throw new ConflictException(
+            'This ticket has changed on another screen. Refresh and try again.',
+          );
+        }
         if (!KOT_STATUS_TRANSITIONS[context.kot.status].includes(input.status)) {
           throw new ConflictException(
             `A KOT cannot move from ${context.kot.status} to ${input.status}`,
@@ -96,7 +106,10 @@ export class OrdersService {
         return context.setStatus(input.status);
       },
     );
-    return toKot(record);
+    if (input.status === 'READY') {
+      await this.notifications.ticketReady(actor.restaurantId, record.id);
+    }
+    return toKotQueueItem(record);
   }
 
   async current(actor: Actor, tableId: string): Promise<Order> {
@@ -147,6 +160,10 @@ export class OrdersService {
     }
     const order = await this.repository.findById(actor.restaurantId, orderId);
     if (!order) throw new NotFoundException('Order not found');
+    await this.notifications.ticketSent(
+      actor.restaurantId,
+      kots.map((kot) => kot.id),
+    );
     return { kots: kots.map(toKot), order: toOrder(order) };
   }
 }

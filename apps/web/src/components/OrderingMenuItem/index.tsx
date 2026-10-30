@@ -4,9 +4,6 @@ import type { MenuItem } from '@rms/api-contract';
 import { cn } from 'cn';
 import type { ReactElement } from 'react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-
 export type OrderingItemAction = (item: MenuItem) => Promise<void>;
 
 type Props = {
@@ -15,7 +12,7 @@ type Props = {
   isAdding?: boolean;
 };
 
-/** Browse and search share the same display and the add-item integration point. */
+/** Browse and search share the same card and the existing add-item dialog. */
 export default function OrderingMenuItem({ item, onAdd, isAdding }: Props): ReactElement {
   async function handleAdd(): Promise<void> {
     if (!onAdd) return;
@@ -26,31 +23,49 @@ export default function OrderingMenuItem({ item, onAdd, isAdding }: Props): Reac
     }
   }
 
+  const content = (
+    <>
+      <span className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className={cn(
+            'size-2.5 rounded-full',
+            item.isAvailable ? 'bg-emerald-400' : 'bg-zinc-500',
+          )}
+        />
+        <span className="sr-only">{item.itemType}</span>
+        {!item.isAvailable && <span className="text-xs text-muted-foreground">Unavailable</span>}
+      </span>
+      <span className="block text-sm leading-tight font-medium break-words lg:my-3 lg:leading-snug">
+        {item.name}
+      </span>
+      <span className="mt-auto block text-sm font-semibold tabular-nums lg:text-base">
+        {item.price}
+      </span>
+    </>
+  );
+  const cardClassName = cn(
+    'flex h-full min-h-24 w-full flex-col gap-2 rounded-2xl border p-3 text-left shadow-sm transition-colors lg:min-h-32 lg:gap-0 lg:rounded-[1.75rem] lg:p-4 lg:shadow-none',
+    !item.isAvailable && 'opacity-50',
+  );
+
   return (
-    <li
-      className={cn(
-        'flex items-center justify-between gap-4 rounded-lg border p-4',
-        !item.isAvailable && 'bg-muted/40 text-muted-foreground',
-      )}
-    >
-      <div className="min-w-0 space-y-1">
-        <p className="font-medium break-words">{item.name}</p>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span>{item.price}</span>
-          <Badge variant="outline">{item.itemType}</Badge>
-          {!item.isAvailable && <Badge variant="secondary">Unavailable</Badge>}
-        </div>
-      </div>
-      {item.isAvailable && onAdd && (
-        <Button
+    <li className="min-w-0">
+      {onAdd ? (
+        <button
           type="button"
-          size="sm"
-          disabled={!onAdd || isAdding}
+          className={cn(
+            cardClassName,
+            'enabled:cursor-pointer enabled:hover:border-primary/60 enabled:hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed',
+          )}
+          disabled={!item.isAvailable || isAdding}
           onClick={handleAdd}
           aria-label={`Add ${item.name} to order`}
         >
-          Add
-        </Button>
+          {content}
+        </button>
+      ) : (
+        <div className={cardClassName}>{content}</div>
       )}
     </li>
   );

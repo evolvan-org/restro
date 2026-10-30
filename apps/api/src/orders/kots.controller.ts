@@ -57,11 +57,11 @@ export class KotsController {
   @ApiOperation({
     summary: "List a station's KOTs with items and table number, oldest first",
     description:
-      'Defaults to the active set (PENDING, PREPARING, READY); pass status explicitly (repeatable) to include COMPLETED.',
+      'Paginated FIFO queue. Defaults to PENDING, PREPARING, READY; repeat status to include COMPLETED.',
   })
   @ApiZodQuery(kotQueueQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(kotQueueResponseSchema) })
-  @ApiBadRequestResponse(apiError('Invalid destination or status'))
+  @ApiBadRequestResponse(apiError('Invalid destination, status, or pagination'))
   queue(
     @CurrentActor() actor: Actor,
     @Query(new ZodValidationPipe(kotQueueQuerySchema)) query: KotQueueQuery,
@@ -79,7 +79,7 @@ export class KotsController {
   @ApiOkResponse({ schema: zodOpenApiSchema(updateKotStatusResponseSchema) })
   @ApiBadRequestResponse(apiError('Invalid id or status'))
   @ApiNotFoundResponse(apiError('KOT not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('The KOT cannot move to that status from its current one'))
+  @ApiConflictResponse(apiError('Stale expected status or invalid KOT transition'))
   updateStatus(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

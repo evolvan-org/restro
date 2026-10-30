@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { errorResponseSchema } from './common';
+import { errorResponseSchema, paginatedResponseSchema, paginationQuerySchema } from './common';
 import { servingTypeSchema } from './serving-types';
 
 export const orderStatusSchema = z.enum(['OPEN', 'SUBMITTED', 'COMPLETED', 'CANCELLED']);
@@ -34,6 +34,9 @@ export const orderSchema = z
     reservationId: z.string().uuid().nullable(),
     createdByUserId: z.string().uuid(),
     status: orderStatusSchema,
+    readyToServe: z
+      .boolean()
+      .describe('True when at least one KOT exists and all KOTs are COMPLETED; derived read only'),
     notes: z.string().nullable(),
     openedAt: z.string().datetime(),
     completedAt: z.string().datetime().nullable(),
@@ -158,27 +161,27 @@ export type FireOrderResponse = z.infer<typeof fireOrderResponseSchema>;
 /** The statuses a station screen works: everything not yet COMPLETED. */
 export const ACTIVE_KOT_STATUSES = ['PENDING', 'PREPARING', 'READY'] as const satisfies KotStatus[];
 
-/** A single `status=X` arrives as a string and a repeated one as an array; normalise to an array. */
-const repeatableStatusSchema = z.preprocess(
-  (value) => (typeof value === 'string' ? [value] : value),
-  z.array(kotStatusSchema).min(1).optional(),
-);
+export const kotQueueItemSchema = kotSchema.extend({
+  table: z.object({ id: z.string().uuid(), tableNumber: z.string() }).strict(),
+});
 
-export const kotQueueItemSchema = kotSchema
-  .extend({ tableNumber: z.string().describe('Table number of the owning order') })
-  .strict();
-
-export const kotQueueQuerySchema = z
-  .object({
-    destination: kotDestinationSchema.describe('Station whose queue to read'),
-    status: repeatableStatusSchema.describe(
-      'Repeatable; defaults to the active set (PENDING, PREPARING, READY)',
-    ),
+export const kotQueueQuerySchema = paginationQuerySchema
+  .extend({
+    destination: kotDestinationSchema,
+    status: z
+      .union([kotStatusSchema, z.array(kotStatusSchema).min(1)])
+      .optional()
+      .transform((value) =>
+        value === undefined
+          ? (['PENDING', 'PREPARING', 'READY'] as const)
+          : typeof value === 'string'
+            ? [value]
+            : value,
+      ),
   })
   .strict();
 
-/** Oldest-first (FIFO), so the station works the oldest ticket first. */
-export const kotQueueResponseSchema = z.array(kotQueueItemSchema);
+export const kotQueueResponseSchema = paginatedResponseSchema(kotQueueItemSchema);
 
 export type KotQueueItem = z.infer<typeof kotQueueItemSchema>;
 export type KotQueueQuery = z.infer<typeof kotQueueQuerySchema>;
@@ -193,10 +196,19 @@ export const KOT_STATUS_TRANSITIONS: Record<KotStatus, readonly KotStatus[]> = {
 };
 
 export const updateKotStatusRequestSchema = z
-  .object({ status: z.enum(['PREPARING', 'READY', 'COMPLETED']) })
+  .object({
+    expectedStatus: kotStatusSchema.describe(
+      'Current status observed by the caller; stale writes return 409',
+    ),
+    status: z.enum(['PREPARING', 'READY', 'COMPLETED']),
+  })
   .strict();
 
-export const updateKotStatusResponseSchema = kotSchema;
+export const updateKotStatusResponseSchema = kotQueueItemSchema;
 
 export type UpdateKotStatusRequest = z.infer<typeof updateKotStatusRequestSchema>;
 export type UpdateKotStatusResponse = z.infer<typeof updateKotStatusResponseSchema>;
+
+// The board uses the same transition contract as the status API.
+export const transitionKotStatusRequestSchema = updateKotStatusRequestSchema;
+export type TransitionKotStatusRequest = UpdateKotStatusRequest;

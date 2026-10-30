@@ -19,6 +19,8 @@ export type NavItem = {
   icon: LucideIcon;
   /** Present when the module has a live page. Items without an `href` are not rendered yet. */
   href?: string;
+  /** Additional routes that belong to this navigation item. */
+  activePaths?: readonly string[];
   /** Shown only when the role holds this permission. Omit for items everyone can see. */
   permission?: Permission;
 };
@@ -56,7 +58,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { label: 'Tables', icon: Table2, href: '/tables', permission: Permission.RESTAURANT_READ },
   { label: 'Orders', icon: ClipboardList, permission: Permission.ORDER_READ },
-  { label: 'Kitchen', icon: ChefHat, permission: Permission.KOT_READ },
+  {
+    label: 'Kitchen display',
+    icon: ChefHat,
+    href: '/kitchen',
+    activePaths: ['/bar'],
+    permission: Permission.KOT_READ,
+  },
   { label: 'Billing', icon: Receipt, permission: Permission.BILL_READ },
   {
     label: 'Reservations',

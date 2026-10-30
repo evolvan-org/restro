@@ -4,8 +4,10 @@ import { Prisma } from '@rms/db';
 import type { KotQueueRecord, KotRecord, OrderRecord } from './orders.repository';
 
 export function toOrder(record: OrderRecord): Order {
+  const { kots, ...order } = record;
   return {
-    ...record,
+    ...order,
+    readyToServe: kots.length > 0 && kots.every((ticket) => ticket.status === 'COMPLETED'),
     total: orderTotal(record.items),
     openedAt: record.openedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
@@ -42,7 +44,7 @@ export function toKot(record: KotRecord): Kot {
 }
 
 export function toKotQueueItem({ order, ...record }: KotQueueRecord): KotQueueItem {
-  return { ...toKot(record), tableNumber: order.table.tableNumber };
+  return { ...toKot(record), table: order.table };
 }
 
 export function sentQuantity(kotItems: { quantity: number }[]): number {

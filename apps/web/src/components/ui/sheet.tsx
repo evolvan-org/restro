@@ -120,6 +120,7 @@ export {
   SheetDescription,
   SheetFooter,
   SheetHeader,
+  SheetPortal,
   SheetTitle,
   SheetTrigger,
 };
