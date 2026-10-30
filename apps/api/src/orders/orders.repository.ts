@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -16,6 +17,7 @@ const orderSelect = {
   completedAt: true,
   createdAt: true,
   updatedAt: true,
+  kots: { select: { status: true } },
   items: {
     select: {
       id: true,
@@ -58,8 +60,14 @@ const kotSelect = {
   },
 } satisfies Prisma.KotSelect;
 
+const kotQueueSelect = {
+  ...kotSelect,
+  order: { select: { table: { select: { id: true, tableNumber: true } } } },
+} satisfies Prisma.KotSelect;
+
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 export type KotRecord = Prisma.KotGetPayload<{ select: typeof kotSelect }>;
+export type KotQueueRecord = Prisma.KotGetPayload<{ select: typeof kotQueueSelect }>;
 
 type NewOrder = {
   createdByUserId: string;
@@ -120,6 +128,12 @@ export type LockedOrderContext = {
   ) => Promise<KotRecord[]>;
   submit: () => Promise<void>;
   refresh: () => Promise<OrderRecord>;
+};
+
+export type LockedKotContext = {
+  kot: KotQueueRecord | null;
+  /** Writes the KOT and every one of its items in this transaction; completedAt is stamped on COMPLETED. */
+  setStatus: (status: KotStatus) => Promise<KotQueueRecord>;
 };
 
 @Injectable()
@@ -264,6 +278,67 @@ export class OrdersRepository {
       where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
       select: orderSelect,
       orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async findKotQueue(
+    restaurantId: string,
+    query: KotQueueQuery,
+  ): Promise<{ items: KotQueueRecord[]; total: number }> {
+    const where: Prisma.KotWhereInput = {
+      restaurantId,
+      destination: query.destination,
+      status: { in: [...query.status] },
+    };
+    const [items, total] = await this.prisma.$transaction(
+      [
+        this.prisma.kot.findMany({
+          where,
+          select: kotQueueSelect,
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+        }),
+        this.prisma.kot.count({ where }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    return { items, total };
+  }
+
+  withLockedKot<T>(
+    restaurantId: string,
+    id: string,
+    action: (context: LockedKotContext) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      const candidate = await tx.kot.findFirst({
+        where: { id, restaurantId },
+        select: { orderId: true },
+      });
+      if (candidate) {
+        // Share the existing order lock with firing/completion before locking the ticket.
+        await tx.$queryRaw`SELECT id FROM orders WHERE id = ${candidate.orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM kots WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      }
+      const ticket = await tx.kot.findFirst({
+        where: { id, restaurantId },
+        select: kotQueueSelect,
+      });
+      return action({
+        kot: ticket,
+        setStatus: async (status) => {
+          await tx.kot.update({
+            where: { id, restaurantId },
+            data: { status, completedAt: status === 'COMPLETED' ? new Date() : null },
+          });
+          await tx.kotItem.updateMany({
+            where: { kotId: id, kot: { restaurantId } },
+            data: { status },
+          });
+          return tx.kot.findFirstOrThrow({ where: { id, restaurantId }, select: kotQueueSelect });
+        },
+      });
     });
   }
 

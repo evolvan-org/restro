@@ -72,6 +72,7 @@ const MODULES: readonly Module[] = [
     description: 'Work incoming tickets and mark items ready.',
     icon: ChefHat,
     permission: Permission.KOT_READ,
+    href: '/kitchen',
   },
   {
     title: 'Billing',

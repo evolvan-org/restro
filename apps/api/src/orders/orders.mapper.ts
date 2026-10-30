@@ -1,11 +1,13 @@
-import type { Kot, Order } from '@rms/api-contract';
+import type { Kot, KotQueueItem, Order } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import type { KotRecord, OrderRecord } from './orders.repository';
+import type { KotQueueRecord, KotRecord, OrderRecord } from './orders.repository';
 
 export function toOrder(record: OrderRecord): Order {
+  const { kots, ...order } = record;
   return {
-    ...record,
+    ...order,
+    readyToServe: kots.length > 0 && kots.every((ticket) => ticket.status === 'COMPLETED'),
     total: orderTotal(record.items),
     openedAt: record.openedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
@@ -39,6 +41,10 @@ export function toKot(record: KotRecord): Kot {
       specialInstructions: orderItem.specialInstructions,
     })),
   };
+}
+
+export function toKotQueueItem({ order, ...record }: KotQueueRecord): KotQueueItem {
+  return { ...toKot(record), table: order.table };
 }
 
 export function sentQuantity(kotItems: { quantity: number }[]): number {

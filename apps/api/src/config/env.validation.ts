@@ -6,6 +6,10 @@ export const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(1),
+  PUSHER_APP_ID: z.string().min(1),
+  PUSHER_KEY: z.string().min(1),
+  PUSHER_SECRET: z.string().min(1),
+  PUSHER_CLUSTER: z.string().regex(/^[a-z0-9-]+$/),
   NEXT_PUBLIC_API_URL: z.string().url().optional(),
   WEB_ORIGIN: z.string().optional(),
 });

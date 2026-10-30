@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { errorResponseSchema } from './common';
+import { errorResponseSchema, paginatedResponseSchema, paginationQuerySchema } from './common';
 import { servingTypeSchema } from './serving-types';
 
 export const orderStatusSchema = z.enum(['OPEN', 'SUBMITTED', 'COMPLETED', 'CANCELLED']);
@@ -34,6 +34,9 @@ export const orderSchema = z
     reservationId: z.string().uuid().nullable(),
     createdByUserId: z.string().uuid(),
     status: orderStatusSchema,
+    readyToServe: z
+      .boolean()
+      .describe('True when at least one KOT exists and all KOTs are COMPLETED; derived read only'),
     notes: z.string().nullable(),
     openedAt: z.string().datetime(),
     completedAt: z.string().datetime().nullable(),
@@ -154,3 +157,58 @@ export type KotItem = z.infer<typeof kotItemSchema>;
 export type Kot = z.infer<typeof kotSchema>;
 export type FireOrderRequest = z.infer<typeof fireOrderRequestSchema>;
 export type FireOrderResponse = z.infer<typeof fireOrderResponseSchema>;
+
+/** The statuses a station screen works: everything not yet COMPLETED. */
+export const ACTIVE_KOT_STATUSES = ['PENDING', 'PREPARING', 'READY'] as const satisfies KotStatus[];
+
+export const kotQueueItemSchema = kotSchema.extend({
+  table: z.object({ id: z.string().uuid(), tableNumber: z.string() }).strict(),
+});
+
+export const kotQueueQuerySchema = paginationQuerySchema
+  .extend({
+    destination: kotDestinationSchema,
+    status: z
+      .union([kotStatusSchema, z.array(kotStatusSchema).min(1)])
+      .optional()
+      .transform((value) =>
+        value === undefined
+          ? (['PENDING', 'PREPARING', 'READY'] as const)
+          : typeof value === 'string'
+            ? [value]
+            : value,
+      ),
+  })
+  .strict();
+
+export const kotQueueResponseSchema = paginatedResponseSchema(kotQueueItemSchema);
+
+export type KotQueueItem = z.infer<typeof kotQueueItemSchema>;
+export type KotQueueQuery = z.infer<typeof kotQueueQuerySchema>;
+export type KotQueueResponse = z.infer<typeof kotQueueResponseSchema>;
+
+/** Ticket-level lifecycle: each status may only move to the next one (no skipping, no undo). */
+export const KOT_STATUS_TRANSITIONS: Record<KotStatus, readonly KotStatus[]> = {
+  PENDING: ['PREPARING'],
+  PREPARING: ['READY'],
+  READY: ['COMPLETED'],
+  COMPLETED: [],
+};
+
+export const updateKotStatusRequestSchema = z
+  .object({
+    expectedStatus: kotStatusSchema.describe(
+      'Current status observed by the caller; stale writes return 409',
+    ),
+    status: z.enum(['PREPARING', 'READY', 'COMPLETED']),
+  })
+  .strict();
+
+export const updateKotStatusResponseSchema = kotQueueItemSchema;
+
+export type UpdateKotStatusRequest = z.infer<typeof updateKotStatusRequestSchema>;
+export type UpdateKotStatusResponse = z.infer<typeof updateKotStatusResponseSchema>;
+
+// The board uses the same transition contract as the status API.
+export const transitionKotStatusRequestSchema = updateKotStatusRequestSchema;
+export type TransitionKotStatusRequest = UpdateKotStatusRequest;

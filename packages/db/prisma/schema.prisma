@@ -134,6 +134,7 @@ model Restaurant {
   orders         Order[]
   kots           Kot[]
   bills          Bill[]
+  notifications  Notification[]
 
   @@map("restaurants")
 }
@@ -166,10 +167,33 @@ model User {
   kotsCreated           Kot[]             @relation("KotCreatedBy")
   billsGenerated        Bill[]            @relation("BillGeneratedBy")
   paymentsRecorded      Payment[]         @relation("PaymentRecordedBy")
+  notifications         Notification[]
 
   @@index([restaurantId])
   @@index([roleId])
   @@map("users")
+}
+
+model Notification {
+  id              String    @id @default(uuid()) @db.Uuid
+  restaurantId    String    @map("restaurant_id") @db.Uuid
+  recipientUserId String    @map("recipient_user_id") @db.Uuid
+  type            String    @db.VarChar(50)
+  title           String    @db.VarChar(255)
+  body            String
+  entity          String    @db.VarChar(30)
+  entityId        String    @map("entity_id") @db.Uuid
+  tableId         String?   @map("table_id") @db.Uuid
+  readAt          DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  recipient  User       @relation(fields: [recipientUserId], references: [id])
+
+  @@index([restaurantId, recipientUserId, createdAt, id])
+  @@index([restaurantId, recipientUserId, readAt])
+  @@map("notifications")
 }
 
 model Role {

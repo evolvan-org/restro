@@ -1,11 +1,13 @@
 'use client';
 
+import { Dialog as SheetPrimitive } from '@base-ui/react/dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { currentOrderQuerySchema, type MenuItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
+import { ArrowLeft, ShoppingCart, Utensils } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { type ReactElement, useRef, useState } from 'react';
+import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import AddOrderItemDialog from '@/components/AddOrderItemDialog';
@@ -15,8 +17,10 @@ import SendOrderDialog from '@/components/SendOrderDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Sheet, SheetClose, SheetPortal, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
+import useMobileLayout from '@/hooks/useMobileLayout';
 import { getApiErrorMessage } from '@/lib/api-error';
 import {
   useAddOrderItem,
@@ -36,11 +40,17 @@ import {
   type OpenOrderFormValues,
   toCreateOrderRequest,
 } from './mappers';
+import styles from './order.module.css';
 
 type Props = { tableId: string };
 
 export default function TableOrder({ tableId }: Props): ReactElement | null {
   const searchParams = useSearchParams();
+  const isMobile = useMobileLayout();
+  // The cart stays mounted in the same portal across mobile/desktop layouts, retaining RHF drafts.
+  const cartMount = useRef<HTMLDivElement>(null);
+  const [cartContainer, setCartContainer] = useState<HTMLDivElement | null>(null);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const isAllowed = usePermissionGuard([Permission.ORDER_READ]);
   const { can } = usePermissions();
   // Editor handles expose the existing RHF drafts; no duplicate form/error state.
@@ -65,6 +75,10 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   const canReadMenu = can(Permission.MENU_READ);
   const isValidId = currentOrderQuerySchema.safeParse({ tableId }).success;
   const current = useCurrentOrder(tableId, isAllowed && isValidId);
+  useEffect(() => {
+    // An explicit null delays the portal until its grid host exists, avoiding a body fallback.
+    setCartContainer(cartMount.current);
+  }, [current.data?.id]);
   const { mutateAsync: openOrder, isPending: isOpening } = useOpenOrder();
   const table = useOrderingTable(
     tableId,
@@ -122,24 +136,31 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   const tableNumber = order?.table.tableNumber ?? table.data?.tableNumber;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <Link href="/floor" className="text-sm text-muted-foreground underline underline-offset-4">
-        Back to floor
-      </Link>
-      <div className="mt-5 mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {tableNumber ? `Table ${tableNumber}` : 'Table order'}
-        </h1>
-        {order && (
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-            <Badge>{order.status}</Badge>
-            <span className="text-muted-foreground">
-              Opened{' '}
-              <time dateTime={order.openedAt}>{new Date(order.openedAt).toLocaleString()}</time>
-            </span>
-            {order.reservationId && <span>Reservation linked</span>}
-          </div>
-        )}
+    <main className={styles.screen}>
+      <div className={styles.toolbar}>
+        <Link
+          href="/floor"
+          className="inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" aria-hidden />
+          Back to floor
+        </Link>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+          <h1 className="text-sm font-semibold">
+            {tableNumber ? `Table ${tableNumber}` : 'Table order'}
+          </h1>
+          {order && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge>{order.status}</Badge>
+              {order.readyToServe && <Badge>Ready to serve</Badge>}
+              <span className="hidden text-muted-foreground lg:inline">
+                Opened{' '}
+                <time dateTime={order.openedAt}>{new Date(order.openedAt).toLocaleString()}</time>
+              </span>
+              {order.reservationId && <span>Reservation linked</span>}
+            </div>
+          )}
+        </div>
       </div>
 
       {!isValidId && <p role="alert">Invalid table link.</p>}
@@ -222,162 +243,220 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
         </section>
       )}
 
-      {order && (
-        <div className="grid items-start gap-8 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_18rem]">
-          <section
-            aria-label="Current order"
-            className="min-w-0 space-y-4 rounded-lg border p-5 md:order-2"
-          >
-            <h2 className="text-xl font-semibold">Current order</h2>
-            {activeItems.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {canEdit && canReadMenu
-                  ? 'No active items. Add an item from the menu.'
-                  : 'No active items in this order.'}
-              </p>
-            )}
-            <ul className="space-y-3">
-              {activeItems.map((item) => (
-                <li key={item.id} className="space-y-1 text-sm">
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-muted-foreground">
-                    {item.quantity} × {item.unitPrice} = {item.lineTotal}
-                  </p>
-                  {canEdit && (
-                    <OrderItemEditors
-                      ref={(editor) => {
-                        if (editor) itemEditors.current.set(item.id, editor);
-                        else itemEditors.current.delete(item.id);
-                      }}
-                      item={item}
-                      disabled={isMutating || isSendDialogOpen}
-                      onQuantity={async (input) => {
-                        await updateOrderItemQuantity({
-                          orderId: order.id,
-                          itemId: item.id,
-                          input,
-                        });
-                      }}
-                      onInstructions={async (input) => {
-                        await updateOrderItemInstructions({
-                          orderId: order.id,
-                          itemId: item.id,
-                          input,
-                        });
-                      }}
-                    />
-                  )}
-                  {(!canEdit || item.sentQuantity > 0) && item.specialInstructions && (
-                    <p className="break-words">{item.specialInstructions}</p>
-                  )}
-                  {item.sentQuantity > 0 && (
-                    <Badge variant="secondary">
-                      {item.sentQuantity === item.quantity
-                        ? 'Sent to kitchen'
-                        : `${item.sentQuantity} of ${item.quantity} sent to kitchen`}
-                    </Badge>
-                  )}
-                  {canEdit && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isMutating || item.sentQuantity > 0}
-                      aria-label={`Remove ${item.name} from order`}
-                      title={
-                        item.sentQuantity > 0
-                          ? 'Items sent to the kitchen cannot be removed'
-                          : undefined
-                      }
-                      onClick={async () => {
-                        try {
-                          await removeOrderItem({ orderId: order.id, itemId: item.id });
-                        } catch {
-                          // The request hook reports the error and leaves the line available.
-                        }
-                      }}
+      <Sheet
+        open={Boolean(order) && (!isMobile || mobileCartOpen)}
+        modal={isMobile}
+        disablePointerDismissal
+        onOpenChange={(open) => {
+          if (isMobile) setMobileCartOpen(open);
+        }}
+      >
+        {order && (
+          <div className={styles.workspace}>
+            <div ref={cartMount} className={styles.cartMount}>
+              <SheetPortal container={cartContainer} keepMounted>
+                <SheetPrimitive.Popup
+                  role={isMobile ? 'dialog' : 'region'}
+                  aria-modal={isMobile || undefined}
+                  aria-label="Current order"
+                  initialFocus={isMobile ? undefined : false}
+                  finalFocus={isMobile ? undefined : false}
+                  className={styles.cart}
+                >
+                  <SheetClose className={styles.backToMenu}>
+                    <ArrowLeft className="size-4" aria-hidden /> Back to menu
+                  </SheetClose>
+                  <div className="shrink-0 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="rounded-full border bg-muted px-5 py-1 text-sm font-medium">
+                        Dine-in
+                      </span>
+                      <SheetTitle className="text-sm text-muted-foreground">
+                        Current order
+                      </SheetTitle>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-sm">
+                      <Utensils className="size-4 text-muted-foreground" aria-hidden />
+                      <span>{tableNumber ? `Table ${tableNumber}` : 'Table order'}</span>
+                    </div>
+                  </div>
+                  <div className={styles.cartItems}>
+                    {activeItems.length === 0 && (
+                      <div className="flex h-full min-h-52 flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground">
+                        <ShoppingCart className="size-8 opacity-50" aria-hidden />
+                        <p>Cart is empty</p>
+                        <p className="max-w-52 text-xs">
+                          {canEdit && canReadMenu
+                            ? 'No active items. Add an item from the menu.'
+                            : 'No active items in this order.'}
+                        </p>
+                      </div>
+                    )}
+                    <ul className="space-y-4">
+                      {activeItems.map((item) => (
+                        <li key={item.id} className="space-y-2 border-b pb-4 text-sm last:border-0">
+                          <div className="flex items-start justify-between gap-3 font-medium">
+                            <p>{item.name}</p>
+                            <span className="shrink-0 tabular-nums">{item.lineTotal}</span>
+                          </div>
+                          <p className="text-muted-foreground">
+                            {item.quantity} × {item.unitPrice}
+                          </p>
+                          {canEdit && (
+                            <OrderItemEditors
+                              ref={(editor) => {
+                                if (editor) itemEditors.current.set(item.id, editor);
+                                else itemEditors.current.delete(item.id);
+                              }}
+                              item={item}
+                              disabled={isMutating || isSendDialogOpen}
+                              onQuantity={async (input) => {
+                                await updateOrderItemQuantity({
+                                  orderId: order.id,
+                                  itemId: item.id,
+                                  input,
+                                });
+                              }}
+                              onInstructions={async (input) => {
+                                await updateOrderItemInstructions({
+                                  orderId: order.id,
+                                  itemId: item.id,
+                                  input,
+                                });
+                              }}
+                            />
+                          )}
+                          {(!canEdit || item.sentQuantity > 0) && item.specialInstructions && (
+                            <p className="break-words">{item.specialInstructions}</p>
+                          )}
+                          {item.sentQuantity > 0 && (
+                            <Badge variant="secondary">
+                              {item.sentQuantity === item.quantity
+                                ? 'Sent to kitchen'
+                                : `${item.sentQuantity} of ${item.quantity} sent to kitchen`}
+                            </Badge>
+                          )}
+                          {canEdit && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isMutating || item.sentQuantity > 0}
+                              aria-label={`Remove ${item.name} from order`}
+                              title={
+                                item.sentQuantity > 0
+                                  ? 'Items sent to the kitchen cannot be removed'
+                                  : undefined
+                              }
+                              onClick={async () => {
+                                try {
+                                  await removeOrderItem({ orderId: order.id, itemId: item.id });
+                                } catch {
+                                  // The request hook reports the error and leaves the line available.
+                                }
+                              }}
+                            >
+                              {removeItem.isPending && removeItem.variables?.itemId === item.id
+                                ? 'Removing...'
+                                : 'Remove'}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    {cancelledItems.length > 0 && (
+                      <details className="border-t pt-3 text-sm text-muted-foreground">
+                        <summary className="cursor-pointer">
+                          Cancelled items ({cancelledItems.length})
+                        </summary>
+                        <ul className="mt-3 space-y-2">
+                          {cancelledItems.map((item) => (
+                            <li key={item.id}>
+                              <p>
+                                {item.name} · {item.quantity} × {item.unitPrice}
+                              </p>
+                              {item.specialInstructions && (
+                                <p className="break-words">{item.specialInstructions}</p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                  <div className={styles.cartFooter}>
+                    <div
+                      aria-live="polite"
+                      className="flex items-center justify-between gap-3 text-sm"
                     >
-                      {removeItem.isPending && removeItem.variables?.itemId === item.id
-                        ? 'Removing...'
-                        : 'Remove'}
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <div aria-live="polite" className="flex justify-between border-t pt-4 font-semibold">
-              <span>Total</span>
-              <span>{order.total}</span>
+                      <span className="text-muted-foreground">Total</span>
+                      <span className="font-semibold tabular-nums">{order.total}</span>
+                    </div>
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        className="h-11 w-full rounded-2xl"
+                        disabled={isMutating || unsentItems.length === 0}
+                        onClick={() => void prepareSend()}
+                      >
+                        Send to kitchen
+                      </Button>
+                    )}
+                  </div>
+                </SheetPrimitive.Popup>
+              </SheetPortal>
             </div>
-            {canEdit && unsentItems.length > 0 && (
-              <Button
-                type="button"
-                className="w-full"
-                disabled={isMutating}
-                onClick={() => void prepareSend()}
-              >
-                Send to kitchen
-              </Button>
+            {canReadMenu && (
+              <div className={styles.menuPanel}>
+                <OrderingMenu
+                  onAdd={
+                    canEdit
+                      ? async (item) => {
+                          setSelectedItem(item);
+                        }
+                      : undefined
+                  }
+                  isAdding={isMutating}
+                />
+              </div>
             )}
-            {cancelledItems.length > 0 && (
-              <details className="border-t pt-3 text-sm text-muted-foreground">
-                <summary className="cursor-pointer">
-                  Cancelled items ({cancelledItems.length})
-                </summary>
-                <ul className="mt-3 space-y-2">
-                  {cancelledItems.map((item) => (
-                    <li key={item.id}>
-                      <p>
-                        {item.name} · {item.quantity} × {item.unitPrice}
-                      </p>
-                      {item.specialInstructions && (
-                        <p className="break-words">{item.specialInstructions}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </section>
-          {canReadMenu && (
-            <div className="min-w-0 md:order-1">
-              <OrderingMenu
-                onAdd={
-                  canEdit
-                    ? async (item) => {
-                        setSelectedItem(item);
-                      }
-                    : undefined
-                }
-                isAdding={isMutating}
-              />
-            </div>
-          )}
-        </div>
-      )}
-      {selectedItem && order && canEdit && (
-        <AddOrderItemDialog
-          key={`${order.id}:${selectedItem.id}`}
-          item={selectedItem}
-          isPending={isMutating}
-          onClose={() => setSelectedItem(null)}
-          onAdd={async (input) => {
-            await addOrderItem({ ...input, orderId: order.id });
-          }}
-        />
-      )}
-      {isSendDialogOpen && order && (
-        <SendOrderDialog
-          items={unsentItems}
-          result={fireOrder.data}
-          isPending={isMutating}
-          onConfirm={() => sendOrder(order.id)}
-          onClose={() => {
-            setIsSendDialogOpen(false);
-            fireOrder.reset();
-          }}
-        />
-      )}
+          </div>
+        )}
+        {order && (
+          <SheetTrigger className={styles.viewCart}>
+            <span className="flex items-center gap-2">
+              <ShoppingCart className="size-5" aria-hidden />
+              <span>
+                View cart · {activeItems.reduce((total, item) => total + item.quantity, 0)} items
+              </span>
+            </span>
+            <span className="shrink-0 tabular-nums">{order.total}</span>
+          </SheetTrigger>
+        )}
+        {selectedItem && order && canEdit && (
+          <AddOrderItemDialog
+            key={`${order.id}:${selectedItem.id}`}
+            item={selectedItem}
+            isPending={isMutating}
+            onClose={() => setSelectedItem(null)}
+            onAdd={async (input) => {
+              await addOrderItem({ ...input, orderId: order.id });
+            }}
+          />
+        )}
+        {isSendDialogOpen && order && (
+          <SendOrderDialog
+            items={unsentItems}
+            result={fireOrder.data}
+            isPending={isMutating}
+            onConfirm={() => sendOrder(order.id)}
+            onClose={() => {
+              setIsSendDialogOpen(false);
+              fireOrder.reset();
+            }}
+          />
+        )}
+      </Sheet>
     </main>
   );
 }

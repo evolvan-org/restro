@@ -63,8 +63,10 @@ function SidebarNav({
 
   return (
     <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-      {visibleItems.map(({ label, icon: Icon, href }) => {
-        const active = isActiveRoute(pathname, href);
+      {visibleItems.map(({ label, icon: Icon, href, activePaths }) => {
+        const active =
+          isActiveRoute(pathname, href) ||
+          Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
         return (
           <Link
             key={href}
