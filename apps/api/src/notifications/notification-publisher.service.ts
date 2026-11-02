@@ -10,6 +10,7 @@ import {
 import Pusher from 'pusher';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { errorDiagnostics } from '../common/logging/error-diagnostics';
 
 @Injectable()
 export class NotificationPublisher {
@@ -58,9 +59,12 @@ export class NotificationPublisher {
         .map((id) => this.channel(restaurantId, id));
       try {
         await this.client.trigger(channels, NOTIFICATION_CHANGED_EVENT, event);
-      } catch {
+      } catch (error) {
         // Persistence has committed. Do not report a failed business operation or retry blindly.
-        this.logger.warn('Notification live delivery failed; saved alerts remain available');
+        this.logger.warn(
+          'Notification live delivery failed; saved alerts remain available',
+          errorDiagnostics(error),
+        );
       }
     }
   }

@@ -4,6 +4,7 @@ import type { RestaurantTable } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { buildStatusColorMap } from '@/components/FloorTile';
 import { getTableAttention } from '@/components/FloorTile/attention';
@@ -12,7 +13,7 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useReservations } from '@/services/api/requests/reservations';
-import { useTableList, useTableOptions } from '@/services/api/requests/tables';
+import { useTableBoard, useTableOptions } from '@/services/api/requests/tables';
 import { useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
 import AttentionRail, { type AttentionEntry } from './AttentionRail';
@@ -25,10 +26,10 @@ import {
 } from './FloorBoardStates';
 import FloorHeader from './FloorHeader';
 import FloorSection, { type TilePermissions } from './FloorSection';
+import { type FloorBoardFilters, getFloorBoardFilterDefaults } from './mapper';
 import SectionTabs from './SectionTabs';
 import StatusFilterChips from './StatusFilterChips';
 
-const FLOOR_BOARD_REFRESH_MS = 12_000;
 const TIMER_TICK_MS = 60_000;
 const UP_NEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
 const STALE_AFTER_MS = 60_000;
@@ -43,6 +44,7 @@ export default function FloorBoard(): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
   const { can } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
+  const canReadReservations = can(Permission.RESERVATION_READ);
   const permissions: TilePermissions = {
     canReserve: can(Permission.RESERVATION_WRITE),
     canEditReservation: can(Permission.RESERVATION_WRITE),
@@ -53,9 +55,12 @@ export default function FloorBoard(): ReactElement | null {
     canTransitionStatus: can(Permission.TABLE_UPDATE_STATUS),
   };
 
-  const [sectionId, setSectionId] = useState('');
-  const [statusCode, setStatusCode] = useState('');
-  const [search, setSearch] = useState('');
+  const { control, register, setValue, reset } = useForm<FloorBoardFilters>({
+    defaultValues: getFloorBoardFilterDefaults(),
+  });
+  const sectionId = useWatch({ control, name: 'sectionId' });
+  const statusCode = useWatch({ control, name: 'statusCode' });
+  const search = useWatch({ control, name: 'search' });
   const [railOpen, setRailOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -65,12 +70,8 @@ export default function FloorBoard(): ReactElement | null {
   }, []);
 
   const options = useTableOptions(canRead);
-  // The status filter is applied client-side so the chip counts reflect the full, unfiltered list.
-  const tables = useTableList(
-    { page: 1, pageSize: MAX_PAGE_SIZE, isActive: true },
-    canRead,
-    FLOOR_BOARD_REFRESH_MS,
-  );
+  // One complete snapshot keeps local filters, chip counts, and covers consistent.
+  const tables = useTableBoard(canRead);
 
   useEffect(() => {
     if (!tables.isFetching) setNowMs(Date.now());
@@ -93,7 +94,7 @@ export default function FloorBoard(): ReactElement | null {
       from: upNextWindow.from,
       to: upNextWindow.to,
     },
-    canRead,
+    canRead && canReadReservations,
   );
 
   const showWalkInForm = useShowWalkInFormSidePane();
@@ -153,20 +154,11 @@ export default function FloorBoard(): ReactElement | null {
     (tables.isError && rows.length > 0) || (tables.dataUpdatedAt > 0 && age > STALE_AFTER_MS);
 
   const onSeatWalkIn = (): void => {
-    const suggestion = rows
-      .filter((t) => t.currentStatus.code === 'AVAILABLE')
-      .sort((a, b) => a.capacity - b.capacity)[0];
-    showWalkInForm(
-      suggestion
-        ? { id: suggestion.id, tableNumber: suggestion.tableNumber, capacity: suggestion.capacity }
-        : undefined,
-    );
+    showWalkInForm();
   };
 
   const clearFilters = (): void => {
-    setStatusCode('');
-    setSectionId('');
-    setSearch('');
+    reset(getFloorBoardFilterDefaults());
   };
 
   const noMatchMessage = [
@@ -186,6 +178,7 @@ export default function FloorBoard(): ReactElement | null {
       canViewOrder={permissions.canViewOrder}
       canTransitionStatus={permissions.canTransitionStatus}
       canEditReservation={permissions.canEditReservation}
+      canReadReservations={canReadReservations}
     />
   );
 
@@ -241,8 +234,7 @@ export default function FloorBoard(): ReactElement | null {
           <FloorHeader
             updatedLabel={formatAgo(age)}
             isReconnecting={isReconnecting}
-            search={search}
-            onSearchChange={setSearch}
+            searchField={register('search')}
             onSeatWalkIn={onSeatWalkIn}
             canReserve={permissions.canReserve}
             attentionCount={attention.length}
@@ -255,8 +247,8 @@ export default function FloorBoard(): ReactElement | null {
               counts={counts}
               total={rows.length}
               activeCode={statusCode}
-              onChange={setStatusCode}
-              onClear={() => setStatusCode('')}
+              onChange={(code) => setValue('statusCode', code)}
+              onClear={() => setValue('statusCode', '')}
               coversLabel={`${occupiedCovers}/${totalCapacity}`}
             />
           )}
@@ -265,7 +257,7 @@ export default function FloorBoard(): ReactElement | null {
               sections={sectionsWithCounts}
               total={rows.length}
               activeSectionId={sectionId}
-              onChange={setSectionId}
+              onChange={(id) => setValue('sectionId', id)}
             />
           )}
         </div>
@@ -285,11 +277,11 @@ export default function FloorBoard(): ReactElement | null {
         {rail}
       </aside>
 
-      {/* Tablet portrait: the rail content opens in a right Sheet. */}
+      {/* Smaller screens: the rail remains reachable even when no table needs attention. */}
       <Sheet open={railOpen} onOpenChange={setRailOpen}>
         <SheetContent side="right" className="w-[320px] overflow-y-auto p-4">
           <SheetHeader className="px-0">
-            <SheetTitle>Needs attention</SheetTitle>
+            <SheetTitle>Floor activity</SheetTitle>
           </SheetHeader>
           {rail}
         </SheetContent>

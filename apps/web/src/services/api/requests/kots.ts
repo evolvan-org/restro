@@ -1,12 +1,11 @@
 import {
+  kotBoardResponseSchema,
   type KotDestination,
   type KotQueueItem,
   kotQueueItemSchema,
-  kotQueueResponseSchema,
   type TransitionKotStatusRequest,
   transitionKotStatusRequestSchema,
 } from '@rms/api-contract';
-import { MAX_PAGE_SIZE } from '@rms/shared';
 import {
   useIsMutating,
   useMutation,
@@ -18,11 +17,10 @@ import {
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
+import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 
 import { KotQueryKey } from '../types/KotQueryKey';
 import { OrderQueryKey } from '../types/OrderQueryKey';
-
-export const KOT_BOARD_REFRESH_MS = 10_000;
 
 type TransitionVariables = { id: string; input: TransitionKotStatusRequest };
 type TransitionContext = { previous: KotQueueItem | undefined };
@@ -35,26 +33,17 @@ export function useKotQueue(
   return useQuery({
     queryKey: [KotQueryKey.Queue, destination],
     queryFn: async ({ signal }): Promise<KotQueueItem[]> => {
-      const tickets: KotQueueItem[] = [];
-      let page = 1;
-      let totalPages = 1;
-      do {
-        const response = await api.get('/kots', {
-          params: { destination, page, pageSize: MAX_PAGE_SIZE },
-          signal,
-          errorDisplay: 'inline',
-        });
-        const result = kotQueueResponseSchema.parse(response.data);
-        tickets.push(...result.data);
-        totalPages = result.meta.totalPages;
-        page += 1;
-      } while (page <= totalPages);
-      return [...new Map(tickets.map((ticket) => [ticket.id, ticket])).values()];
+      const response = await api.get('/kots/board', {
+        params: { destination },
+        signal,
+        errorDisplay: 'inline',
+      });
+      return kotBoardResponseSchema.parse(response.data).data;
     },
     // Cancel an overlapping read in onMutate, then suspend further reads until all
     // local advances settle. A stale poll can never overwrite an optimistic lane.
     enabled: enabled && pending === 0,
-    refetchInterval: KOT_BOARD_REFRESH_MS,
+    refetchInterval: BOARD_REFRESH_MS,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: false,

@@ -22,6 +22,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type KotBoardQuery,
+  kotBoardQuerySchema,
+  type KotBoardResponse,
+  kotBoardResponseSchema,
   type KotQueueQuery,
   kotQueueQuerySchema,
   type KotQueueResponse,
@@ -50,6 +54,20 @@ import { OrdersService } from './orders.service';
 @Controller('kots')
 export class KotsController {
   constructor(private readonly service: OrdersService) {}
+
+  @Get('board')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.KOT_READ)
+  @ApiOperation({ summary: "Get a station's complete active KOT board, oldest first" })
+  @ApiZodQuery(kotBoardQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(kotBoardResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid destination'))
+  board(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(kotBoardQuerySchema)) query: KotBoardQuery,
+  ): Promise<KotBoardResponse> {
+    return this.service.kotBoard(actor, query);
+  }
 
   @Get()
   @Header('Cache-Control', 'no-store')

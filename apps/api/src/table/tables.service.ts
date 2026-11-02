@@ -15,6 +15,7 @@ import {
   type CreateTableRequest,
   type CreateTableResponse,
   type RestaurantTable,
+  type TableBoardResponse,
   type TableLifecycleStatusListResponse,
   type TableListQuery,
   type TableListResponse,
@@ -93,6 +94,12 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new NotFoundException('Table not found');
     }
     return toRestaurantTable(updated);
+  }
+
+  async board(actor: Actor): Promise<TableBoardResponse> {
+    await this.tablesRepository.reconcileStatuses(actor.restaurantId);
+    const items = await this.tablesRepository.findActiveBoard(actor.restaurantId);
+    return { data: items.map(toRestaurantTable) };
   }
 
   async list(actor: Actor, query: TableListQuery): Promise<TableListResponse> {

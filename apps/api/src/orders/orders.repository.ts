@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { KotQueueQuery, KotStatus } from '@rms/api-contract';
+import type { KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -278,6 +278,18 @@ export class OrdersRepository {
       where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
       select: orderSelect,
       orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  findActiveKotBoard(
+    restaurantId: string,
+    destination: KotDestination,
+    statuses: readonly KotStatus[],
+  ): Promise<KotQueueRecord[]> {
+    return this.prisma.kot.findMany({
+      where: { restaurantId, destination, status: { in: [...statuses] } },
+      select: kotQueueSelect,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   }
 

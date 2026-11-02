@@ -165,6 +165,12 @@ export const kotQueueItemSchema = kotSchema.extend({
   table: z.object({ id: z.string().uuid(), tableNumber: z.string() }).strict(),
 });
 
+/** A complete active station snapshot, without pagination. */
+export const kotBoardQuerySchema = z.object({ destination: kotDestinationSchema }).strict();
+export const kotBoardResponseSchema = z.object({ data: z.array(kotQueueItemSchema) }).strict();
+export type KotBoardQuery = z.infer<typeof kotBoardQuerySchema>;
+export type KotBoardResponse = z.infer<typeof kotBoardResponseSchema>;
+
 export const kotQueueQuerySchema = paginationQuerySchema
   .extend({
     destination: kotDestinationSchema,
@@ -172,11 +178,7 @@ export const kotQueueQuerySchema = paginationQuerySchema
       .union([kotStatusSchema, z.array(kotStatusSchema).min(1)])
       .optional()
       .transform((value) =>
-        value === undefined
-          ? (['PENDING', 'PREPARING', 'READY'] as const)
-          : typeof value === 'string'
-            ? [value]
-            : value,
+        value === undefined ? ACTIVE_KOT_STATUSES : typeof value === 'string' ? [value] : value,
       ),
   })
   .strict();

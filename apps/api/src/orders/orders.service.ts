@@ -5,11 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ACTIVE_KOT_STATUSES,
   ACTIVE_RESERVATION_STATUSES,
   type CompleteOrderResponse,
   type CreateOrderRequest,
   type FireOrderResponse,
   KOT_STATUS_TRANSITIONS,
+  type KotBoardQuery,
+  type KotBoardResponse,
   type KotQueueQuery,
   type KotQueueResponse,
   type Order,
@@ -73,6 +76,15 @@ export class OrdersService {
     const existing = await this.repository.findById(actor.restaurantId, orderId);
     if (!existing) throw new NotFoundException('Order not found');
     throw new ConflictException('Only an open or submitted order can be completed');
+  }
+
+  async kotBoard(actor: Actor, query: KotBoardQuery): Promise<KotBoardResponse> {
+    const items = await this.repository.findActiveKotBoard(
+      actor.restaurantId,
+      query.destination,
+      ACTIVE_KOT_STATUSES,
+    );
+    return { data: items.map(toKotQueueItem) };
   }
 
   async kotQueue(actor: Actor, query: KotQueueQuery): Promise<KotQueueResponse> {

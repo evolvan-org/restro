@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 import { useKotQueue } from '@/services/api/requests/kots';
 
 import { boardSettings, KOT_LANES, ticketsInLane } from './mapper';
@@ -92,8 +93,8 @@ export default function KotBoard({
             )}
           </div>
           <span className="text-muted-foreground">
-            {activeCount} active {activeCount === 1 ? 'ticket' : 'tickets'} · Refreshes every 10
-            seconds
+            {activeCount} active {activeCount === 1 ? 'ticket' : 'tickets'} · Refreshes every{' '}
+            {BOARD_REFRESH_MS / 1000} seconds
           </span>
         </div>
 

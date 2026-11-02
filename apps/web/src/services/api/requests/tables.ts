@@ -7,6 +7,8 @@ import {
   createTableResponseSchema,
   type RestaurantTable,
   restaurantTableSchema,
+  type TableBoardResponse,
+  tableBoardResponseSchema,
   type TableListQuery,
   type TableListResponse,
   tableListResponseSchema,
@@ -29,6 +31,7 @@ import { useEffect } from 'react';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
+import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 
 import { TableQueryKey } from '../types/TableQueryKey';
 
@@ -101,6 +104,18 @@ export function useAssignableTables(enabled: boolean): UseQueryResult<Restaurant
   }, [query.error, showApiError]);
 
   return query;
+}
+
+export function useTableBoard(enabled: boolean): UseQueryResult<TableBoardResponse> {
+  return useQuery({
+    queryKey: [TableQueryKey.Tables, 'board'],
+    queryFn: async ({ signal }): Promise<TableBoardResponse> => {
+      const response = await api.get('/tables/board', { signal });
+      return tableBoardResponseSchema.parse(response.data);
+    },
+    enabled,
+    refetchInterval: BOARD_REFRESH_MS,
+  });
 }
 
 export function useTableList(

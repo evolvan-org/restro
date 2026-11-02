@@ -3,14 +3,16 @@ import {
   type MarkNotificationsReadResponse,
   type NotificationListQuery,
   type NotificationListResponse,
-  notificationSchema,
   type Reservation,
 } from '@rms/api-contract';
+import { NotificationEntity, NotificationType } from '@rms/db';
 import { isRole, Permission, roleHasPermission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { NotificationPublisher } from './notification-publisher.service';
+import { toNotification } from './notifications.mapper';
 import { type NewNotification, NotificationsRepository } from './notifications.repository';
 
 @Injectable()
@@ -25,13 +27,7 @@ export class NotificationsService {
   async list(actor: Actor, query: NotificationListQuery): Promise<NotificationListResponse> {
     const { data, total, unreadCount } = await this.repository.list(actor, query);
     return {
-      data: data.map((item) =>
-        notificationSchema.parse({
-          ...item,
-          readAt: item.readAt?.toISOString() ?? null,
-          createdAt: item.createdAt.toISOString(),
-        }),
-      ),
+      data: data.map(toNotification),
       meta: buildPageMeta(query.page, query.pageSize, total),
       unreadCount,
     };
@@ -50,17 +46,21 @@ export class NotificationsService {
 
   async ticketSent(restaurantId: string, ticketIds: string[]): Promise<void> {
     await this.bestEffort(async () => {
+      if (ticketIds.length === 0) return;
+      const recipients = await this.recipients(restaurantId, Permission.KOT_UPDATE_STATUS);
+      if (recipients.length === 0) return;
       for (const id of ticketIds) {
         const ticket = await this.repository.findTicket(restaurantId, id);
         if (!ticket) continue;
-        await this.notify(restaurantId, Permission.KOT_UPDATE_STATUS, {
-          type: 'kot.sent',
+        await this.repository.createForUsers(restaurantId, recipients, {
+          type: NotificationType.KOT_SENT,
           title: 'New order',
           body: `${ticket.destination === 'KITCHEN' ? 'Kitchen' : 'Bar'} ticket ${ticket.kotNumber} — Table ${ticket.order.table.tableNumber}`,
-          entity: 'order',
+          entity: NotificationEntity.ORDER,
           entityId: ticket.orderId,
           tableId: ticket.order.tableId,
         });
+        await this.publisher.publish(restaurantId, recipients, { kind: 'created' });
       }
     });
   }
@@ -74,10 +74,10 @@ export class NotificationsService {
         restaurantId,
         Permission.ORDER_READ,
         {
-          type: 'kot.ready',
+          type: NotificationType.KOT_READY,
           title: 'Order ready',
           body: `Ticket ${ticket.kotNumber} — Table ${ticket.order.table.tableNumber} is ready to serve`,
-          entity: 'order',
+          entity: NotificationEntity.ORDER,
           entityId: ticket.orderId,
           tableId: ticket.order.tableId,
         },
@@ -89,10 +89,10 @@ export class NotificationsService {
   async reservationCreated(restaurantId: string, reservation: Reservation): Promise<void> {
     await this.bestEffort(() =>
       this.notify(restaurantId, Permission.RESERVATION_WRITE, {
-        type: 'reservation.created',
+        type: NotificationType.RESERVATION_CREATED,
         title: 'New reservation',
         body: `${reservation.guest.guestName} — party of ${reservation.partySize}, ${reservation.reservationAt}`,
-        entity: 'reservation',
+        entity: NotificationEntity.RESERVATION,
         entityId: reservation.id,
         tableId: reservation.tableId,
       }),
@@ -105,8 +105,19 @@ export class NotificationsService {
     payload: NewNotification,
     recipientId?: string,
   ): Promise<void> {
+    const ids = await this.recipients(restaurantId, permission, recipientId);
+    if (ids.length === 0) return;
+    await this.repository.createForUsers(restaurantId, ids, payload);
+    await this.publisher.publish(restaurantId, ids, { kind: 'created' });
+  }
+
+  private async recipients(
+    restaurantId: string,
+    permission: Permission,
+    recipientId?: string,
+  ): Promise<string[]> {
     const users = await this.repository.findActiveUsers(restaurantId);
-    const ids = users
+    return users
       .filter(
         (user) =>
           (!recipientId || user.id === recipientId) &&
@@ -114,16 +125,16 @@ export class NotificationsService {
           roleHasPermission(user.role.name, permission),
       )
       .map((user) => user.id);
-    if (ids.length === 0) return;
-    await this.repository.createForUsers(restaurantId, ids, payload);
-    await this.publisher.publish(restaurantId, ids, { kind: 'created' });
   }
 
   private async bestEffort(action: () => Promise<void>): Promise<void> {
     try {
       await action();
-    } catch {
-      this.logger.warn('Notification creation failed after a committed operation');
+    } catch (error) {
+      this.logger.warn(
+        'Notification creation failed after a committed operation',
+        errorDiagnostics(error),
+      );
     }
   }
 }

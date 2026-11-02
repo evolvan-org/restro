@@ -3,6 +3,7 @@
 import { cn } from 'cn';
 import { Plus, Search, TriangleAlert } from 'lucide-react';
 import type { ReactElement } from 'react';
+import type { UseFormRegisterReturn } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +11,7 @@ import { Input } from '@/components/ui/input';
 type FloorHeaderProps = {
   updatedLabel: string;
   isReconnecting: boolean;
-  search: string;
-  onSearchChange: (value: string) => void;
+  searchField: UseFormRegisterReturn<'search'>;
   onSeatWalkIn: () => void;
   canReserve: boolean;
   attentionCount: number;
@@ -37,16 +37,14 @@ export default function FloorHeader(props: FloorHeaderProps): ReactElement {
         </p>
       </div>
 
-      {props.attentionCount > 0 && (
-        <Button
-          variant="outline"
-          className="hidden h-11 gap-1.5 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 md:inline-flex lg:hidden dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-          onClick={props.onOpenAttention}
-        >
-          <TriangleAlert className="size-4" aria-hidden />
-          {props.attentionCount} need attention
-        </Button>
-      )}
+      <Button
+        variant="outline"
+        className="h-11 gap-1.5 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 lg:hidden dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        onClick={props.onOpenAttention}
+      >
+        <TriangleAlert className="size-4" aria-hidden />
+        {props.attentionCount > 0 ? `${props.attentionCount} need attention` : 'Floor activity'}
+      </Button>
 
       <div className="relative w-full sm:w-64">
         <Search
@@ -55,8 +53,7 @@ export default function FloorHeader(props: FloorHeaderProps): ReactElement {
         />
         <Input
           type="search"
-          value={props.search}
-          onChange={(event) => props.onSearchChange(event.target.value)}
+          {...props.searchField}
           placeholder="Find table"
           aria-label="Find table"
           className="h-11 pl-9 xl:h-9"

@@ -76,14 +76,16 @@ export default function NotificationBell(): ReactElement {
 
   const handleSelect = async (notification: Notification): Promise<void> => {
     try {
-      if (!notification.readAt) await markRead(notification.id);
       if (notification.entity === 'order' && notification.tableId && can(Permission.ORDER_READ)) {
         await openOrder({ tableId: notification.tableId, orderId: notification.entityId });
       } else if (notification.entity === 'reservation' && can(Permission.RESERVATION_WRITE)) {
         await openReservation(notification.entityId);
+      } else {
+        return;
       }
+      if (!notification.readAt) await markRead(notification.id);
     } catch {
-      // Request hooks own error presentation; leave the panel available for retry.
+      // Request hooks own error presentation; failed target resolution leaves the alert unread.
     }
   };
 

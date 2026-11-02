@@ -26,6 +26,7 @@ type AttentionRailProps = {
   canViewOrder: boolean;
   canTransitionStatus: boolean;
   canEditReservation: boolean;
+  canReadReservations: boolean;
 };
 
 function compactTime(iso: string): string {
@@ -60,11 +61,20 @@ function AttentionCard({
   canViewOrder: boolean;
   canTransitionStatus: boolean;
 }): ReactElement {
-  const transitionStatus = useTransitionTableStatus();
+  const { mutateAsync: transitionTableStatus, isPending: isTransitionPending } =
+    useTransitionTableStatus();
   const { table, level } = entry;
   const reservation = table.activeReservation;
   const style = LEVEL_STYLE[level];
   const Icon = style.icon;
+
+  const markAvailable = async (): Promise<void> => {
+    try {
+      await transitionTableStatus({ id: table.id, input: { statusCode: 'AVAILABLE' } });
+    } catch {
+      // The mutation hook reports the failure and refreshes statuses; keep the card available.
+    }
+  };
 
   let title: string;
   let reason: string;
@@ -78,10 +88,8 @@ function AttentionCard({
         <Button
           variant="outline"
           size="sm"
-          disabled={transitionStatus.isPending}
-          onClick={() =>
-            void transitionStatus.mutateAsync({ id: table.id, input: { statusCode: 'AVAILABLE' } })
-          }
+          disabled={isTransitionPending}
+          onClick={() => void markAvailable()}
         >
           Mark available
         </Button>
@@ -191,24 +199,26 @@ export default function AttentionRail(props: AttentionRailProps): ReactElement {
         )}
       </section>
 
-      <section>
-        <h2 className="mb-2.5 text-sm font-semibold">Up next · 2 hrs</h2>
-        {props.upNext.length === 0 ? (
-          <p className="rounded-[10px] border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-            No reservations in the next 2 hours
-          </p>
-        ) : (
-          <div className="rounded-[10px] border">
-            {props.upNext.map((reservation) => (
-              <UpNextRow
-                key={reservation.id}
-                reservation={reservation}
-                canEditReservation={props.canEditReservation}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {props.canReadReservations && (
+        <section>
+          <h2 className="mb-2.5 text-sm font-semibold">Up next · 2 hrs</h2>
+          {props.upNext.length === 0 ? (
+            <p className="rounded-[10px] border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+              No reservations in the next 2 hours
+            </p>
+          ) : (
+            <div className="rounded-[10px] border">
+              {props.upNext.map((reservation) => (
+                <UpNextRow
+                  key={reservation.id}
+                  reservation={reservation}
+                  canEditReservation={props.canEditReservation}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
