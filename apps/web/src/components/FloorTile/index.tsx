@@ -334,7 +334,9 @@ function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
   async function editReservation(): Promise<void> {
     if (!reservation) return;
     try {
-      showSidePane(SidePaneType.ReservationEdit, { reservation: await getReservation(reservation.id) });
+      showSidePane(SidePaneType.ReservationEdit, {
+        reservation: await getReservation(reservation.id),
+      });
     } catch {
       toast.error('Unable to load the reservation.');
     }
@@ -376,7 +378,11 @@ function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
         Create walk-in
       </Button>
     ) : statusCode === 'NEEDS_CLEANING' && props.canTransitionStatus ? (
-      <Button className="h-11 w-full xl:h-9" disabled={isBusy} onClick={() => changeStatus('AVAILABLE')}>
+      <Button
+        className="h-11 w-full xl:h-9"
+        disabled={isBusy}
+        onClick={() => changeStatus('AVAILABLE')}
+      >
         Mark available
       </Button>
     ) : (
@@ -436,7 +442,10 @@ function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
       {/* Status row */}
       <div className="flex items-center gap-3 py-3">
         <span
-          className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium', colorClasses.pill)}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+            colorClasses.pill,
+          )}
         >
           <span className={cn('size-2 rounded-full', colorClasses.dot)} aria-hidden />
           {table.currentStatus.name}
@@ -579,7 +588,9 @@ function AttentionCallout({
   } else if (attention === 'cleaning-overdue') {
     message = `Cleaning overdue past the 10 min target`;
   } else {
-    const until = reservation ? Math.max(0, Math.round(minutesUntil(reservation.reservationAt, nowMs))) : 0;
+    const until = reservation
+      ? Math.max(0, Math.round(minutesUntil(reservation.reservationAt, nowMs)))
+      : 0;
     message = `Reserved guest arriving in ${until} min`;
   }
 

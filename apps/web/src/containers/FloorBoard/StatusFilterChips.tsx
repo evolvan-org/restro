@@ -48,7 +48,9 @@ function Chip({
       <span
         className={cn(
           'rounded-full px-1.5 text-xs font-semibold tabular-nums',
-          active ? 'bg-neutral-700 text-neutral-50 dark:bg-neutral-300 dark:text-neutral-900' : 'bg-neutral-100 dark:bg-neutral-800',
+          active
+            ? 'bg-neutral-700 text-neutral-50 dark:bg-neutral-300 dark:text-neutral-900'
+            : 'bg-neutral-100 dark:bg-neutral-800',
         )}
       >
         {count}

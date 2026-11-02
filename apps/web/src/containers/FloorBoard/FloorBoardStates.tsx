@@ -27,7 +27,9 @@ function StateShell({
       <div
         className={cn(
           'grid size-12 place-items-center rounded-xl',
-          tone === 'danger' ? 'bg-red-100 text-red-600 dark:bg-red-950/40' : 'bg-muted text-muted-foreground',
+          tone === 'danger'
+            ? 'bg-red-100 text-red-600 dark:bg-red-950/40'
+            : 'bg-muted text-muted-foreground',
         )}
       >
         {icon}
@@ -46,7 +48,10 @@ export function FloorLoading(): ReactElement {
     <div className="space-y-6">
       <div className="flex gap-2">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-9 w-28 animate-pulse rounded-full bg-neutral-100 dark:bg-neutral-800" />
+          <div
+            key={i}
+            className="h-9 w-28 animate-pulse rounded-full bg-neutral-100 dark:bg-neutral-800"
+          />
         ))}
       </div>
       {[0, 1].map((section) => (
@@ -88,7 +93,11 @@ export function FloorNoMatch({
   onClear: () => void;
 }): ReactElement {
   return (
-    <StateShell icon={<Search className="size-6" aria-hidden />} title="No tables match" description={message}>
+    <StateShell
+      icon={<Search className="size-6" aria-hidden />}
+      title="No tables match"
+      description={message}
+    >
       <Button variant="outline" onClick={onClear}>
         Clear filters
       </Button>

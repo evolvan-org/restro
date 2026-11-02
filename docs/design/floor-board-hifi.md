@@ -77,13 +77,13 @@ Popover content, top to bottom (sections divided by `border-b border-neutral-100
 
 ### 1.4 Popover per state
 
-| State | Status row | Callout | Details rows | Primary | Secondary |
-| --- | --- | --- | --- | --- | --- |
-| Available | pill only + "Free for 25 min" | — | Guest: "No one seated" (muted) | **Create walk-in** | — |
-| Reserved | pill + `7:30 PM` + "in 12 min" | blue, if ≤15 min away | Guest, Booked for | **Start order** / **View order** | Edit reservation |
-| Occupied, no order | pill + timer + "since 7:06 PM" | amber, if over turn target | Guest, Order: "Not started" | **Start order** | Edit reservation |
-| Occupied, order open | pill + timer + since | amber, if over turn target | Guest, Booking, Order: "● Open" | **View order** | Complete order, Edit reservation |
-| Needs cleaning | pill + timer + since | amber, if over cleaning target | "Last guest · Left 7:00 PM" | **Mark available** | — |
+| State                | Status row                     | Callout                        | Details rows                    | Primary                          | Secondary                        |
+| -------------------- | ------------------------------ | ------------------------------ | ------------------------------- | -------------------------------- | -------------------------------- |
+| Available            | pill only + "Free for 25 min"  | —                              | Guest: "No one seated" (muted)  | **Create walk-in**               | —                                |
+| Reserved             | pill + `7:30 PM` + "in 12 min" | blue, if ≤15 min away          | Guest, Booked for               | **Start order** / **View order** | Edit reservation                 |
+| Occupied, no order   | pill + timer + "since 7:06 PM" | amber, if over turn target     | Guest, Order: "Not started"     | **Start order**                  | Edit reservation                 |
+| Occupied, order open | pill + timer + since           | amber, if over turn target     | Guest, Booking, Order: "● Open" | **View order**                   | Complete order, Edit reservation |
+| Needs cleaning       | pill + timer + since           | amber, if over cleaning target | "Last guest · Left 7:00 PM"     | **Mark available**               | —                                |
 
 Permissions stay as in the current `FloorTile`: **hide** (don't disable) anything the role can't do.
 
@@ -110,13 +110,13 @@ Permissions stay as in the current `FloorTile`: **hide** (don't disable) anythin
 
 Add keys `border`, `label`, `pill` alongside the existing `ring/bg/dot/badge/strip`, and keep the `dark:` variants.
 
-| Code | Tile bg / border | Label text | Strip + dot | Popover pill |
-| --- | --- | --- | --- | --- |
-| `AVAILABLE` | `bg-green-50 border-green-200` | `text-green-700` | `bg-green-500` | `bg-green-100 text-green-700` |
-| `OCCUPIED` | `bg-slate-100 border-slate-300` | `text-slate-700` | `bg-slate-500` | `bg-slate-200 text-slate-700` |
-| `RESERVED` | `bg-blue-50 border-blue-200` | `text-blue-700` | `bg-blue-500` | `bg-blue-100 text-blue-700` |
-| `NEEDS_CLEANING` | `bg-red-50 border-red-200` | `text-red-700` | `bg-red-500` | `bg-red-100 text-red-700` |
-| custom status | `DEFAULT_STATUS_COLOR` | `text-muted-foreground` | `bg-muted-foreground/40` | `bg-muted` |
+| Code             | Tile bg / border                | Label text              | Strip + dot              | Popover pill                  |
+| ---------------- | ------------------------------- | ----------------------- | ------------------------ | ----------------------------- |
+| `AVAILABLE`      | `bg-green-50 border-green-200`  | `text-green-700`        | `bg-green-500`           | `bg-green-100 text-green-700` |
+| `OCCUPIED`       | `bg-slate-100 border-slate-300` | `text-slate-700`        | `bg-slate-500`           | `bg-slate-200 text-slate-700` |
+| `RESERVED`       | `bg-blue-50 border-blue-200`    | `text-blue-700`         | `bg-blue-500`            | `bg-blue-100 text-blue-700`   |
+| `NEEDS_CLEANING` | `bg-red-50 border-red-200`      | `text-red-700`          | `bg-red-500`             | `bg-red-100 text-red-700`     |
+| custom status    | `DEFAULT_STATUS_COLOR`          | `text-muted-foreground` | `bg-muted-foreground/40` | `bg-muted`                    |
 
 **Needs attention (NEW)**, overlaid on any status:
 
@@ -128,23 +128,23 @@ Status is never colour-only: every tile prints its status label.
 
 ### 2.2 Type, size and spacing
 
-| Element | Tablet (<1280) | Desktop (≥1280) |
-| --- | --- | --- |
-| Page title | `text-xl font-semibold tracking-tight` | same |
-| Live line | `text-xs text-muted-foreground` + 8px `bg-green-500` dot with `ring-[3px] ring-green-100` | same |
-| Tile | 88×100, `rounded-[10px] border px-[9px] py-2`, gap 10 | 112×120, `rounded-xl px-[11px] py-2.5`, gap 12 |
-| Tile number | `text-base font-bold` | `text-lg font-bold` |
-| Tile seats | `Users` 12px + `text-xs text-neutral-600`, top-right | same |
-| Tile status label | `text-[10px] font-semibold uppercase tracking-wide` + status label colour | `text-[11px]` |
-| Tile timer/time | `text-[13px] font-semibold tabular-nums` (bottom) | `text-[15px]` |
-| Tile sub line | `text-[11px] text-neutral-600 truncate` (captain first name / guest × party / "Free") | `text-xs` |
-| Tile strip | `h-[3px] rounded-full mt-1` + strip colour | `mt-[5px]` |
-| Chips | `h-11 rounded-full border px-3.5 text-sm font-medium`, dot + label + count pill (`bg-neutral-100 text-xs font-semibold`) | `h-9 px-3 text-[13px]` |
-| Active chip | `bg-neutral-900 text-neutral-50 border-neutral-900`, count `bg-neutral-700` | same |
-| Section tabs | `h-11 border-b-2`, active `border-neutral-900 font-semibold text-foreground`, inactive `text-muted-foreground`, count `text-xs text-neutral-400` | same |
-| Buttons | `h-11` (44px touch) | `h-9` |
-| Page padding | `px-6` | `px-8` |
-| Rail | 300px, `bg-neutral-50 border-l p-4` | 320px, `p-5` |
+| Element           | Tablet (<1280)                                                                                                                                   | Desktop (≥1280)                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| Page title        | `text-xl font-semibold tracking-tight`                                                                                                           | same                                           |
+| Live line         | `text-xs text-muted-foreground` + 8px `bg-green-500` dot with `ring-[3px] ring-green-100`                                                        | same                                           |
+| Tile              | 88×100, `rounded-[10px] border px-[9px] py-2`, gap 10                                                                                            | 112×120, `rounded-xl px-[11px] py-2.5`, gap 12 |
+| Tile number       | `text-base font-bold`                                                                                                                            | `text-lg font-bold`                            |
+| Tile seats        | `Users` 12px + `text-xs text-neutral-600`, top-right                                                                                             | same                                           |
+| Tile status label | `text-[10px] font-semibold uppercase tracking-wide` + status label colour                                                                        | `text-[11px]`                                  |
+| Tile timer/time   | `text-[13px] font-semibold tabular-nums` (bottom)                                                                                                | `text-[15px]`                                  |
+| Tile sub line     | `text-[11px] text-neutral-600 truncate` (captain first name / guest × party / "Free")                                                            | `text-xs`                                      |
+| Tile strip        | `h-[3px] rounded-full mt-1` + strip colour                                                                                                       | `mt-[5px]`                                     |
+| Chips             | `h-11 rounded-full border px-3.5 text-sm font-medium`, dot + label + count pill (`bg-neutral-100 text-xs font-semibold`)                         | `h-9 px-3 text-[13px]`                         |
+| Active chip       | `bg-neutral-900 text-neutral-50 border-neutral-900`, count `bg-neutral-700`                                                                      | same                                           |
+| Section tabs      | `h-11 border-b-2`, active `border-neutral-900 font-semibold text-foreground`, inactive `text-muted-foreground`, count `text-xs text-neutral-400` | same                                           |
+| Buttons           | `h-11` (44px touch)                                                                                                                              | `h-9`                                          |
+| Page padding      | `px-6`                                                                                                                                           | `px-8`                                         |
+| Rail              | 300px, `bg-neutral-50 border-l p-4`                                                                                                              | 320px, `p-5`                                   |
 
 Tile hover/press: `hover:-translate-y-0.5 hover:shadow-md`, `focus-visible:ring-4 ring-offset-2` (keep the existing behaviour).
 
@@ -182,21 +182,21 @@ Up next row: `h-11 px-3 border-b`, time `font-semibold tabular-nums w-10` · gue
 
 ## 5. Data — what exists vs what's new
 
-| UI | Source | Work needed |
-| --- | --- | --- |
-| Number, seats, section | `tableNumber`, `capacity`, `section` | none |
-| Status label + colour | `currentStatus.code / name` | none |
-| Timer | `statusChangedAt` (60s tick exists) | format `H:MM`; also "Free for N min" for AVAILABLE in the popover |
-| Guest / party / time | `activeReservation.guest.guestName`, `partySize`, `reservationAt` | none |
-| Captain | `captain.name / role` | none (tile shows first name) |
-| Order open | `openOrderId` | none |
-| Search | `tableListQuerySchema.search` exists | filter client-side on `tableNumber` for instant results |
-| **NEW** Covers `23 / 70` | Σ `activeReservation.partySize` of OCCUPIED tables / Σ `capacity` of active tables | client only |
-| **NEW** Needs attention | OCCUPIED longer than turn target; NEEDS_CLEANING longer than cleaning target; RESERVED with `reservationAt` ≤ 15 min away | start with constants `TURN_TARGET_MIN = 90`, `CLEANING_TARGET_MIN = 10`, `ARRIVING_SOON_MIN = 15`; later move to restaurant settings |
-| **NEW** Up next | reservations with `reservationAt` in [now, now + 2h], including ones with no table | reservations list query with a time window (add `from`/`to` params to the contract if missing) |
-| **NEW** Seat walk-in (header) | `useShowWalkInFormSidePane` | allow opening with no table; suggest the smallest AVAILABLE table with `capacity ≥ partySize` |
-| **NEW** Live / reconnecting | TanStack `dataUpdatedAt`, `isError` (12s refetch exists) | amber state as in §1.5 |
-| Nav item | `AppSidebar/navigation.ts` | add `{ label: 'Floor board', icon: LayoutGrid, href: '/floor', permission: Permission.RESTAURANT_READ }` after Dashboard |
+| UI                            | Source                                                                                                                    | Work needed                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Number, seats, section        | `tableNumber`, `capacity`, `section`                                                                                      | none                                                                                                                                 |
+| Status label + colour         | `currentStatus.code / name`                                                                                               | none                                                                                                                                 |
+| Timer                         | `statusChangedAt` (60s tick exists)                                                                                       | format `H:MM`; also "Free for N min" for AVAILABLE in the popover                                                                    |
+| Guest / party / time          | `activeReservation.guest.guestName`, `partySize`, `reservationAt`                                                         | none                                                                                                                                 |
+| Captain                       | `captain.name / role`                                                                                                     | none (tile shows first name)                                                                                                         |
+| Order open                    | `openOrderId`                                                                                                             | none                                                                                                                                 |
+| Search                        | `tableListQuerySchema.search` exists                                                                                      | filter client-side on `tableNumber` for instant results                                                                              |
+| **NEW** Covers `23 / 70`      | Σ `activeReservation.partySize` of OCCUPIED tables / Σ `capacity` of active tables                                        | client only                                                                                                                          |
+| **NEW** Needs attention       | OCCUPIED longer than turn target; NEEDS_CLEANING longer than cleaning target; RESERVED with `reservationAt` ≤ 15 min away | start with constants `TURN_TARGET_MIN = 90`, `CLEANING_TARGET_MIN = 10`, `ARRIVING_SOON_MIN = 15`; later move to restaurant settings |
+| **NEW** Up next               | reservations with `reservationAt` in [now, now + 2h], including ones with no table                                        | reservations list query with a time window (add `from`/`to` params to the contract if missing)                                       |
+| **NEW** Seat walk-in (header) | `useShowWalkInFormSidePane`                                                                                               | allow opening with no table; suggest the smallest AVAILABLE table with `capacity ≥ partySize`                                        |
+| **NEW** Live / reconnecting   | TanStack `dataUpdatedAt`, `isError` (12s refetch exists)                                                                  | amber state as in §1.5                                                                                                               |
+| Nav item                      | `AppSidebar/navigation.ts`                                                                                                | add `{ label: 'Floor board', icon: LayoutGrid, href: '/floor', permission: Permission.RESTAURANT_READ }` after Dashboard             |
 
 Note: the status filter should move client-side, because the chip counts need the full list. The section tab can stay a server param (`sectionId`), or also go client-side. Either is fine, since the list already loads `MAX_PAGE_SIZE`.
 

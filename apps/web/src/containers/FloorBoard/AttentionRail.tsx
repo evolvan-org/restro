@@ -7,7 +7,11 @@ import Link from 'next/link';
 import type { ReactElement } from 'react';
 
 import { formatElapsed } from '@/components/FloorTile';
-import { type AttentionLevel, elapsedMinutes, minutesUntil } from '@/components/FloorTile/attention';
+import {
+  type AttentionLevel,
+  elapsedMinutes,
+  minutesUntil,
+} from '@/components/FloorTile/attention';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useTransitionTableStatus } from '@/services/api/requests/tables';
 import { useShowSidePane } from '@/store/hooks/sidepane';
@@ -31,9 +35,18 @@ function compactTime(iso: string): string {
 }
 
 const LEVEL_STYLE: Record<AttentionLevel, { icon: typeof Clock; tile: string }> = {
-  'long-seated': { icon: Clock, tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
-  'cleaning-overdue': { icon: Sparkles, tile: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300' },
-  'arriving-soon': { icon: Calendar, tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' },
+  'long-seated': {
+    icon: Clock,
+    tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+  },
+  'cleaning-overdue': {
+    icon: Sparkles,
+    tile: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300',
+  },
+  'arriving-soon': {
+    icon: Calendar,
+    tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+  },
 };
 
 function AttentionCard({

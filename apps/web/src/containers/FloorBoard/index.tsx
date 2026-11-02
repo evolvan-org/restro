@@ -80,10 +80,19 @@ export default function FloorBoard(): ReactElement | null {
   const minuteBucket = Math.floor(nowMs / 60_000);
   const upNextWindow = useMemo(() => {
     const from = new Date(minuteBucket * 60_000);
-    return { from: from.toISOString(), to: new Date(from.getTime() + UP_NEXT_WINDOW_MS).toISOString() };
+    return {
+      from: from.toISOString(),
+      to: new Date(from.getTime() + UP_NEXT_WINDOW_MS).toISOString(),
+    };
   }, [minuteBucket]);
   const upcoming = useReservations(
-    { page: 1, pageSize: MAX_PAGE_SIZE, status: 'BOOKED', from: upNextWindow.from, to: upNextWindow.to },
+    {
+      page: 1,
+      pageSize: MAX_PAGE_SIZE,
+      status: 'BOOKED',
+      from: upNextWindow.from,
+      to: upNextWindow.to,
+    },
     canRead,
   );
 
@@ -108,7 +117,11 @@ export default function FloorBoard(): ReactElement | null {
   const totalCapacity = rows.reduce((sum, t) => sum + t.capacity, 0);
 
   const sectionsWithCounts = sections
-    .map((s) => ({ id: s.id, name: s.name, count: rows.filter((t) => t.section.id === s.id).length }))
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      count: rows.filter((t) => t.section.id === s.id).length,
+    }))
     .filter((s) => s.count > 0);
 
   const matchesSearch = (table: RestaurantTable): boolean =>
@@ -206,7 +219,11 @@ export default function FloorBoard(): ReactElement | null {
               statuses={statuses}
               permissions={permissions}
               onWalkInClick={(table) =>
-                showWalkInForm({ id: table.id, tableNumber: table.tableNumber, capacity: table.capacity })
+                showWalkInForm({
+                  id: table.id,
+                  tableNumber: table.tableNumber,
+                  capacity: table.capacity,
+                })
               }
             />
           ))}
