@@ -36,6 +36,8 @@ export type ReservationRecord = Prisma.ReservationGetPayload<{ select: typeof re
 export type ReservationPageFilters = {
   tableId?: string;
   status?: ReservationStatus;
+  from?: Date;
+  to?: Date;
   skip: number;
   take: number;
 };
@@ -244,6 +246,12 @@ export class ReservationsRepository {
       restaurantId,
       ...(filters.status && { status: filters.status }),
       ...(filters.tableId && { tableId: filters.tableId }),
+      ...((filters.from || filters.to) && {
+        reservationAt: {
+          ...(filters.from && { gte: filters.from }),
+          ...(filters.to && { lte: filters.to }),
+        },
+      }),
     };
 
     const [items, total] = await this.prisma.$transaction([

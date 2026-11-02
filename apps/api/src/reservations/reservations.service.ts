@@ -169,10 +169,12 @@ export class ReservationsService {
   }
 
   async list(actor: Actor, query: ReservationListQuery): Promise<ReservationListResponse> {
-    const { page, pageSize, status, tableId } = query;
+    const { page, pageSize, status, tableId, from, to } = query;
     const { items, total } = await this.repository.findPage(actor.restaurantId, {
       status,
       tableId,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });

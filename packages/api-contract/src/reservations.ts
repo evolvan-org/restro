@@ -97,6 +97,10 @@ export const reservationSchema = z
 export const reservationListQuerySchema = paginationQuerySchema.extend({
   tableId: z.string().uuid().optional(),
   status: reservationStatusSchema.optional(),
+  // Inclusive reservationAt window (ISO-8601). Used by the floor board "Up next" list.
+  // An inverted window (from > to) is valid input and simply matches no reservations.
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
 });
 
 export const reservationListResponseSchema = paginatedResponseSchema(reservationSchema);

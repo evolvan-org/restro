@@ -4,6 +4,7 @@ import {
   ChefHat,
   ClipboardList,
   LayoutDashboard,
+  LayoutGrid,
   type LucideIcon,
   Receipt,
   Rows3,
@@ -36,6 +37,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: LayoutDashboard,
     href: '/dashboard',
     permission: Permission.DASHBOARD_READ,
+  },
+  {
+    label: 'Floor board',
+    icon: LayoutGrid,
+    href: '/floor',
+    permission: Permission.RESTAURANT_READ,
   },
   { label: 'Staff', icon: Users, href: '/staff', permission: Permission.USER_READ },
   {
