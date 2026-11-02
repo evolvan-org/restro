@@ -79,6 +79,10 @@ jobs:
     env:
       # Boot-only throwaway; env validation requires it but it grants nothing.
       JWT_SECRET: ci-smoke-test-secret-not-used-for-anything
+      PUSHER_APP_ID: ci-placeholder
+      PUSHER_KEY: ci-placeholder
+      PUSHER_SECRET: ci-placeholder
+      PUSHER_CLUSTER: ap2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

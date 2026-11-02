@@ -45,6 +45,7 @@ export const Permission = {
   // Kitchen order tickets
   KOT_READ: 'kot:read',
   KOT_WRITE: 'kot:write',
+  KOT_UPDATE_STATUS: 'kot:update-status',
 
   // Billing
   BILL_READ: 'bill:read',

@@ -168,6 +168,9 @@ export const assignTableCaptainResponseSchema = restaurantTableSchema;
 export const captainOptionsResponseSchema = z.array(tableCaptainSchema);
 
 export const tableListResponseSchema = paginatedResponseSchema(restaurantTableSchema);
+/** The floor board needs every active table for local filters and complete counts. */
+export const tableBoardQuerySchema = z.object({}).strict();
+export const tableBoardResponseSchema = z.object({ data: z.array(restaurantTableSchema) }).strict();
 export const tableOptionsResponseSchema = z
   .object({
     sections: z.array(tableSectionSchema),
@@ -196,6 +199,8 @@ export type TransitionTableStatusResponse = z.infer<typeof transitionTableStatus
 export type RestaurantTable = z.infer<typeof restaurantTableSchema>;
 export type TableListQuery = z.infer<typeof tableListQuerySchema>;
 export type TableListResponse = z.infer<typeof tableListResponseSchema>;
+export type TableBoardQuery = z.infer<typeof tableBoardQuerySchema>;
+export type TableBoardResponse = z.infer<typeof tableBoardResponseSchema>;
 export type TableOptionsResponse = z.infer<typeof tableOptionsResponseSchema>;
 export type CreateTableRequest = z.infer<typeof createTableRequestSchema>;
 export type CreateTableResponse = z.infer<typeof createTableResponseSchema>;

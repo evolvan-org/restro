@@ -27,6 +27,7 @@ import {
 } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { NotificationsService } from '../notifications/notifications.service';
 import { toReservation } from './reservations.mapper';
 import { ReservationsRepository, type ReservationTableContext } from './reservations.repository';
 
@@ -39,7 +40,10 @@ type TableAllocation = {
 
 @Injectable()
 export class ReservationsService {
-  constructor(private readonly repository: ReservationsRepository) {}
+  constructor(
+    private readonly repository: ReservationsRepository,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async assignTable(
     actor: Actor,
@@ -165,10 +169,12 @@ export class ReservationsService {
   }
 
   async list(actor: Actor, query: ReservationListQuery): Promise<ReservationListResponse> {
-    const { page, pageSize, status, tableId } = query;
+    const { page, pageSize, status, tableId, from, to } = query;
     const { items, total } = await this.repository.findPage(actor.restaurantId, {
       status,
       tableId,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
@@ -212,7 +218,9 @@ export class ReservationsService {
       },
     );
 
-    return toReservation(reservation);
+    const result = toReservation(reservation);
+    await this.notifications.reservationCreated(actor.restaurantId, result);
+    return result;
   }
 
   private async assertTableAvailable(

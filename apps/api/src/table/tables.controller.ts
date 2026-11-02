@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -35,6 +36,10 @@ import {
   createTableResponseSchema,
   type RestaurantTable,
   restaurantTableSchema,
+  type TableBoardQuery,
+  tableBoardQuerySchema,
+  type TableBoardResponse,
+  tableBoardResponseSchema,
   type TableLifecycleStatusListResponse,
   tableLifecycleStatusListResponseSchema,
   type TableListQuery,
@@ -75,6 +80,20 @@ import { TablesService } from './tables.service';
 @Controller()
 export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
+
+  @Get('tables/board')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.RESTAURANT_READ)
+  @ApiOperation({ summary: "Get every active table on the caller's floor board" })
+  @ApiZodQuery(tableBoardQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(tableBoardResponseSchema) })
+  @ApiBadRequestResponse(apiError('The board does not accept filters or pagination'))
+  board(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(tableBoardQuerySchema)) _query: TableBoardQuery,
+  ): Promise<TableBoardResponse> {
+    return this.tablesService.board(actor);
+  }
 
   @Get('tables')
   @RequirePermissions(Permission.RESTAURANT_READ)

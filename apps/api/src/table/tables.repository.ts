@@ -132,6 +132,14 @@ export class TablesRepository {
     }
   }
 
+  findActiveBoard(restaurantId: string): Promise<TableRecord[]> {
+    return this.prisma.restaurantTable.findMany({
+      where: { restaurantId, isActive: true },
+      select: restaurantTableSelect,
+      orderBy: [{ tableNumber: 'asc' }, { id: 'asc' }],
+    });
+  }
+
   async findPage(
     restaurantId: string,
     filters: TablePageFilters,

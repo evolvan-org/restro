@@ -2141,6 +2141,7 @@ __metadata:
     jest: "npm:^30.5.2"
     jsonwebtoken: "npm:^9.0.3"
     nestjs-zod: "npm:^5.5.0"
+    pusher: "npm:^5.3.4"
     reflect-metadata: "npm:^0.2.2"
     rxjs: "npm:^7.8.1"
     ts-jest: "npm:^29.4.12"
@@ -2206,6 +2207,7 @@ __metadata:
     lucide-react: "npm:^1.47.0"
     next: "npm:^15.1.0"
     postcss: "npm:^8.4.47"
+    pusher-js: "npm:^8.6.0"
     react: "npm:^19.0.0"
     react-dom: "npm:^19.0.0"
     react-hook-form: "npm:^7.88.0"
@@ -2784,6 +2786,16 @@ __metadata:
   version: 2.1.0
   resolution: "@types/ms@npm:2.1.0"
   checksum: 10c0/5ce692ffe1549e1b827d99ef8ff71187457e0eb44adbae38fdf7b9a74bae8d20642ee963c14516db1d35fa2652e65f47680fdf679dcbde52bbfadd021f497225
+  languageName: node
+  linkType: hard
+
+"@types/node-fetch@npm:^2.5.7":
+  version: 2.6.13
+  resolution: "@types/node-fetch@npm:2.6.13"
+  dependencies:
+    "@types/node": "npm:*"
+    form-data: "npm:^4.0.4"
+  checksum: 10c0/6313c89f62c50bd0513a6839cdff0a06727ac5495ccbb2eeda51bb2bbbc4f3c0a76c0393a491b7610af703d3d2deb6cf60e37e59c81ceeca803ffde745dbf309
   languageName: node
   linkType: hard
 
@@ -3373,6 +3385,15 @@ __metadata:
   version: 5.0.0
   resolution: "abbrev@npm:5.0.0"
   checksum: 10c0/8e88f5c798ea4562d28c5a3e9ad69e3879890bc5d695d8f2dffb8609be4c890aacc8f80ef4553fdd2c6a62d70c2ce8bc57b38074e383beb7487bdafa9ed42ea5
+  languageName: node
+  linkType: hard
+
+"abort-controller@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "abort-controller@npm:3.0.0"
+  dependencies:
+    event-target-shim: "npm:^5.0.0"
+  checksum: 10c0/90ccc50f010250152509a344eb2e71977fbf8db0ab8f1061197e3275ddf6c61a41a6edfd7b9409c664513131dd96e962065415325ef23efa5db931b382d24ca5
   languageName: node
   linkType: hard
 
@@ -5582,6 +5603,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"event-target-shim@npm:^5.0.0":
+  version: 5.0.1
+  resolution: "event-target-shim@npm:5.0.1"
+  checksum: 10c0/0255d9f936215fd206156fd4caa9e8d35e62075d720dc7d847e89b417e5e62cf1ce6c9b4e0a1633a9256de0efefaf9f8d26924b1f3c8620cffb9db78e7d3076b
+  languageName: node
+  linkType: hard
+
 "events@npm:^3.2.0":
   version: 3.3.0
   resolution: "events@npm:3.3.0"
@@ -6042,7 +6070,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"form-data@npm:^4.0.6":
+"form-data@npm:^4.0.4, form-data@npm:^4.0.6":
   version: 4.0.6
   resolution: "form-data@npm:4.0.6"
   dependencies:
@@ -6734,6 +6762,16 @@ __metadata:
     has-tostringtag: "npm:^1.0.2"
     safe-regex-test: "npm:^1.1.0"
   checksum: 10c0/d70c236a5e82de6fc4d44368ffd0c2fee2b088b893511ce21e679da275a5ecc6015ff59a7d7e1bdd7ca39f71a8dbdd253cf8cce5c6b3c91cdd5b42b5ce677298
+  languageName: node
+  linkType: hard
+
+"is-base64@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "is-base64@npm:1.1.0"
+  bin:
+    is-base64: bin/is-base64
+    is_base64: bin/is-base64
+  checksum: 10c0/d9f73739a7d0af48403b0f9091822a2596665e5c9e1e428ba2cef00133c1bccf97cf6fcc07e0b39950e47c3a434fb19c42d2f39578d34f5eb9e66e074bc8449f
   languageName: node
   linkType: hard
 
@@ -8698,7 +8736,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-fetch@npm:^2.6.1":
+"node-fetch@npm:^2.6.1, node-fetch@npm:^2.7.0":
   version: 2.7.0
   resolution: "node-fetch@npm:2.7.0"
   dependencies:
@@ -9430,6 +9468,29 @@ __metadata:
   version: 7.0.1
   resolution: "pure-rand@npm:7.0.1"
   checksum: 10c0/9cade41030f5ec95f5d55a11a71404cd6f46b69becaad892097cd7f58e2c6248cd0a933349ca7d21336ab629f1da42ffe899699b671bc4651600eaf6e57f837e
+  languageName: node
+  linkType: hard
+
+"pusher-js@npm:^8.6.0":
+  version: 8.6.0
+  resolution: "pusher-js@npm:8.6.0"
+  dependencies:
+    tweetnacl: "npm:^1.0.3"
+  checksum: 10c0/93ed5ecc9eb30c2b3d8bd17eeb3b18a7a2e54480129eebb848c1837e9f7ea19d2cda124c833a6a6a460eb33b70b97976a7355f6f83193f43f7838f8511d34982
+  languageName: node
+  linkType: hard
+
+"pusher@npm:^5.3.4":
+  version: 5.3.4
+  resolution: "pusher@npm:5.3.4"
+  dependencies:
+    "@types/node-fetch": "npm:^2.5.7"
+    abort-controller: "npm:^3.0.0"
+    is-base64: "npm:^1.1.0"
+    node-fetch: "npm:^2.7.0"
+    tweetnacl: "npm:^1.0.0"
+    tweetnacl-util: "npm:^0.15.0"
+  checksum: 10c0/ab9fe5b54e459af4817e319631b3a249b3f0cb483867b99f1a363595c0e0e7206e14ff87a5894a8315ad98abd87efc890389758b2c3aa89778943d0e808572f1
   languageName: node
   linkType: hard
 
@@ -11026,6 +11087,20 @@ __metadata:
   version: 1.4.0
   resolution: "tw-animate-css@npm:1.4.0"
   checksum: 10c0/6cfbc19ccc73883ec80ef1f9147f43e736cb01ee99c8172968b37eb81b720523d30e38b1a96aef92db3c586d864204db5510b51744ddacbbf0ad8e3c7fb56ec7
+  languageName: node
+  linkType: hard
+
+"tweetnacl-util@npm:^0.15.0":
+  version: 0.15.1
+  resolution: "tweetnacl-util@npm:0.15.1"
+  checksum: 10c0/796fad76238e40e853dff79516406a27b41549bfd6fabf4ba89d87ca31acf232122f825daf955db8c8573cc98190d7a6d39ece9ed8ae0163370878c310650a80
+  languageName: node
+  linkType: hard
+
+"tweetnacl@npm:^1.0.0, tweetnacl@npm:^1.0.3":
+  version: 1.0.3
+  resolution: "tweetnacl@npm:1.0.3"
+  checksum: 10c0/069d9df51e8ad4a89fbe6f9806c68e06c65be3c7d42f0701cc43dba5f0d6064686b238bbff206c5addef8854e3ce00c643bff59432ea2f2c639feab0ee1a93f9
   languageName: node
   linkType: hard
 

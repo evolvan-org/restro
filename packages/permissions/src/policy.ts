@@ -39,6 +39,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ORDER_READ,
     Permission.KOT_READ,
     Permission.KOT_WRITE,
+    Permission.KOT_UPDATE_STATUS,
   ],
   [Role.BAR_STAFF]: [
     Permission.DASHBOARD_READ,
@@ -46,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.ORDER_READ,
     Permission.KOT_READ,
     Permission.KOT_WRITE,
+    Permission.KOT_UPDATE_STATUS,
   ],
   [Role.CASHIER]: [
     Permission.DASHBOARD_READ,

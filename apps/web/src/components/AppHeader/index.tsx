@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ReactElement } from 'react';
 
+import NotificationBell from '@/components/NotificationBell';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useLogout } from '@/store/hooks/auth';
 
@@ -38,6 +39,7 @@ export default function AppHeader({ onMenuClick }: { onMenuClick: () => void }):
       <div className="flex-1" />
 
       <nav aria-label="Account" className="flex items-center gap-1">
+        <NotificationBell />
         <Link href="/profile" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
           <User aria-hidden />
           <span className="hidden sm:inline">Profile</span>
