@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { AuthModule } from './auth/auth.module';
+import { BillsModule } from './bills/bills.module';
 import { validateEnv } from './config/env.validation';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     MenuModule,
     NotificationsModule,
     OrdersModule,
+    BillsModule,
     StockModule,
     ReservationsModule,
   ],

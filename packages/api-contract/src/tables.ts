@@ -104,6 +104,11 @@ export const restaurantTableSchema = z
     statusChangedAt: z.string().datetime(),
     activeReservation: tableActiveReservationSchema.nullable(),
     openOrderId: z.string().uuid().nullable(),
+    readyKotCount: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe('READY tickets across current active orders'),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })

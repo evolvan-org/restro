@@ -76,7 +76,8 @@ const MODULES: readonly Module[] = [
   },
   {
     title: 'Billing',
-    description: 'Generate bills and record payments.',
+    description: 'Generate, manage and print bills.',
+    href: '/billing',
     icon: Receipt,
     permission: Permission.BILL_READ,
   },

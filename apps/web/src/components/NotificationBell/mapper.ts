@@ -1,5 +1,43 @@
 import type { Notification } from '@rms/api-contract';
 
+export function notificationView(
+  notification: Notification,
+  permissions: { canReadOrders: boolean; canWriteReservations: boolean },
+): { category: string; tone: string; action: string | null } {
+  const category = {
+    'kot.sent': 'New KOT',
+    'kot.ready': 'Ready to serve',
+    'reservation.created': 'Reservation',
+  }[notification.type];
+  const action =
+    notification.entity === 'order' && notification.tableId && permissions.canReadOrders
+      ? 'View order'
+      : notification.entity === 'reservation' && permissions.canWriteReservations
+        ? 'View reservation'
+        : null;
+  return {
+    category,
+    tone:
+      notification.type === 'kot.ready'
+        ? 'ready'
+        : notification.entity === 'reservation'
+          ? 'reservation'
+          : 'ticket',
+    action,
+  };
+}
+
+export function notificationPanelDescription(permissions: {
+  canManageRestaurant: boolean;
+  canManageReservations: boolean;
+  canUpdateKots: boolean;
+}): string {
+  if (permissions.canManageRestaurant) return 'Restaurant and service updates';
+  if (permissions.canManageReservations) return 'Guest bookings and service updates';
+  if (permissions.canUpdateKots) return 'Kitchen and bar ticket updates';
+  return 'Your recent updates';
+}
+
 export function notificationBody(notification: Notification): string {
   if (notification.type !== 'reservation.created') return notification.body;
   const boundary = notification.body.lastIndexOf(', ');

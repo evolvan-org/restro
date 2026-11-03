@@ -20,6 +20,7 @@ import { useShowSidePane } from '@/store/hooks/sidepane';
 import { SidePaneType } from '@/store/types/sidepane';
 
 import { elapsedMinutes, getTableAttention, minutesUntil } from './attention';
+import styles from './ready.module.css';
 
 export type StatusColorClasses = {
   /** Tile background + border. */
@@ -126,6 +127,7 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
   const statusCode = table.currentStatus.code;
   const reservation = table.activeReservation;
   const attention = getTableAttention(table, nowMs);
+  const hasReadyTickets = table.readyKotCount > 0;
   const elapsed = elapsedMinutes(table.statusChangedAt, nowMs);
 
   const showsTimer = statusCode === 'OCCUPIED' || statusCode === 'NEEDS_CLEANING';
@@ -134,8 +136,9 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     : statusCode === 'RESERVED' && reservation
       ? formatClockTime(reservation.reservationAt)
       : null;
-  const subLine =
-    statusCode === 'AVAILABLE'
+  const subLine = hasReadyTickets
+    ? `${table.readyKotCount} ready to serve`
+    : statusCode === 'AVAILABLE'
       ? 'Free'
       : table.captain
         ? firstName(table.captain.name)
@@ -145,16 +148,16 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
 
   const ariaLabel = `Table ${table.tableNumber}, ${table.capacity} seats, ${table.currentStatus.name}${
     attention ? ', needs attention' : ''
-  }. Open actions`;
+  }${hasReadyTickets ? `, ${table.readyKotCount} tickets ready to serve` : ''}. Open actions`;
 
   const tileInner = (
     <>
-      {attention && (
+      {(hasReadyTickets || Boolean(attention)) && (
         <span
           aria-hidden
           className="absolute -right-[7px] -top-[7px] grid size-5 place-items-center rounded-full border-2 border-white bg-amber-500 text-[11px] font-bold leading-none text-stone-900"
         >
-          !
+          {hasReadyTickets ? '✓' : '!'}
         </span>
       )}
       <div className="flex w-full items-start justify-between">
@@ -198,7 +201,8 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     'xl:h-[120px] xl:w-[112px] xl:rounded-xl xl:px-[11px] xl:py-2.5',
     colorClasses.bg,
     colorClasses.border,
-    attention && 'ring-2 ring-amber-500',
+    hasReadyTickets && styles.ready,
+    attention && !hasReadyTickets && 'ring-2 ring-amber-500',
   );
 
   const popoverBody = (

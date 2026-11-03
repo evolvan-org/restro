@@ -18,12 +18,14 @@ import { Textarea } from '@/components/ui/textarea';
 
 export type OrderItemEditorsHandle = {
   save: () => Promise<boolean>;
+  hasUnsavedChanges: () => boolean;
 };
 
 type Props = {
   ref?: Ref<OrderItemEditorsHandle>;
   item: OrderItem;
   disabled: boolean;
+  onDraftChange?: (id: string, dirty: boolean) => void;
   onQuantity: (input: UpdateOrderItemQuantityRequest) => Promise<void>;
   onInstructions: (input: UpdateOrderItemInstructionsRequest) => Promise<void>;
 };
@@ -32,6 +34,7 @@ export default function OrderItemEditors({
   ref,
   item,
   disabled,
+  onDraftChange,
   onQuantity,
   onInstructions,
 }: Props): ReactElement {
@@ -62,6 +65,15 @@ export default function OrderItemEditors({
   const busy = disabled || quantity.formState.isSubmitting || instructions.formState.isSubmitting;
   const quantitySave = useRef<Promise<boolean> | null>(null);
   const instructionsSave = useRef<Promise<boolean> | null>(null);
+  const hasDraft =
+    quantity.formState.isDirty ||
+    instructions.formState.isDirty ||
+    quantity.formState.isSubmitting ||
+    instructions.formState.isSubmitting;
+  useEffect(() => {
+    onDraftChange?.(item.id, hasDraft);
+  }, [item.id, hasDraft, onDraftChange]);
+  useEffect(() => () => onDraftChange?.(item.id, false), [item.id, onDraftChange]);
 
   async function saveQuantity(): Promise<boolean> {
     if (quantitySave.current) return quantitySave.current;
@@ -119,6 +131,10 @@ export default function OrderItemEditors({
   }
 
   useImperativeHandle(ref, () => ({
+    hasUnsavedChanges: () =>
+      quantity.getFieldState('quantity').isDirty ||
+      instructions.getFieldState('specialInstructions').isDirty ||
+      Boolean(quantitySave.current || instructionsSave.current),
     save: async () => {
       if (!(await saveQuantity())) return false;
       return item.sentQuantity === 0 ? saveInstructions() : true;

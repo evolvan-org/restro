@@ -4,48 +4,51 @@ import { Prisma, UserStatus } from '@rms/db';
 import { PrismaService } from '../common/database/prisma.service';
 import { reconcileRestaurantTableStatuses } from '../common/database/table-lifecycle';
 
-const restaurantTableSelect = {
-  id: true,
-  tableNumber: true,
-  capacity: true,
-  isActive: true,
-  statusChangedAt: true,
-  createdAt: true,
-  updatedAt: true,
-  captainUserId: true,
-  captain: { select: { id: true, name: true, role: { select: { name: true } } } },
-  reservations: {
-    where: { status: { in: ['BOOKED', 'SEATED'] } },
-    select: {
-      id: true,
-      reservationAt: true,
-      partySize: true,
-      status: true,
-      notes: true,
-      guest: { select: { id: true, guestName: true, phoneNumber: true } },
+const restaurantTableSelect = (restaurantId: string) =>
+  ({
+    id: true,
+    tableNumber: true,
+    capacity: true,
+    isActive: true,
+    statusChangedAt: true,
+    createdAt: true,
+    updatedAt: true,
+    captainUserId: true,
+    captain: { select: { id: true, name: true, role: { select: { name: true } } } },
+    reservations: {
+      where: { status: { in: ['BOOKED', 'SEATED'] } },
+      select: {
+        id: true,
+        reservationAt: true,
+        partySize: true,
+        status: true,
+        notes: true,
+        guest: { select: { id: true, guestName: true, phoneNumber: true } },
+      },
+      orderBy: [{ reservationAt: 'asc' }, { id: 'asc' }],
     },
-    orderBy: [{ reservationAt: 'asc' }, { id: 'asc' }],
-  },
-  orders: {
-    where: { status: { in: ['OPEN', 'SUBMITTED'] } },
-    select: { id: true },
-    orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
-    take: 1,
-  },
-  section: {
-    select: {
-      id: true,
-      name: true,
+    orders: {
+      where: { restaurantId, status: { in: ['OPEN', 'SUBMITTED'] } },
+      select: {
+        id: true,
+        _count: { select: { kots: { where: { restaurantId, status: 'READY' } } } },
+      },
+      orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
     },
-  },
-  currentStatus: {
-    select: {
-      id: true,
-      code: true,
-      name: true,
+    section: {
+      select: {
+        id: true,
+        name: true,
+      },
     },
-  },
-} satisfies Prisma.RestaurantTableSelect;
+    currentStatus: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  }) satisfies Prisma.RestaurantTableSelect;
 
 const sectionSelect = {
   id: true,
@@ -76,7 +79,7 @@ const captainCandidateSelect = {
 export type CaptainCandidate = Prisma.UserGetPayload<{ select: typeof captainCandidateSelect }>;
 
 export type TableRecord = Prisma.RestaurantTableGetPayload<{
-  select: typeof restaurantTableSelect;
+  select: ReturnType<typeof restaurantTableSelect>;
 }>;
 export type DiningSectionRecord = Prisma.DiningSectionGetPayload<{ select: typeof sectionSelect }>;
 export type TableStatusRecord = Prisma.TableStatusGetPayload<{ select: typeof statusSelect }>;
@@ -135,7 +138,7 @@ export class TablesRepository {
   findActiveBoard(restaurantId: string): Promise<TableRecord[]> {
     return this.prisma.restaurantTable.findMany({
       where: { restaurantId, isActive: true },
-      select: restaurantTableSelect,
+      select: restaurantTableSelect(restaurantId),
       orderBy: [{ tableNumber: 'asc' }, { id: 'asc' }],
     });
   }
@@ -157,7 +160,7 @@ export class TablesRepository {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.restaurantTable.findMany({
         where,
-        select: restaurantTableSelect,
+        select: restaurantTableSelect(restaurantId),
         orderBy: [{ tableNumber: 'asc' }, { id: 'asc' }],
         skip: filters.skip,
         take: filters.take,
@@ -171,7 +174,7 @@ export class TablesRepository {
   findById(restaurantId: string, tableId: string): Promise<TableRecord | null> {
     return this.prisma.restaurantTable.findFirst({
       where: { id: tableId, restaurantId },
-      select: restaurantTableSelect,
+      select: restaurantTableSelect(restaurantId),
     });
   }
 
@@ -282,7 +285,7 @@ export class TablesRepository {
     try {
       return await this.prisma.restaurantTable.create({
         data: { restaurantId, ...data },
-        select: restaurantTableSelect,
+        select: restaurantTableSelect(restaurantId),
       });
     } catch (error) {
       if (isUniqueViolation(error)) {

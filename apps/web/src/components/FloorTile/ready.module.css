@@ -1,0 +1,25 @@
+.ready::after {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid #d97706;
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
+  animation: ready-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ready-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ready::after {
+    animation: none;
+  }
+}

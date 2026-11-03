@@ -11,7 +11,7 @@ import {
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { Store } from 'lucide-react';
-import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
@@ -26,10 +26,10 @@ import {
   useUpdateRestaurantSettings,
 } from '@/services/api/requests/restaurant-settings';
 
-type Notice = { kind: 'success' | 'error'; message: string } | null;
+import BillCancellationReasons from './BillCancellationReasons';
 
 function toFormValues(settings: RestaurantSettingsResponse): UpdateRestaurantSettingsRequest {
-  return { ...settings, gstNumber: settings.gstNumber ?? '' };
+  return { ...settings, gstNumber: settings.gstNumber ?? '', address: settings.address ?? '' };
 }
 
 function useCurrencyOptions(selected: string): { code: string; label: string }[] {
@@ -60,11 +60,18 @@ export default function RestaurantSettings(): ReactElement {
   const updateSettings = useUpdateRestaurantSettings();
   const { can } = usePermissions();
   const canEdit = can(Permission.RESTAURANT_WRITE);
-  const [notice, setNotice] = useState<Notice>(null);
 
   const form = useForm<UpdateRestaurantSettingsRequest>({
     resolver: zodResolver(updateRestaurantSettingsRequestSchema),
-    defaultValues: { name: '', currency: '', timezone: '', gstNumber: '', defaultGstRate: 0 },
+    defaultValues: {
+      name: '',
+      currency: '',
+      timezone: '',
+      gstNumber: '',
+      defaultGstRate: 0,
+      address: '',
+      maxDiscountPercent: 20,
+    },
   });
   const { errors } = form.formState;
 
@@ -78,15 +85,10 @@ export default function RestaurantSettings(): ReactElement {
   }, [settings.data, form]);
 
   const submit = form.handleSubmit(async (values) => {
-    setNotice(null);
     try {
       await updateSettings.mutateAsync(values);
-      setNotice({ kind: 'success', message: 'Restaurant settings saved.' });
-    } catch (error) {
-      setNotice({
-        kind: 'error',
-        message: getApiErrorMessage(error, 'Unable to save the restaurant settings.'),
-      });
+    } catch {
+      // The request hook reports API failures; retain the settings form.
     }
   });
 
@@ -216,18 +218,36 @@ export default function RestaurantSettings(): ReactElement {
                 <FieldError>{errors.defaultGstRate?.message}</FieldError>
               </Field>
 
-              {notice && (
-                <p
-                  role={notice.kind === 'error' ? 'alert' : 'status'}
-                  className={
-                    notice.kind === 'error'
-                      ? 'rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive'
-                      : 'rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800'
-                  }
-                >
-                  {notice.message}
-                </p>
-              )}
+              <Field data-invalid={Boolean(errors.address)}>
+                <FieldLabel htmlFor="restaurant-address">Restaurant address (optional)</FieldLabel>
+                <Input
+                  id="restaurant-address"
+                  maxLength={500}
+                  disabled={!canEdit}
+                  aria-invalid={Boolean(errors.address)}
+                  {...form.register('address')}
+                />
+                <FieldError>{errors.address?.message}</FieldError>
+              </Field>
+              <Field data-invalid={Boolean(errors.maxDiscountPercent)}>
+                <FieldLabel htmlFor="restaurant-discount-cap">Maximum bill discount (%)</FieldLabel>
+                <Input
+                  id="restaurant-discount-cap"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  disabled={!canEdit}
+                  aria-invalid={Boolean(errors.maxDiscountPercent)}
+                  {...form.register('maxDiscountPercent', { valueAsNumber: true })}
+                />
+                <FieldDescription>
+                  Maximum discount as a percentage of subtotal. Applies to amount and percentage
+                  discounts.
+                </FieldDescription>
+                <FieldError>{errors.maxDiscountPercent?.message}</FieldError>
+              </Field>
 
               {canEdit && (
                 <Button type="submit" disabled={updateSettings.isPending}>
@@ -238,6 +258,7 @@ export default function RestaurantSettings(): ReactElement {
           </form>
         </CardContent>
       </Card>
+      {canEdit && <BillCancellationReasons />}
     </div>
   );
 }

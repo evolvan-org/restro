@@ -1,0 +1,72 @@
+.screen {
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+}
+
+.content {
+  display: grid;
+  max-width: 58rem;
+  gap: 1.25rem;
+  margin-inline: auto;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.invoice {
+  min-width: 0;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: white;
+  color: #111;
+}
+
+.totals {
+  max-width: 24rem;
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .invoice {
+    padding: 1.25rem 1rem;
+  }
+}
+
+@media print {
+  :global(body):has(.invoice) {
+    visibility: hidden;
+  }
+
+  .invoice,
+  .invoice * {
+    visibility: visible;
+  }
+
+  .screen {
+    min-height: 0;
+    padding: 0;
+    container-type: normal;
+  }
+
+  .invoice {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 12mm;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .controls {
+    display: none;
+  }
+
+  .invoice tr {
+    break-inside: avoid;
+  }
+}

@@ -372,6 +372,7 @@ function toRestaurantTable(record: TableRecord): RestaurantTable {
       reservationAt: activeReservation.reservationAt.toISOString(),
     },
     openOrderId: record.orders[0]?.id ?? null,
+    readyKotCount: record.orders.reduce((count, order) => count + order._count.kots, 0),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
