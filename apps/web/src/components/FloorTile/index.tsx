@@ -265,13 +265,15 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
           collisionAvoidance={{ side: 'flip', align: 'shift' }}
           sticky
         >
-          <Popover.Popup className="max-h-[calc(100dvh-1.5rem)] w-[360px] overflow-y-auto rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-xl focus:outline-none">
-            <Popover.Arrow className="data-[side=bottom]:top-[-7px] data-[side=top]:bottom-[-7px]">
-              <svg width="14" height="7" viewBox="0 0 14 7" className="fill-popover">
-                <path d="M0 7 L7 0 L14 7 Z" className="stroke-border" strokeWidth="1" />
+          <Popover.Popup className="relative w-[360px] rounded-xl border bg-popover text-sm text-popover-foreground shadow-xl focus:outline-none">
+            <Popover.Arrow className="size-3.5 data-[side=bottom]:-top-[7px] data-[side=top]:-bottom-[7px] data-[side=top]:rotate-180 data-[side=left]:-right-[7px] data-[side=left]:rotate-90 data-[side=right]:-left-[7px] data-[side=right]:-rotate-90">
+              <svg width="14" height="14" viewBox="0 0 14 14" className="fill-popover">
+                <path d="M0 7 L7 0 L14 7" className="stroke-border" strokeWidth="1" />
               </svg>
             </Popover.Arrow>
-            {popoverBody}
+            <div className="max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[inherit] p-4">
+              {popoverBody}
+            </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
