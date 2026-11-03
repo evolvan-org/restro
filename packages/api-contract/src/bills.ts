@@ -5,6 +5,7 @@ import { paginatedResponseSchema, paginationQuerySchema } from './common';
 /** Decimal wire values; never transport billing money through binary floats. */
 export const billMoneySchema = z.string().regex(/^\d{1,10}\.\d{2}$/);
 export const billStatusSchema = z.enum(['OPEN', 'PAID', 'CANCELLED']);
+export const paymentMethodSchema = z.enum(['CASH', 'CARD', 'UPI']);
 export const generateBillRequestSchema = z.object({}).strict();
 export const billListQuerySchema = paginationQuerySchema
   .extend({ status: billStatusSchema.optional() })
@@ -76,6 +77,41 @@ export const billCancellationReasonSchema = z
 export const billCancellationReasonsResponseSchema = z.array(billCancellationReasonSchema);
 export type BillCancellationReasonsResponse = z.infer<typeof billCancellationReasonsResponseSchema>;
 
+export const recordPaymentRequestSchema = z
+  .object({
+    paymentMethod: paymentMethodSchema,
+    amount: billMoneySchema,
+    referenceNumber: z.string().trim().max(255).optional(),
+  })
+  .strict();
+
+export const paymentSchema = z
+  .object({
+    id: z.string().uuid(),
+    billId: z.string().uuid(),
+    recordedByUserId: z.string().uuid(),
+    paymentMethod: paymentMethodSchema,
+    amount: billMoneySchema,
+    status: z.enum(['PENDING', 'COMPLETED', 'FAILED']),
+    referenceNumber: z.string().nullable(),
+    paidAt: z.string().datetime().nullable(),
+  })
+  .strict();
+
+export const recordPaymentResponseSchema = z
+  .object({
+    payment: paymentSchema,
+    bill: billSchema,
+    order: z
+      .object({
+        id: z.string().uuid(),
+        status: z.literal('COMPLETED'),
+        completedAt: z.string().datetime().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const billInvoiceSchema = z
   .object({
     bill: billSchema,
@@ -91,7 +127,7 @@ export const billInvoiceSchema = z
     // Read-only invoice summary, not a payment-recording request contract.
     payment: z
       .object({
-        method: z.enum(['CASH', 'CARD', 'UPI']),
+        method: paymentMethodSchema,
         referenceNumber: z.string().nullable(),
         paidAt: z.string().datetime().nullable(),
       })
@@ -108,3 +144,7 @@ export type CancelBillRequest = z.infer<typeof cancelBillRequestSchema>;
 export type BillInvoice = z.infer<typeof billInvoiceSchema>;
 
 export type GenerateBillRequest = z.infer<typeof generateBillRequestSchema>;
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+export type RecordPaymentRequest = z.infer<typeof recordPaymentRequestSchema>;
+export type Payment = z.infer<typeof paymentSchema>;
+export type RecordPaymentResponse = z.infer<typeof recordPaymentResponseSchema>;

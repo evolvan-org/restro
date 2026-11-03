@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { BillCancellationReasonsResponse, BillListQuery } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import { completeOrderInTx } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
 
 const restaurantSelect = {
@@ -49,7 +50,22 @@ type NewBill = BillAmounts &
 type BillChanges = Partial<BillAmounts> &
   Pick<Prisma.BillUpdateInput, 'status' | 'cancellationReason'>;
 
+export type PaymentRecord = Prisma.PaymentGetPayload<object>;
+export type NewPayment = Pick<
+  Prisma.PaymentUncheckedCreateInput,
+  'paymentMethod' | 'amount' | 'referenceNumber' | 'recordedByUserId'
+>;
+export type SettlementResult = {
+  payment: PaymentRecord;
+  bill: BillRecord;
+  order: { id: string; completedAt: Date | null };
+};
+
+/** Raised when the one-COMPLETED-payment-per-bill unique index rejects a settlement. */
+export class PaymentConflictError extends Error {}
+
 export type LockedBillingContext = {
+  settle: (data: NewPayment) => Promise<SettlementResult>;
   order: OrderRecord | null;
   bill: BillRecord | null;
   restaurant: () => Promise<RestaurantRecord>;
@@ -123,6 +139,31 @@ export class BillsRepository {
               data: { ...data, restaurantId, orderId: orderId!, status: 'OPEN' },
               include: billInclude,
             }),
+          settle: async (data) => {
+            const paidAt = new Date();
+            let payment: PaymentRecord;
+            try {
+              payment = await tx.payment.create({
+                data: { ...data, billId: bill!.id, status: 'COMPLETED', paidAt },
+              });
+            } catch (error) {
+              if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+                throw new PaymentConflictError();
+              throw error;
+            }
+            const updated = await tx.bill.update({
+              where: { id: bill!.id, restaurantId },
+              data: { status: 'PAID', paidAt },
+              include: billInclude,
+            });
+            if (!(await completeOrderInTx(tx, restaurantId, orderId!)))
+              throw new PaymentConflictError();
+            const order = await tx.order.findUniqueOrThrow({
+              where: { id: orderId! },
+              select: { id: true, completedAt: true },
+            });
+            return { payment, bill: updated, order };
+          },
           update: (data) =>
             tx.bill.update({ where: { id: bill!.id, restaurantId }, data, include: billInclude }),
         });

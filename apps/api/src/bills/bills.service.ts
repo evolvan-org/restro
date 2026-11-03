@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -11,6 +12,8 @@ import type {
   BillListQuery,
   BillListResponse,
   CancelBillRequest,
+  RecordPaymentRequest,
+  RecordPaymentResponse,
   UpdateBillRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
@@ -19,8 +22,8 @@ import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { billingSubtotal, calculateBill, financialYear, roundMoney } from './billing-calc';
-import { toBill } from './bills.mapper';
-import { type BillRecord, BillsRepository } from './bills.repository';
+import { toBill, toPayment } from './bills.mapper';
+import { type BillRecord, BillsRepository, PaymentConflictError } from './bills.repository';
 
 @Injectable()
 export class BillsService {
@@ -96,6 +99,46 @@ export class BillsService {
       return toBill(
         await context.update({ status: 'CANCELLED', cancellationReason: input.reason || null }),
       );
+    });
+  }
+
+  recordPayment(
+    actor: Actor,
+    billId: string,
+    input: RecordPaymentRequest,
+  ): Promise<RecordPaymentResponse> {
+    return this.repository.withLockedOrder(actor.restaurantId, { billId }, async (context) => {
+      const bill = this.requireBill(context.bill);
+      if (bill.status === 'PAID') throw new ConflictException('Bill is already paid');
+      if (bill.status !== 'OPEN')
+        throw new ConflictException('Payments can only be recorded against open bills');
+      if (context.order?.status !== 'SUBMITTED')
+        throw new ConflictException('Only a submitted order can be settled');
+      if (!new Prisma.Decimal(input.amount).equals(bill.totalAmount))
+        throw new BadRequestException({
+          message: ['amount: Payment must equal the bill total; split payments are not supported'],
+        });
+      try {
+        const result = await context.settle({
+          paymentMethod: input.paymentMethod,
+          amount: bill.totalAmount,
+          referenceNumber: input.paymentMethod === 'CASH' ? null : input.referenceNumber || null,
+          recordedByUserId: actor.userId,
+        });
+        return {
+          payment: toPayment(result.payment),
+          bill: toBill(result.bill),
+          order: {
+            id: result.order.id,
+            status: 'COMPLETED',
+            completedAt: result.order.completedAt?.toISOString() ?? null,
+          },
+        };
+      } catch (error) {
+        if (error instanceof PaymentConflictError)
+          throw new ConflictException('Bill is already paid');
+        throw error;
+      }
     });
   }
 

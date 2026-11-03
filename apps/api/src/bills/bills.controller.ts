@@ -38,6 +38,10 @@ import {
   cancelBillRequestSchema,
   type GenerateBillRequest,
   generateBillRequestSchema,
+  type RecordPaymentRequest,
+  recordPaymentRequestSchema,
+  type RecordPaymentResponse,
+  recordPaymentResponseSchema,
   type UpdateBillRequest,
   updateBillRequestSchema,
 } from '@rms/api-contract';
@@ -147,6 +151,23 @@ export class BillsController {
     @Body(new ZodValidationPipe(cancelBillRequestSchema)) input: CancelBillRequest,
   ): Promise<Bill> {
     return this.bills.cancel(actor, id, input);
+  }
+
+  @Post('bills/:id/payments')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.PAYMENT_WRITE)
+  @ApiOperation({
+    summary:
+      'Record a full manual payment; marks the bill PAID, completes the order and flags the table for cleaning',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(recordPaymentRequestSchema) })
+  @ApiCreatedResponse({ schema: zodOpenApiSchema(recordPaymentResponseSchema) })
+  recordPayment(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(recordPaymentRequestSchema)) input: RecordPaymentRequest,
+  ): Promise<RecordPaymentResponse> {
+    return this.bills.recordPayment(actor, id, input);
   }
 
   @Get('bills/:id/invoice')

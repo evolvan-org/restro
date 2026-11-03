@@ -3,9 +3,18 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { type Bill } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
-import { ArrowLeft, FileText, ListOrdered, RefreshCw, RotateCcw, Tag, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Banknote,
+  FileText,
+  ListOrdered,
+  RefreshCw,
+  RotateCcw,
+  Tag,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
-import { type ReactElement, useEffect } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -19,6 +28,7 @@ import {
   useBillCancellationReasons,
   useCancelBill,
   useGenerateBill,
+  useRecordPayment,
   useUpdateBill,
 } from '@/services/api/requests/bills';
 import {
@@ -39,8 +49,13 @@ import {
   discountDefaults,
   discountFormSchema,
   type DiscountFormValues,
+  paymentDefaults,
+  paymentFormSchema,
+  type PaymentFormValues,
+  paymentNeedsReference,
   toCancellationRequest,
   toDiscountRequest,
+  toPaymentRequest,
 } from './mappers';
 import QueryState from './QueryState';
 
@@ -66,6 +81,8 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
   const { mutateAsync: updateBill, isPending: updating } = useUpdateBill();
   const { mutateAsync: cancelBill, isPending: cancelling } = useCancelBill();
   const { mutateAsync: reopenBill, isPending: reopening } = useGenerateBill();
+  const { mutateAsync: recordPayment, isPending: paying } = useRecordPayment();
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
   const open = bill.status === 'OPEN';
   const reasons = useBillCancellationReasons(open && can(Permission.BILL_CANCEL));
   const canEditItems = open && can(Permission.ORDER_UPDATE);
@@ -88,13 +105,19 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
     defaultValues: cancellationDefaults(),
   });
   const selectedReason = useWatch({ control: cancellation.control, name: 'reason' });
+  const payment = useForm<PaymentFormValues>({
+    resolver: zodResolver(paymentFormSchema),
+    defaultValues: paymentDefaults(),
+  });
+  const paymentMethod = useWatch({ control: payment.control, name: 'paymentMethod' });
+  const needsReference = paymentNeedsReference(paymentMethod);
   const { reset: resetDiscount } = discount;
   const { reset: resetCancellation } = cancellation;
   useEffect(() => {
     resetDiscount(discountDefaults(bill));
     resetCancellation(cancellationDefaults());
   }, [bill, resetDiscount, resetCancellation]);
-  const busy = updating || cancelling || reopening;
+  const busy = updating || cancelling || reopening || paying;
   async function resync(): Promise<void> {
     try {
       await updateBill({ id: bill.id, input: { resyncItems: true } });
@@ -195,6 +218,17 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               </Link>
             )}
           </section>
+          {bill.status === 'PAID' && (
+            <section className={`${styles.panel} space-y-2`}>
+              <h2 className={styles.sectionTitle}>Payment received</h2>
+              <p className={styles.note}>
+                {bill.paidAt
+                  ? `Paid ${new Date(bill.paidAt).toLocaleString(undefined, { timeZone: bill.timezone })}.`
+                  : 'Paid.'}{' '}
+                Method and reference are shown on the invoice.
+              </p>
+            </section>
+          )}
           {bill.status === 'CANCELLED' && (
             <section className={`${styles.panel} space-y-4`}>
               <h2 className={styles.sectionTitle}>Bill cancelled</h2>
@@ -217,6 +251,87 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                 </>
               )}
             </section>
+          )}
+          {open && can(Permission.PAYMENT_WRITE) && (
+            <form
+              className={`${styles.panel} ${styles.form}`}
+              noValidate
+              onSubmit={payment.handleSubmit(async (values) => {
+                if (!confirmingPayment) {
+                  setConfirmingPayment(true);
+                  return;
+                }
+                try {
+                  await recordPayment({ id: bill.id, input: toPaymentRequest(bill, values) });
+                  payment.reset(paymentDefaults());
+                } catch {
+                  /* Hook owns the error; retain form values. */
+                } finally {
+                  setConfirmingPayment(false);
+                }
+              })}
+            >
+              <h2 className={styles.sectionTitle}>
+                <Banknote className="size-4 text-muted-foreground" aria-hidden /> Record payment
+              </h2>
+              <div className={styles.formFields}>
+                <label>
+                  Method
+                  <NativeSelect
+                    {...payment.register('paymentMethod', {
+                      onChange: () => setConfirmingPayment(false),
+                    })}
+                    disabled={busy}
+                  >
+                    <NativeSelectOption value="CASH">Cash</NativeSelectOption>
+                    <NativeSelectOption value="CARD">Card</NativeSelectOption>
+                    <NativeSelectOption value="UPI">UPI</NativeSelectOption>
+                  </NativeSelect>
+                </label>
+                <label>
+                  Amount
+                  <Input value={bill.totalAmount} readOnly disabled />
+                </label>
+              </div>
+              {needsReference && (
+                <label>
+                  {paymentMethod === 'CARD' ? 'Card slip reference' : 'UPI transaction id'}{' '}
+                  (optional)
+                  <Input
+                    maxLength={255}
+                    {...payment.register('referenceNumber', {
+                      onChange: () => setConfirmingPayment(false),
+                    })}
+                    disabled={busy}
+                    aria-invalid={Boolean(payment.formState.errors.referenceNumber)}
+                    aria-describedby="bill-payment-error"
+                  />
+                </label>
+              )}
+              <FieldError id="bill-payment-error">
+                {payment.formState.errors.referenceNumber?.message}
+              </FieldError>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {confirmingPayment
+                  ? `Confirm receiving ${bill.currency} ${bill.totalAmount} by ${paymentMethod}. A recorded payment cannot be edited, and the bill and order will be closed.`
+                  : 'The full bill total is settled in one payment. Split payments are not supported.'}
+              </p>
+              <div className="flex gap-2">
+                <Button type="submit" className={`${styles.touchButton} flex-1`} disabled={busy}>
+                  {paying ? 'Recording…' : confirmingPayment ? 'Confirm payment' : 'Mark as paid'}
+                </Button>
+                {confirmingPayment && !paying && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={styles.touchButton}
+                    onClick={() => setConfirmingPayment(false)}
+                  >
+                    Back
+                  </Button>
+                )}
+              </div>
+            </form>
           )}
           {open && can(Permission.BILL_UPDATE) && can(Permission.BILL_DISCOUNT) && (
             <form

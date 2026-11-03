@@ -11,6 +11,10 @@ import {
   type CancelBillRequest,
   cancelBillRequestSchema,
   generateBillRequestSchema,
+  type RecordPaymentRequest,
+  recordPaymentRequestSchema,
+  type RecordPaymentResponse,
+  recordPaymentResponseSchema,
   type UpdateBillRequest,
   updateBillRequestSchema,
 } from '@rms/api-contract';
@@ -26,6 +30,9 @@ import axios from 'axios';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
+
+import { OrderQueryKey } from '../types/OrderQueryKey';
+import { TableQueryKey } from '../types/TableQueryKey';
 
 export const BILL_QUERY_KEY = 'bills';
 export const BILL_CANCELLATION_REASONS_QUERY_KEY = 'bill-cancellation-reasons';
@@ -154,5 +161,32 @@ export function useCancelBill(): UseMutationResult<
   return useBillMutation(async ({ id, input }) => {
     const response = await api.patch(`/bills/${id}/cancel`, cancelBillRequestSchema.parse(input));
     return billSchema.parse(response.data);
+  });
+}
+
+export function useRecordPayment(): UseMutationResult<
+  RecordPaymentResponse,
+  Error,
+  { id: string; input: RecordPaymentRequest }
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to record the payment.');
+  return useMutation<RecordPaymentResponse, Error, { id: string; input: RecordPaymentRequest }>({
+    mutationFn: async ({ id, input }) => {
+      const response = await api.post(
+        `/bills/${id}/payments`,
+        recordPaymentRequestSchema.parse(input),
+      );
+      return recordPaymentResponseSchema.parse(response.data);
+    },
+    onError: showApiError,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [BILL_QUERY_KEY] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+        // The order is now COMPLETED, so refetching its "current order" would 404; just mark it stale.
+        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current], refetchType: 'none' }),
+      ]);
+    },
   });
 }

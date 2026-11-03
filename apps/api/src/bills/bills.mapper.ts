@@ -1,6 +1,6 @@
-import type { Bill } from '@rms/api-contract';
+import type { Bill, Payment } from '@rms/api-contract';
 
-import type { BillRecord } from './bills.repository';
+import type { BillRecord, PaymentRecord } from './bills.repository';
 
 export function toBill(record: BillRecord): Bill {
   return {
@@ -29,5 +29,18 @@ export function toBill(record: BillRecord): Bill {
       unitPrice: line.unitPrice.toFixed(2),
       amount: line.unitPrice.mul(line.quantity).toFixed(2),
     })),
+  };
+}
+
+export function toPayment(record: PaymentRecord): Payment {
+  return {
+    id: record.id,
+    billId: record.billId,
+    recordedByUserId: record.recordedByUserId,
+    paymentMethod: record.paymentMethod,
+    amount: record.amount.toFixed(2),
+    status: record.status,
+    referenceNumber: record.referenceNumber,
+    paidAt: record.paidAt?.toISOString() ?? null,
   };
 }

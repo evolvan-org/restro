@@ -2,6 +2,9 @@ import {
   type Bill,
   billStatusSchema,
   cancelBillRequestSchema,
+  type PaymentMethod,
+  type RecordPaymentRequest,
+  recordPaymentRequestSchema,
   type UpdateBillRequest,
   updateBillRequestSchema,
 } from '@rms/api-contract';
@@ -54,4 +57,25 @@ export function toCancellationRequest(
 
 export function billStatusLabel(status: Bill['status']): string {
   return { OPEN: 'Open', PAID: 'Paid', CANCELLED: 'Cancelled' }[status];
+}
+
+export const paymentFormSchema = z.object({
+  paymentMethod: z.enum(['CASH', 'CARD', 'UPI']),
+  referenceNumber: z.string().trim().max(255, 'Use at most 255 characters'),
+});
+export type PaymentFormValues = z.infer<typeof paymentFormSchema>;
+export function paymentDefaults(): PaymentFormValues {
+  return { paymentMethod: 'CASH', referenceNumber: '' };
+}
+export function paymentNeedsReference(method: PaymentMethod): boolean {
+  return method !== 'CASH';
+}
+/** Amount is always the bill total: full settlement, no split payment. */
+export function toPaymentRequest(bill: Bill, values: PaymentFormValues): RecordPaymentRequest {
+  return recordPaymentRequestSchema.parse({
+    paymentMethod: values.paymentMethod,
+    amount: bill.totalAmount,
+    ...(paymentNeedsReference(values.paymentMethod) &&
+      values.referenceNumber && { referenceNumber: values.referenceNumber }),
+  });
 }
