@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
+import { billStatusSchema } from './bill-summary';
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
 
 /** Decimal wire values; never transport billing money through binary floats. */
 export const billMoneySchema = z.string().regex(/^\d{1,10}\.\d{2}$/);
-export const billStatusSchema = z.enum(['OPEN', 'PAID', 'CANCELLED']);
+export { billStatusSchema } from './bill-summary';
 export const paymentMethodSchema = z.enum(['CASH', 'CARD', 'UPI']);
 export const generateBillRequestSchema = z.object({}).strict();
 export const billListQuerySchema = paginationQuerySchema

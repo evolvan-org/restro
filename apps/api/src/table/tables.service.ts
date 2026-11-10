@@ -93,13 +93,13 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     if (!updated) {
       throw new NotFoundException('Table not found');
     }
-    return toRestaurantTable(updated);
+    return toRestaurantTable(updated, actor);
   }
 
   async board(actor: Actor): Promise<TableBoardResponse> {
     await this.tablesRepository.reconcileStatuses(actor.restaurantId);
     const items = await this.tablesRepository.findActiveBoard(actor.restaurantId);
-    return { data: items.map(toRestaurantTable) };
+    return { data: items.map((record) => toRestaurantTable(record, actor)) };
   }
 
   async list(actor: Actor, query: TableListQuery): Promise<TableListResponse> {
@@ -115,7 +115,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     });
 
     return {
-      data: items.map(toRestaurantTable),
+      data: items.map((record) => toRestaurantTable(record, actor)),
       meta: buildPageMeta(page, pageSize, total),
     };
   }
@@ -126,10 +126,12 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber);
 
     const created = await this.mapTableNumberConflict(() =>
-      this.tablesRepository.create(actor.restaurantId, details),
+      this.tablesRepository.create(actor.restaurantId, details, (section) =>
+        this.requireActiveSection(section),
+      ),
     );
 
-    return toRestaurantTable(created);
+    return toRestaurantTable(created, actor);
   }
 
   async options(actor: Actor): Promise<TableOptionsResponse> {
@@ -148,7 +150,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   }
 
   async get(actor: Actor, tableId: string): Promise<RestaurantTable> {
-    return toRestaurantTable(await this.findInRestaurant(actor.restaurantId, tableId));
+    return toRestaurantTable(await this.findInRestaurant(actor.restaurantId, tableId), actor);
   }
 
   async update(
@@ -168,13 +170,15 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     }
 
     const updated = await this.mapTableNumberConflict(() =>
-      this.tablesRepository.update(actor.restaurantId, tableId, details),
+      this.tablesRepository.update(actor.restaurantId, tableId, details, (section) =>
+        this.requireActiveSection(section),
+      ),
     );
     if (!updated) {
       throw new NotFoundException('Table not found');
     }
 
-    return toRestaurantTable(updated);
+    return toRestaurantTable(updated, actor);
   }
 
   async updateActiveState(
@@ -182,21 +186,32 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     tableId: string,
     input: UpdateTableActiveRequest,
   ): Promise<UpdateTableActiveResponse> {
-    const existing = await this.findInRestaurant(actor.restaurantId, tableId);
-    if (existing.isActive === input.isActive) {
-      return toRestaurantTable(existing);
-    }
+    await this.findInRestaurant(actor.restaurantId, tableId);
 
     const updated = await this.tablesRepository.updateActiveState(
       actor.restaurantId,
       tableId,
       input.isActive,
+      (context) => {
+        if (context.sectionChanged)
+          throw new ConflictException('Table section changed; refresh and retry');
+        if (input.isActive) this.requireActiveSection(context.section);
+        else if (
+          context.hasActiveOrder ||
+          context.hasActiveReservation ||
+          context.statusCode === 'OCCUPIED'
+        ) {
+          throw new ConflictException(
+            'Complete service or reassign/cancel booked and seated reservations before deactivating this table',
+          );
+        }
+      },
     );
     if (!updated) {
       throw new NotFoundException('Table not found');
     }
 
-    return toRestaurantTable(updated);
+    return toRestaurantTable(updated, actor);
   }
 
   async transitionStatus(
@@ -214,7 +229,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     }
 
     if (table.currentStatus.id === target.id) {
-      return toRestaurantTable(table);
+      return toRestaurantTable(table, actor);
     }
 
     const updated = await this.tablesRepository.updateStatus(
@@ -231,7 +246,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new ConflictException('Table status changed; refresh and retry');
     }
 
-    return toRestaurantTable(updated);
+    return toRestaurantTable(updated, actor);
   }
 
   private async findInRestaurant(restaurantId: string, tableId: string): Promise<TableRecord> {
@@ -305,6 +320,11 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     }
   }
 
+  private requireActiveSection(section: { isActive: boolean } | null): void {
+    if (!section) throw new BadRequestException('The selected section does not exist');
+    if (!section.isActive) throw new ConflictException('Choose an active dining section');
+  }
+
   private async assertSectionExists(restaurantId: string, sectionId: string): Promise<void> {
     if (!(await this.tablesRepository.findSection(restaurantId, sectionId))) {
       throw new BadRequestException('The selected section does not exist');
@@ -347,13 +367,30 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   }
 }
 
-function toRestaurantTable(record: TableRecord): RestaurantTable {
+function toRestaurantTable(record: TableRecord, actor: Actor): RestaurantTable {
   const activeReservation =
     record.reservations.find((reservation) => reservation.status === 'SEATED') ??
     record.reservations[0] ??
     null;
+  const activeOrders = record.orders.filter(
+    (order) => order.status === 'OPEN' || order.status === 'SUBMITTED',
+  );
+  const currentOrder = activeOrders[activeOrders.length - 1];
+  const completedOrder = record.orders
+    .filter((order) => order.status === 'COMPLETED')
+    .sort(
+      (a, b) =>
+        (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0) ||
+        b.id.localeCompare(a.id),
+    )[0];
+  const bill = currentOrder
+    ? currentOrder.bill
+    : record.currentStatus.code === 'NEEDS_CLEANING'
+      ? completedOrder?.bill
+      : null;
   return {
     id: record.id,
+    billSummary: roleHasPermission(actor.role, Permission.BILL_READ) ? (bill ?? null) : null,
     tableNumber: record.tableNumber,
     capacity: record.capacity,
     isActive: record.isActive,
@@ -371,8 +408,8 @@ function toRestaurantTable(record: TableRecord): RestaurantTable {
       status: activeReservation.status as 'BOOKED' | 'SEATED',
       reservationAt: activeReservation.reservationAt.toISOString(),
     },
-    openOrderId: record.orders[0]?.id ?? null,
-    readyKotCount: record.orders.reduce((count, order) => count + order._count.kots, 0),
+    openOrderId: currentOrder?.id ?? null,
+    readyKotCount: activeOrders.reduce((count, order) => count + order._count.kots, 0),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };

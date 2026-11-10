@@ -23,7 +23,12 @@ import { buildPageMeta } from '@rms/shared';
 import type { Actor } from '../common/auth/authenticated-request';
 import { billingSubtotal, calculateBill, financialYear, roundMoney } from './billing-calc';
 import { toBill, toPayment } from './bills.mapper';
-import { type BillRecord, BillsRepository, PaymentConflictError } from './bills.repository';
+import {
+  type BillRecord,
+  BillsRepository,
+  type LockedBillingContext,
+  PaymentConflictError,
+} from './bills.repository';
 
 @Injectable()
 export class BillsService {
@@ -38,6 +43,7 @@ export class BillsService {
       if (!context.order) throw new NotFoundException('Order not found');
       if (context.order.status !== 'SUBMITTED')
         throw new ConflictException('Only a submitted order can be billed');
+      this.requireSentItems(context.order);
       if (context.bill?.status === 'PAID')
         throw new ConflictException('Paid bills cannot be regenerated');
       if (context.bill?.status === 'OPEN') return toBill(context.bill);
@@ -114,6 +120,7 @@ export class BillsService {
         throw new ConflictException('Payments can only be recorded against open bills');
       if (context.order?.status !== 'SUBMITTED')
         throw new ConflictException('Only a submitted order can be settled');
+      this.requireSentItems(context.order);
       if (!new Prisma.Decimal(input.amount).equals(bill.totalAmount))
         throw new BadRequestException({
           message: ['amount: Payment must equal the bill total; split payments are not supported'],
@@ -170,6 +177,18 @@ export class BillsService {
           }
         : null,
     };
+  }
+
+  private requireSentItems(order: LockedBillingContext['order']): void {
+    if (
+      order?.items.some(
+        (item) => item.quantity > item.kotItems.reduce((total, sent) => total + sent.quantity, 0),
+      )
+    ) {
+      throw new ConflictException(
+        'Send or remove unsent quantities from the order menu before generating a bill or recording payment',
+      );
+    }
   }
 
   private requireBill(record: BillRecord | null): BillRecord {

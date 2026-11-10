@@ -33,8 +33,7 @@ const ticketSelect = {
   order: {
     select: {
       tableId: true,
-      table: { select: { tableNumber: true } },
-      reservation: { select: { captainUserId: true } },
+      table: { select: { tableNumber: true, captainUserId: true } },
     },
   },
 } satisfies Prisma.KotSelect;

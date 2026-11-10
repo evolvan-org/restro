@@ -60,9 +60,11 @@ export default function BillDetails({ id }: { id: string }): ReactElement | null
   return (
     <section className={`${styles.screen} ${styles.detailScreen}`}>
       <div className={styles.content}>
-        <Link href="/billing" className={styles.backLink}>
-          <ArrowLeft className="size-4" aria-hidden /> Back to billing
-        </Link>
+        {bill.data && !bill.isError && (
+          <Link href={`/orders/tables/${bill.data.table.id}`} className={styles.backLink}>
+            <ArrowLeft className="size-4" aria-hidden /> Back to order menu
+          </Link>
+        )}
         <QueryState pending={bill.isPending} error={bill.error} retry={() => void bill.refetch()} />
         {bill.data && !bill.isError && <BillContent bill={bill.data} />}
       </div>

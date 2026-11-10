@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import type { KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import { completeOrderInTx } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
 import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
 
@@ -414,10 +413,15 @@ export class OrdersRepository {
     });
   }
 
-  complete(restaurantId: string, orderId: string): Promise<OrderRecord | null> {
-    return this.prisma.$transaction(async (tx) => {
-      if (!(await completeOrderInTx(tx, restaurantId, orderId))) return null;
-      return tx.order.findFirst({ where: { id: orderId, restaurantId }, select: orderSelect });
+  findCompletedPaidOrder(restaurantId: string, orderId: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        restaurantId,
+        status: 'COMPLETED',
+        bill: { status: 'PAID', payments: { some: { status: 'COMPLETED' } } },
+      },
+      select: orderSelect,
     });
   }
 }

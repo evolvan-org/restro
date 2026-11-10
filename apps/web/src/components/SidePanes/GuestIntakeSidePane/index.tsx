@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { MAX_PARTY_SIZE } from '@rms/api-contract';
+import { useRouter } from 'next/navigation';
 import { type ReactElement, useEffect, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -44,6 +45,7 @@ export default function GuestIntakeSidePane({
   table,
   onCancel,
 }: GuestIntakeSidePaneProps): ReactElement {
+  const router = useRouter();
   const {
     mutateAsync: createWalkIn,
     isPending: seating,
@@ -89,11 +91,14 @@ export default function GuestIntakeSidePane({
     if (seated && walkIn) {
       toast.success(`${walkIn.guest.guestName} is seated.`);
       hideSidePane();
+      if (table && walkIn.tableId) {
+        router.push(`/orders/tables/${walkIn.tableId}?reservationId=${walkIn.id}`);
+      }
     } else if (booked && reservation) {
       toast.success(`Reservation booked for ${reservation.guest.guestName}.`);
       hideSidePane();
     }
-  }, [seated, walkIn, booked, reservation, hideSidePane]);
+  }, [seated, walkIn, booked, reservation, hideSidePane, router, table]);
 
   const partySizeField = form.register('partySize', {
     setValueAs: (value: string) => (value === '' ? value : Number(value)),

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { BillCancellationReasonsResponse, BillListQuery } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import { completeOrderInTx } from '../common/database/order-lifecycle';
+import { completeOrderInTx, lockOrderLifecycle } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
 
 const restaurantSelect = {
@@ -20,7 +20,13 @@ const orderSelect = {
   table: { select: { id: true, tableNumber: true } },
   items: {
     where: { status: 'ACTIVE' as const },
-    select: { id: true, quantity: true, unitPrice: true, menuItem: { select: { name: true } } },
+    select: {
+      id: true,
+      quantity: true,
+      kotItems: { select: { quantity: true } },
+      unitPrice: true,
+      menuItem: { select: { name: true } },
+    },
     orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],
   },
 } satisfies Prisma.OrderSelect;
@@ -102,12 +108,10 @@ export class BillsRepository {
                   select: { orderId: true },
                 })
               )?.orderId;
-        const rows = candidate
-          ? await tx.$queryRaw<
-              { id: string }[]
-            >`SELECT id FROM orders WHERE id = ${candidate}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`
-          : [];
-        const orderId = rows[0]?.id;
+        const lockedOrder = candidate
+          ? await lockOrderLifecycle(tx, restaurantId, candidate)
+          : null;
+        const orderId = lockedOrder?.id;
         if (orderId)
           await tx.$queryRaw`SELECT id FROM bills WHERE order_id = ${orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
         const order = orderId
@@ -156,7 +160,7 @@ export class BillsRepository {
               data: { status: 'PAID', paidAt },
               include: billInclude,
             });
-            if (!(await completeOrderInTx(tx, restaurantId, orderId!)))
+            if (!(await completeOrderInTx(tx, restaurantId, lockedOrder!)))
               throw new PaymentConflictError();
             const order = await tx.order.findUniqueOrThrow({
               where: { id: orderId! },

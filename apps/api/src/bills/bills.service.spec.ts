@@ -16,7 +16,7 @@ function setup(
 ) {
   const repository = {
     withLockedOrder: (_r: string, _t: unknown, run: (c: unknown) => unknown) =>
-      run({ bill, order: { status: orderStatus }, settle }),
+      run({ bill, order: { status: orderStatus, items: [] }, settle }),
   } as unknown as BillsRepository;
   return { service: new BillsService(repository), settle };
 }

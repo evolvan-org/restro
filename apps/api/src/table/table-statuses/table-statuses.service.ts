@@ -71,6 +71,9 @@ export class TableStatusesService {
     input: UpdateTableStatusActiveRequest,
   ): Promise<TableStatus> {
     const existing = await this.assertExists(actor.restaurantId, statusId);
+    if (existing.isSystem && !input.isActive) {
+      throw new ConflictException('System table statuses cannot be deactivated');
+    }
     if (existing.isActive === input.isActive) return toTableStatus(existing);
 
     const updated = await this.repository.updateActive(

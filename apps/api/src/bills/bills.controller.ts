@@ -73,7 +73,7 @@ export class BillsController {
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.BILL_GENERATE)
   @ApiOperation({
-    summary: 'Generate or reopen a submitted order bill; existing open bills are unchanged',
+    summary: 'Generate or reopen a submitted order bill only after all active quantities are sent',
   })
   @ApiBody({ schema: zodOpenApiSchema(generateBillRequestSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(billSchema) })

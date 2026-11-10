@@ -76,10 +76,12 @@ export class OrdersController {
   @Patch(':orderId/complete')
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.ORDER_UPDATE)
-  @ApiOperation({ summary: 'Complete an order and mark its table as cleaning' })
+  @ApiOperation({
+    summary: 'Return an already-completed, successfully paid order without changing service state',
+  })
   @ApiOkResponse({ schema: zodOpenApiSchema(completeOrderResponseSchema) })
   @ApiNotFoundResponse(apiError('Order not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('Only an open or submitted order can be completed'))
+  @ApiConflictResponse(apiError('Record a successful bill payment to complete this order'))
   complete(
     @CurrentActor() actor: Actor,
     @Param('orderId', ParseUUIDPipe) orderId: string,

@@ -109,24 +109,26 @@ export default function TableStatuses(): ReactElement | null {
                           <Pencil aria-hidden />
                           Edit
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            showAction(
-                              status,
-                              status.isActive && !status.isSystem ? 'archive' : 'status',
-                            )
-                          }
-                        >
-                          {status.isActive && !status.isSystem && <Archive aria-hidden />}
-                          {status.isActive
-                            ? status.isSystem
-                              ? 'Deactivate'
-                              : 'Archive'
-                            : 'Activate'}
-                        </Button>
+                        {(!status.isSystem || !status.isActive) && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              showAction(
+                                status,
+                                status.isActive && !status.isSystem ? 'archive' : 'status',
+                              )
+                            }
+                          >
+                            {status.isActive && !status.isSystem && <Archive aria-hidden />}
+                            {status.isActive
+                              ? status.isSystem
+                                ? 'Deactivate'
+                                : 'Archive'
+                              : 'Activate'}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   )}

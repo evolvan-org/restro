@@ -83,6 +83,7 @@ const MODULES: readonly Module[] = [
   },
   {
     title: 'Restaurant settings',
+    href: '/restaurant/settings',
     description: 'Configure taxes, currency, and restaurant details.',
     icon: Settings,
     permission: Permission.RESTAURANT_WRITE,

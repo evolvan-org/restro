@@ -32,6 +32,7 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 
 import { OrderQueryKey } from '../types/OrderQueryKey';
+import { ReservationQueryKey } from '../types/ReservationQueryKey';
 import { TableQueryKey } from '../types/TableQueryKey';
 
 export const BILL_QUERY_KEY = 'bills';
@@ -130,7 +131,11 @@ function useBillMutation<T>(
     mutationFn: request,
     onError: showApiError,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [BILL_QUERY_KEY] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [BILL_QUERY_KEY] }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+      ]);
     },
   });
 }
@@ -184,8 +189,9 @@ export function useRecordPayment(): UseMutationResult<
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [BILL_QUERY_KEY] }),
         queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
-        // The order is now COMPLETED, so refetching its "current order" would 404; just mark it stale.
-        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current], refetchType: 'none' }),
+        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] }),
+        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
       ]);
     },
   });

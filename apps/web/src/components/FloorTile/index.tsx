@@ -13,7 +13,6 @@ import TableCaptainAction from '@/components/TableCaptainAction';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import useMediaQuery from '@/hooks/useMediaQuery';
-import { useCompleteOrder } from '@/services/api/requests/orders';
 import { getReservation } from '@/services/api/requests/reservations';
 import { useTransitionTableStatus } from '@/services/api/requests/tables';
 import { useShowSidePane } from '@/store/hooks/sidepane';
@@ -112,7 +111,7 @@ type FloorTileProps = {
   canEditReservation: boolean;
   canViewOrder: boolean;
   canStartOrder: boolean;
-  canUpdateOrder: boolean;
+  canReadBill: boolean;
   canAssignCaptain: boolean;
   canTransitionStatus: boolean;
   statuses: readonly { id: string; code: string; name: string }[];
@@ -330,12 +329,11 @@ type TablePopoverBodyProps = FloorTileProps & {
 function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
   const { table, colorClasses, nowMs, attention, elapsed, statuses } = props;
   const showSidePane = useShowSidePane();
-  const completeOrder = useCompleteOrder();
   const transitionStatus = useTransitionTableStatus();
 
   const statusCode = table.currentStatus.code;
   const reservation = table.activeReservation;
-  const isBusy = completeOrder.isPending || transitionStatus.isPending;
+  const isBusy = transitionStatus.isPending;
 
   async function editReservation(): Promise<void> {
     if (!reservation) return;
@@ -395,21 +393,29 @@ function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
       orderAction
     );
 
-  const canCompleteOrder = Boolean(table.openOrderId) && props.canUpdateOrder;
   const canEditReservation = Boolean(reservation) && props.canEditReservation;
   const secondary: ReactNode[] = [];
-  if (canCompleteOrder) {
+  if (props.canReadBill && table.billSummary) {
     secondary.push(
-      <Button
-        key="complete"
-        variant="outline"
-        className="h-11 w-full xl:h-9"
-        disabled={isBusy}
-        onClick={() => void completeOrder.mutateAsync(table.openOrderId!)}
+      <Link
+        key="bill"
+        href={`/billing/${table.billSummary.id}`}
+        className={buttonVariants({ variant: 'outline' })}
       >
-        Complete order
-      </Button>,
+        View bill
+      </Link>,
     );
+    if (table.billSummary.status !== 'CANCELLED') {
+      secondary.push(
+        <Link
+          key="invoice"
+          href={`/billing/${table.billSummary.id}/invoice`}
+          className={buttonVariants({ variant: 'outline' })}
+        >
+          Invoice
+        </Link>,
+      );
+    }
   }
   if (canEditReservation) {
     secondary.push(
