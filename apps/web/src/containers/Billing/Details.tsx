@@ -31,14 +31,8 @@ import {
   useRecordPayment,
   useUpdateBill,
 } from '@/services/api/requests/bills';
-import {
-  useCurrentOrder,
-  useRemoveOrderItem,
-  useUpdateOrderItemQuantity,
-} from '@/services/api/requests/orders';
 
 import styles from './billing.module.css';
-import EditableLineItems from './EditableLineItems';
 import LineItems from './LineItems';
 import {
   billStatusLabel,
@@ -85,17 +79,6 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const open = bill.status === 'OPEN';
   const reasons = useBillCancellationReasons(open && can(Permission.BILL_CANCEL));
-  const canEditItems = open && can(Permission.ORDER_UPDATE);
-  const orderQuery = useCurrentOrder(bill.table.id, canEditItems);
-  const { mutateAsync: updateOrderItemQuantity, isPending: updatingQuantity } =
-    useUpdateOrderItemQuantity();
-  const {
-    mutateAsync: removeOrderItem,
-    isPending: removingItem,
-    variables: removeVariables,
-  } = useRemoveOrderItem();
-  const itemsBusy = updatingQuantity || removingItem;
-  const liveOrder = orderQuery.data && orderQuery.data.id === bill.orderId ? orderQuery.data : null;
   const discount = useForm<DiscountFormValues>({
     resolver: zodResolver(discountFormSchema),
     defaultValues: discountDefaults(bill),
@@ -161,7 +144,7 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               <Button
                 variant="outline"
                 className={styles.touchButton}
-                disabled={busy || itemsBusy}
+                disabled={busy}
                 onClick={() => void resync()}
               >
                 <RefreshCw className="size-4" aria-hidden />
@@ -169,29 +152,10 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               </Button>
             )}
           </div>
-          {liveOrder ? (
-            <EditableLineItems
-              order={liveOrder}
-              disabled={itemsBusy}
-              removingItemId={removingItem ? removeVariables?.itemId : undefined}
-              onQuantity={async (itemId, input) => {
-                await updateOrderItemQuantity({ orderId: bill.orderId, itemId, input });
-              }}
-              onRemove={async (itemId) => {
-                try {
-                  await removeOrderItem({ orderId: bill.orderId, itemId });
-                } catch {
-                  /* Request hook reports the failure and leaves the line available. */
-                }
-              }}
-            />
-          ) : (
-            <LineItems lines={bill.lines} />
-          )}
+          <LineItems lines={bill.lines} />
           <p className="mt-5 border-t pt-4 text-xs leading-relaxed text-muted-foreground">
-            {liveOrder
-              ? 'Edit quantities or remove items below, then use Resync items to update the saved bill totals.'
-              : 'Current order items are shown here. Use Resync items to update the saved bill totals after changing the order.'}
+            Current order items are shown here. Use Resync items to update the saved bill totals
+            after changing the order.
           </p>
         </section>
         <aside className={styles.tools} aria-label="Bill summary and actions">
