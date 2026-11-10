@@ -34,5 +34,6 @@ function toResponse(settings: RestaurantSettingsRecord | null): RestaurantSettin
   return {
     ...settings,
     defaultGstRate: settings.defaultGstRate.toNumber(),
+    maxDiscountPercent: settings.maxDiscountPercent.toNumber(),
   };
 }

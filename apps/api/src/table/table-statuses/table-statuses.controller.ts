@@ -123,7 +123,8 @@ export class TableStatusesController {
   @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({
     summary: 'Activate or deactivate a table status',
-    description: 'Changes whether the status is available for use. Requires `restaurant:write`.',
+    description:
+      'Custom statuses may be deactivated; system statuses may only be activated. Requires `restaurant:write`.',
   })
   @ApiBody({ schema: zodOpenApiSchema(updateTableStatusActiveRequestSchema) })
   @ApiOkResponse({
@@ -132,6 +133,7 @@ export class TableStatusesController {
   })
   @ApiBadRequestResponse(apiError('Invalid id or active state'))
   @ApiNotFoundResponse(apiError('No table status with this id in your restaurant'))
+  @ApiConflictResponse(apiError('System table statuses cannot be deactivated'))
   updateActive(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

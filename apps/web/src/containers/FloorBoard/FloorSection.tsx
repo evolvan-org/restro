@@ -10,7 +10,7 @@ export type TilePermissions = {
   canEditReservation: boolean;
   canViewOrder: boolean;
   canStartOrder: boolean;
-  canUpdateOrder: boolean;
+  canReadBill: boolean;
   canAssignCaptain: boolean;
   canTransitionStatus: boolean;
 };

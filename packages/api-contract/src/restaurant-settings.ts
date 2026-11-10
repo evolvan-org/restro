@@ -63,6 +63,18 @@ export const restaurantSettingsSchema = z
       .transform((value) => value || null)
       .describe('Optional tax identifier; an empty value clears it'),
     defaultGstRate: gstRateSchema,
+    maxDiscountPercent: z
+      .number({ invalid_type_error: 'Maximum discount must be a number' })
+      .min(0, 'Maximum discount must be between 0 and 100')
+      .max(100, 'Maximum discount must be between 0 and 100')
+      .refine(hasAtMostTwoDecimals, 'Maximum discount can have at most 2 decimal places')
+      .describe('Maximum bill discount as a percentage of subtotal'),
+    address: z
+      .string()
+      .trim()
+      .max(500)
+      .nullable()
+      .transform((value) => value || null),
   })
   .strict();
 
@@ -75,6 +87,8 @@ export const restaurantSettingsResponseSchema = z
     timezone: z.string(),
     gstNumber: z.string().nullable(),
     defaultGstRate: z.number(),
+    maxDiscountPercent: z.number(),
+    address: z.string().nullable(),
   })
   .strict();
 

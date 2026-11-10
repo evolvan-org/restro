@@ -6,8 +6,8 @@ import { currentOrderQuerySchema, type MenuItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { ArrowLeft, ShoppingCart, Utensils } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { type ReactElement, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import AddOrderItemDialog from '@/components/AddOrderItemDialog';
@@ -22,6 +22,7 @@ import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useMobileLayout from '@/hooks/useMobileLayout';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { useGenerateBill, useOrderBill } from '@/services/api/requests/bills';
 import {
   useAddOrderItem,
   useCurrentOrder,
@@ -46,6 +47,7 @@ type Props = { tableId: string };
 
 export default function TableOrder({ tableId }: Props): ReactElement | null {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const isMobile = useMobileLayout();
   // The cart stays mounted in the same portal across mobile/desktop layouts, retaining RHF drafts.
   const cartMount = useRef<HTMLDivElement>(null);
@@ -56,6 +58,22 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   // Editor handles expose the existing RHF drafts; no duplicate form/error state.
   const itemEditors = useRef(new Map<string, OrderItemEditorsHandle>());
   const preparingSend = useRef<Promise<void> | null>(null);
+  // Aggregate child RHF dirty metadata only; each editor still owns its drafts.
+  const [dirtyEditors, setDirtyEditors] = useState<ReadonlySet<string>>(new Set());
+  const handleDraftChange = useCallback((id: string, dirty: boolean): void => {
+    setDirtyEditors((previous) => {
+      if (previous.has(id) === dirty) return previous;
+      const next = new Set(previous);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const {
+    mutateAsync: generateBill,
+    data: generatedBill,
+    isPending: isGeneratingBill,
+  } = useGenerateBill();
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const { mutateAsync: addOrderItem, ...addItem } = useAddOrderItem();
   const { mutateAsync: removeOrderItem, ...removeItem } = useRemoveOrderItem();
@@ -69,12 +87,17 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
     removeItem.isPending ||
     updateQuantity.isPending ||
     updateInstructions.isPending ||
-    fireOrder.isPending;
+    fireOrder.isPending ||
+    isGeneratingBill;
   const canUpdate = can(Permission.ORDER_UPDATE);
   const canWrite = can(Permission.ORDER_WRITE);
   const canReadMenu = can(Permission.MENU_READ);
   const isValidId = currentOrderQuerySchema.safeParse({ tableId }).success;
   const current = useCurrentOrder(tableId, isAllowed && isValidId);
+  const orderBill = useOrderBill(current.data?.id, isAllowed && can(Permission.BILL_READ));
+  useEffect(() => {
+    if (generatedBill) router.push(`/billing/${generatedBill.id}`);
+  }, [generatedBill, router]);
   useEffect(() => {
     // An explicit null delays the portal until its grid host exists, avoiding a body fallback.
     setCartContainer(cartMount.current);
@@ -120,6 +143,19 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
       await pending;
     } finally {
       preparingSend.current = null;
+    }
+  }
+
+  async function generateCurrentBill(): Promise<void> {
+    if (
+      !current.data ||
+      [...itemEditors.current.values()].some((editor) => editor.hasUnsavedChanges())
+    )
+      return;
+    try {
+      await generateBill(current.data.id);
+    } catch {
+      /* Billing request hook reports the error. Do not save drafts implicitly. */
     }
   }
 
@@ -309,6 +345,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                                 else itemEditors.current.delete(item.id);
                               }}
                               item={item}
+                              onDraftChange={handleDraftChange}
                               disabled={isMutating || isSendDialogOpen}
                               onQuantity={async (input) => {
                                 await updateOrderItemQuantity({
@@ -385,6 +422,47 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                     )}
                   </div>
                   <div className={styles.cartFooter}>
+                    {can(Permission.BILL_READ) && orderBill.isError && (
+                      <p role="alert" className="text-sm text-destructive">
+                        {getApiErrorMessage(orderBill.error, 'Unable to load the bill.')}{' '}
+                        <Button variant="link" onClick={() => void orderBill.refetch()}>
+                          Retry
+                        </Button>
+                      </p>
+                    )}
+                    {orderBill.data && (
+                      <Link
+                        href={`/billing/${orderBill.data.id}`}
+                        className="text-center text-sm underline"
+                      >
+                        View bill {orderBill.data.billNumber}
+                      </Link>
+                    )}
+                    {can(Permission.BILL_GENERATE) &&
+                      order.status === 'SUBMITTED' &&
+                      orderBill.data === null && (
+                        <div className="space-y-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            disabled={
+                              isMutating ||
+                              dirtyEditors.size > 0 ||
+                              isSendDialogOpen ||
+                              orderBill.isFetching
+                            }
+                            onClick={() => void generateCurrentBill()}
+                          >
+                            {isGeneratingBill ? 'Generating…' : 'Generate bill'}
+                          </Button>
+                          {dirtyEditors.size > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Save order item changes before generating a bill.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     <div
                       aria-live="polite"
                       className="flex items-center justify-between gap-3 text-sm"

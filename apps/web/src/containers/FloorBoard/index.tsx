@@ -50,7 +50,7 @@ export default function FloorBoard(): ReactElement | null {
     canEditReservation: can(Permission.RESERVATION_WRITE),
     canViewOrder: can(Permission.ORDER_READ),
     canStartOrder: can(Permission.ORDER_WRITE),
-    canUpdateOrder: can(Permission.ORDER_UPDATE),
+    canReadBill: can(Permission.BILL_READ),
     canAssignCaptain: can(Permission.TABLE_ASSIGN_CAPTAIN),
     canTransitionStatus: can(Permission.TABLE_UPDATE_STATUS),
   };
@@ -91,6 +91,7 @@ export default function FloorBoard(): ReactElement | null {
       page: 1,
       pageSize: MAX_PAGE_SIZE,
       status: 'BOOKED',
+      sortDirection: 'asc',
       from: upNextWindow.from,
       to: upNextWindow.to,
     },
@@ -174,6 +175,7 @@ export default function FloorBoard(): ReactElement | null {
     <AttentionRail
       attention={attention}
       upNext={upNext}
+      upNextTotal={upcoming.data?.meta.total ?? 0}
       nowMs={nowMs}
       canViewOrder={permissions.canViewOrder}
       canTransitionStatus={permissions.canTransitionStatus}

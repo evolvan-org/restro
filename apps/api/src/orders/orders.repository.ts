@@ -413,37 +413,15 @@ export class OrdersRepository {
     });
   }
 
-  complete(restaurantId: string, orderId: string): Promise<OrderRecord | null> {
-    return this.prisma.$transaction(async (tx) => {
-      const candidate = await tx.order.findFirst({
-        where: { id: orderId, restaurantId },
-        select: { tableId: true, reservationId: true },
-      });
-      if (!candidate) return null;
-
-      if (candidate.reservationId) {
-        await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${candidate.reservationId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-      }
-      await tx.$queryRaw`SELECT id FROM restaurant_tables WHERE id = ${candidate.tableId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-      await tx.$queryRaw`SELECT id FROM orders WHERE id = ${orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-      const order = await tx.order.findFirst({
-        where: { id: orderId, restaurantId },
-        select: { id: true, tableId: true, reservationId: true, status: true },
-      });
-      if (!order || !['OPEN', 'SUBMITTED'].includes(order.status)) return null;
-
-      await tx.order.update({
-        where: { id: order.id, restaurantId },
-        data: { status: 'COMPLETED', completedAt: new Date() },
-      });
-      if (order.reservationId) {
-        await tx.reservation.updateMany({
-          where: { id: order.reservationId, restaurantId, status: 'SEATED' },
-          data: { status: 'COMPLETED' },
-        });
-      }
-      await setTableLifecycleStatus(tx, restaurantId, order.tableId, 'NEEDS_CLEANING');
-      return tx.order.findFirst({ where: { id: order.id, restaurantId }, select: orderSelect });
+  findCompletedPaidOrder(restaurantId: string, orderId: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        restaurantId,
+        status: 'COMPLETED',
+        bill: { status: 'PAID', payments: { some: { status: 'COMPLETED' } } },
+      },
+      select: orderSelect,
     });
   }
 }

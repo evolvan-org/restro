@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   LayoutGrid,
   type LucideIcon,
-  Receipt,
   Rows3,
   Soup,
   Store,
@@ -72,7 +71,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     activePaths: ['/bar'],
     permission: Permission.KOT_READ,
   },
-  { label: 'Billing', icon: Receipt, permission: Permission.BILL_READ },
   {
     label: 'Reservations',
     icon: CalendarCheck,

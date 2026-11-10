@@ -83,7 +83,7 @@ export class ReservationsService {
       input.tableId,
     );
     if (!updated) throw new NotFoundException('Reservation not found');
-    return toReservation(updated);
+    return toReservation(updated, actor);
   }
 
   async update(actor: Actor, id: string, input: UpdateReservationRequest): Promise<Reservation> {
@@ -137,7 +137,7 @@ export class ReservationsService {
         },
       );
       if (!updated) throw new NotFoundException('Reservation not found');
-      return toReservation(updated);
+      return toReservation(updated, actor);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException(
@@ -158,7 +158,7 @@ export class ReservationsService {
       allowedStatuses,
       input.reason || null,
     );
-    if (result.outcome === 'cancelled') return toReservation(result.reservation);
+    if (result.outcome === 'cancelled') return toReservation(result.reservation, actor);
     if (result.outcome === 'not-found') throw new NotFoundException('Reservation not found');
     if (result.outcome === 'active-order') {
       throw new ConflictException(
@@ -169,9 +169,10 @@ export class ReservationsService {
   }
 
   async list(actor: Actor, query: ReservationListQuery): Promise<ReservationListResponse> {
-    const { page, pageSize, status, tableId, from, to } = query;
+    const { page, pageSize, status, tableId, from, to, sortDirection } = query;
     const { items, total } = await this.repository.findPage(actor.restaurantId, {
       status,
+      sortDirection,
       tableId,
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
@@ -180,7 +181,7 @@ export class ReservationsService {
     });
 
     return {
-      data: items.map(toReservation),
+      data: items.map((record) => toReservation(record, actor)),
       meta: buildPageMeta(page, pageSize, total),
     };
   }
@@ -188,7 +189,7 @@ export class ReservationsService {
   async get(actor: Actor, id: string): Promise<Reservation> {
     const reservation = await this.repository.findById(actor.restaurantId, id);
     if (!reservation) throw new NotFoundException('Reservation not found');
-    return toReservation(reservation);
+    return toReservation(reservation, actor);
   }
 
   async create(actor: Actor, input: CreateReservationRequest): Promise<Reservation> {
@@ -218,7 +219,7 @@ export class ReservationsService {
       },
     );
 
-    const result = toReservation(reservation);
+    const result = toReservation(reservation, actor);
     await this.notifications.reservationCreated(actor.restaurantId, result);
     return result;
   }
