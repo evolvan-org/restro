@@ -1,6 +1,4 @@
-import type { OrderStatus, Prisma } from '@rms/db';
-
-import { setTableLifecycleStatus } from './table-lifecycle';
+import type { Prisma } from '@rms/db';
 
 export type LockedOrderLifecycle = { id: string; tableId: string; reservationId: string | null };
 
@@ -29,44 +27,4 @@ export async function lockOrderLifecycle(
     },
     select: { id: true, tableId: true, reservationId: true },
   });
-}
-
-/** Called only after lockOrderLifecycle, in the same payment transaction. */
-export async function completeOrderInTx(
-  tx: Prisma.TransactionClient,
-  restaurantId: string,
-  lockedOrder: LockedOrderLifecycle,
-  expectedStatus: OrderStatus,
-): Promise<boolean> {
-  const { count } = await tx.order.updateMany({
-    where: { id: lockedOrder.id, restaurantId, status: expectedStatus },
-    data: { status: 'COMPLETED', completedAt: new Date() },
-  });
-  if (count === 0) return false;
-
-  if (lockedOrder.reservationId) {
-    await tx.reservation.updateMany({
-      where: { id: lockedOrder.reservationId, restaurantId, status: 'SEATED' },
-      data: { status: 'COMPLETED' },
-    });
-  }
-  return true;
-}
-
-/** Called while holding the order's table lock. */
-export async function markTableForCleaningInTx(
-  tx: Prisma.TransactionClient,
-  restaurantId: string,
-  tableId: string,
-): Promise<void> {
-  const occupied = await tx.restaurantTable.findFirst({
-    where: {
-      id: tableId,
-      restaurantId,
-      isActive: true,
-      currentStatus: { restaurantId, code: 'OCCUPIED' },
-    },
-    select: { id: true },
-  });
-  if (occupied) await setTableLifecycleStatus(tx, restaurantId, tableId, 'NEEDS_CLEANING');
 }

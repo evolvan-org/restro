@@ -56,6 +56,9 @@ export class OrdersService {
             existingOrder: toOrder(existingOrder),
           });
         }
+        if (table.currentStatus.code === 'NEEDS_CLEANING') {
+          throw new ConflictException('Mark the table available before starting an order');
+        }
         const created = await create({
           createdByUserId: actor.userId,
           reservationId: input.reservationId,

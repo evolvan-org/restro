@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -32,6 +33,8 @@ import {
 
 @Injectable()
 export class BillsService {
+  private readonly logger = new Logger(BillsService.name);
+
   constructor(private readonly repository: BillsRepository) {}
 
   cancellationReasons(actor: Actor): Promise<BillCancellationReasonsResponse> {
@@ -118,10 +121,11 @@ export class BillsService {
       if (bill.status === 'PAID') throw new ConflictException('Bill is already paid');
       if (bill.status !== 'OPEN')
         throw new ConflictException('Payments can only be recorded against open bills');
-      if (context.order?.status !== 'SUBMITTED')
+      const { order } = context;
+      if (order?.status !== 'SUBMITTED')
         throw new ConflictException('Only a submitted order can be settled');
-      this.requireSentItems(context.order);
-      if (!billingSubtotal(context.order.items).equals(bill.subtotal))
+      this.requireSentItems(order);
+      if (!billingSubtotal(order.items).equals(bill.subtotal))
         throw new ConflictException(
           'Order items have changed. Resync the bill before recording payment.',
         );
@@ -129,30 +133,52 @@ export class BillsService {
         throw new BadRequestException({
           message: ['amount: Payment must equal the bill total; split payments are not supported'],
         });
+      const paidAt = new Date();
+      let payment: RecordPaymentResponse['payment'];
       try {
-        const result = await context.settle(
-          {
+        payment = toPayment(
+          await context.createPayment({
             paymentMethod: input.paymentMethod,
             amount: bill.totalAmount,
             referenceNumber: input.paymentMethod === 'CASH' ? null : input.referenceNumber || null,
             recordedByUserId: actor.userId,
-          },
-          context.order.status,
-        );
-        return {
-          payment: toPayment(result.payment),
-          bill: toBill(result.bill),
-          order: {
-            id: result.order.id,
             status: 'COMPLETED',
-            completedAt: result.order.completedAt?.toISOString() ?? null,
-          },
-        };
+            paidAt,
+          }),
+        );
       } catch (error) {
         if (error instanceof PaymentConflictError) throw new ConflictException(error.message);
         throw error;
       }
+      const updated = await context.update({ status: 'PAID', paidAt });
+      const completedAt = new Date();
+      if (!(await context.completeOrder(order.status, completedAt))) {
+        throw new ConflictException('Order status changed. Refresh the bill and try again.');
+      }
+      if (order.reservationId) await context.completeReservation(order.reservationId, 'SEATED');
+      await this.markTableForCleaning(context, order.table.id);
+      return {
+        payment,
+        bill: toBill(updated),
+        order: { id: order.id, status: 'COMPLETED', completedAt: completedAt.toISOString() },
+      };
     });
+  }
+
+  private async markTableForCleaning(
+    context: LockedBillingContext,
+    tableId: string,
+  ): Promise<void> {
+    const failure = await context.withTableStatusSavepoint(async () => {
+      const status = await context.getTableStatus();
+      if (status?.code !== 'OCCUPIED') return;
+      if (!(await context.updateTableStatus(status.id, 'NEEDS_CLEANING'))) {
+        throw new Error('Table status changed before cleaning could be scheduled');
+      }
+    });
+    if (failure) {
+      this.logger.warn(`Unable to mark table ${tableId} for cleaning after payment`, failure.error);
+    }
   }
 
   async invoice(actor: Actor, id: string): Promise<BillInvoice> {

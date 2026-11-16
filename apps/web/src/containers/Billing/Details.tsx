@@ -366,8 +366,19 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               className={`${styles.panel} ${styles.form}`}
               noValidate
               onSubmit={cancellation.handleSubmit(async (values) => {
+                const input = toCancellationRequest(values, reasons.data ?? []);
+                if (
+                  values.reason &&
+                  values.reason !== CUSTOM_CANCELLATION_REASON &&
+                  input.reason === undefined
+                ) {
+                  cancellation.setError('reason', {
+                    message: 'This reason is no longer available. Select another reason.',
+                  });
+                  return;
+                }
                 try {
-                  await cancelBill({ id: bill.id, input: toCancellationRequest(values) });
+                  await cancelBill({ id: bill.id, input });
                 } catch {
                   /* Hook owns the error; retain form values. */
                 }
@@ -386,7 +397,7 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                 >
                   <NativeSelectOption value="">No reason selected</NativeSelectOption>
                   {reasons.data?.map((reason) => (
-                    <NativeSelectOption key={reason.id} value={reason.name}>
+                    <NativeSelectOption key={reason.id} value={reason.id}>
                       {reason.name}
                     </NativeSelectOption>
                   ))}

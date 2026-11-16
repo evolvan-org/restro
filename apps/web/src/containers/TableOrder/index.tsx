@@ -107,6 +107,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
     tableId,
     isAllowed && isValidId && canWrite && current.data === null,
   );
+  const needsCleaning = table.data?.currentStatus.code === 'NEEDS_CLEANING';
   const reservations = useOrderReservations(
     tableId,
     isAllowed && isValidId && canWrite && current.data === null && can(Permission.RESERVATION_READ),
@@ -121,6 +122,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
   });
 
   async function onSubmit(values: OpenOrderFormValues): Promise<void> {
+    if (needsCleaning) return;
     try {
       await openOrder(toCreateOrderRequest(tableId, values));
     } catch {
@@ -266,9 +268,14 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                   This table is inactive.
                 </p>
               )}
+              {needsCleaning && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  Mark the table available on the floor board before starting an order.
+                </p>
+              )}
               <Button
                 type="submit"
-                disabled={isOpening || current.isFetching || !table.data?.isActive}
+                disabled={isOpening || current.isFetching || !table.data?.isActive || needsCleaning}
               >
                 {isOpening ? 'Opening order...' : 'Start order'}
               </Button>

@@ -1,13 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { BillCancellationReasonsResponse, BillListQuery } from '@rms/api-contract';
-import { Prisma } from '@rms/db';
+import { Prisma, type ReservationStatus } from '@rms/db';
 
-import {
-  completeOrderInTx,
-  lockOrderLifecycle,
-  markTableForCleaningInTx,
-} from '../common/database/order-lifecycle';
+import { lockOrderLifecycle } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
+import { updateTableStatusIfCurrent } from '../common/database/table-lifecycle';
 
 const restaurantSelect = {
   name: true,
@@ -21,6 +18,7 @@ const restaurantSelect = {
 const orderSelect = {
   id: true,
   status: true,
+  reservationId: true,
   table: { select: { id: true, tableNumber: true } },
   items: {
     where: { status: 'ACTIVE' as const },
@@ -58,31 +56,31 @@ type BillAmounts = Pick<
 type NewBill = BillAmounts &
   Pick<Prisma.BillUncheckedCreateInput, 'generatedByUserId' | 'generatedAt' | 'billNumber'>;
 type BillChanges = Partial<BillAmounts> &
-  Pick<Prisma.BillUpdateInput, 'status' | 'cancellationReason'>;
+  Pick<Prisma.BillUpdateInput, 'status' | 'cancellationReason' | 'paidAt'>;
 
 export type PaymentRecord = Prisma.PaymentGetPayload<object>;
 export type NewPayment = Pick<
   Prisma.PaymentUncheckedCreateInput,
-  'paymentMethod' | 'amount' | 'referenceNumber' | 'recordedByUserId'
+  'paymentMethod' | 'amount' | 'referenceNumber' | 'recordedByUserId' | 'status' | 'paidAt'
 >;
-export type SettlementResult = {
-  payment: PaymentRecord;
-  bill: BillRecord;
-  order: { id: string; completedAt: Date | null };
-};
 
-/** Raised when the database rejects a settlement because an expected state no longer holds. */
+/** Raised when the database rejects a duplicate payment. */
 export class PaymentConflictError extends Error {
-  constructor(message = 'Bill is already paid') {
-    super(message);
+  constructor() {
+    super('Bill is already paid');
   }
 }
 
 export type LockedBillingContext = {
-  settle: (
-    data: NewPayment,
+  createPayment: (data: NewPayment) => Promise<PaymentRecord>;
+  completeOrder: (
     expectedOrderStatus: OrderRecord['status'],
-  ) => Promise<SettlementResult>;
+    completedAt: Date,
+  ) => Promise<boolean>;
+  completeReservation: (reservationId: string, expectedStatus: ReservationStatus) => Promise<void>;
+  getTableStatus: () => Promise<{ id: string; code: string } | null>;
+  updateTableStatus: (expectedStatusId: string, targetStatusCode: string) => Promise<boolean>;
+  withTableStatusSavepoint: (change: () => Promise<void>) => Promise<{ error: unknown } | null>;
   order: OrderRecord | null;
   bill: BillRecord | null;
   restaurant: () => Promise<RestaurantRecord>;
@@ -93,8 +91,6 @@ export type LockedBillingContext = {
 
 @Injectable()
 export class BillsRepository {
-  private readonly logger = new Logger(BillsRepository.name);
-
   constructor(private readonly prisma: PrismaService) {}
 
   cancellationReasons(restaurantId: string): Promise<BillCancellationReasonsResponse> {
@@ -156,34 +152,55 @@ export class BillsRepository {
               data: { ...data, restaurantId, orderId: orderId!, status: 'OPEN' },
               include: billInclude,
             }),
-          settle: async (data, expectedOrderStatus) => {
-            const paidAt = new Date();
-            let payment: PaymentRecord;
+          createPayment: async (data) => {
             try {
-              payment = await tx.payment.create({
-                data: { ...data, billId: bill!.id, status: 'COMPLETED', paidAt },
-              });
+              return await tx.payment.create({ data: { ...data, billId: bill!.id } });
             } catch (error) {
               if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
                 throw new PaymentConflictError();
               throw error;
             }
-            const updated = await tx.bill.update({
-              where: { id: bill!.id, restaurantId },
-              data: { status: 'PAID', paidAt },
-              include: billInclude,
-            });
-            if (!(await completeOrderInTx(tx, restaurantId, lockedOrder!, expectedOrderStatus)))
-              throw new PaymentConflictError(
-                'Order status changed. Refresh the bill and try again.',
-              );
-            await this.closeTableAfterSettlement(tx, restaurantId, lockedOrder!.tableId);
-            const order = await tx.order.findUniqueOrThrow({
-              where: { id: orderId!, restaurantId },
-              select: { id: true, completedAt: true },
-            });
-            return { payment, bill: updated, order };
           },
+          completeOrder: async (expectedStatus, completedAt) => {
+            const { count } = await tx.order.updateMany({
+              where: { id: orderId!, restaurantId, status: expectedStatus },
+              data: { status: 'COMPLETED', completedAt },
+            });
+            return count > 0;
+          },
+          completeReservation: async (id, expectedStatus) => {
+            await tx.reservation.updateMany({
+              where: { id, restaurantId, status: expectedStatus },
+              data: { status: 'COMPLETED' },
+            });
+          },
+          getTableStatus: async () => {
+            const table = await tx.restaurantTable.findFirst({
+              where: {
+                id: lockedOrder!.tableId,
+                restaurantId,
+                isActive: true,
+                currentStatus: { restaurantId },
+              },
+              select: { currentStatus: { select: { id: true, code: true } } },
+            });
+            return table?.currentStatus ?? null;
+          },
+          updateTableStatus: async (expectedStatusId, code) => {
+            const targetStatus = await tx.tableStatus.findFirst({
+              where: { restaurantId, code, isActive: true },
+              select: { id: true },
+            });
+            if (!targetStatus) throw new Error(`Active table status ${code} is not configured`);
+            return updateTableStatusIfCurrent(
+              tx,
+              restaurantId,
+              lockedOrder!.tableId,
+              expectedStatusId,
+              targetStatus.id,
+            );
+          },
+          withTableStatusSavepoint: (change) => this.withTableStatusSavepoint(tx, change),
           update: (data) =>
             tx.bill.update({ where: { id: bill!.id, restaurantId }, data, include: billInclude }),
         });
@@ -192,20 +209,21 @@ export class BillsRepository {
     );
   }
 
-  private async closeTableAfterSettlement(
+  private async withTableStatusSavepoint(
     tx: Prisma.TransactionClient,
-    restaurantId: string,
-    tableId: string,
-  ): Promise<void> {
-    // Keep the existing table lock while isolating recoverable closure failures from settlement.
+    change: () => Promise<void>,
+  ): Promise<{ error: unknown } | null> {
+    // The table was locked before the savepoint. Rolling back here retains that lock.
     await tx.$executeRaw`SAVEPOINT billing_table_closure`;
+    let failure: { error: unknown } | null = null;
     try {
-      await markTableForCleaningInTx(tx, restaurantId, tableId);
+      await change();
     } catch (error) {
       await tx.$executeRaw`ROLLBACK TO SAVEPOINT billing_table_closure`;
-      this.logger.warn(`Unable to mark table ${tableId} for cleaning after payment`, error);
+      failure = { error };
     }
     await tx.$executeRaw`RELEASE SAVEPOINT billing_table_closure`;
+    return failure;
   }
 
   find(

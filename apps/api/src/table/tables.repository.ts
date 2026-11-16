@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, UserStatus } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
-import { reconcileRestaurantTableStatuses } from '../common/database/table-lifecycle';
+import {
+  reconcileRestaurantTableStatuses,
+  updateTableStatusIfCurrent,
+} from '../common/database/table-lifecycle';
 
 const restaurantTableSelect = (restaurantId: string, completedOrderIds: string[] = []) =>
   ({
@@ -422,10 +425,13 @@ export class TablesRepository {
     expectedCurrentStatusId: string,
     targetStatusId: string,
   ): Promise<TableRecord | null> {
-    const { count } = await this.prisma.restaurantTable.updateMany({
-      where: { id: tableId, restaurantId, currentStatusId: expectedCurrentStatusId },
-      data: { currentStatusId: targetStatusId, statusChangedAt: new Date() },
-    });
-    return count === 0 ? null : this.findById(restaurantId, tableId);
+    const updated = await updateTableStatusIfCurrent(
+      this.prisma,
+      restaurantId,
+      tableId,
+      expectedCurrentStatusId,
+      targetStatusId,
+    );
+    return updated ? this.findById(restaurantId, tableId) : null;
   }
 }

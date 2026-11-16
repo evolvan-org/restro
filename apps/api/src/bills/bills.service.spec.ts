@@ -12,7 +12,7 @@ const D = (v: string): Prisma.Decimal => new Prisma.Decimal(v);
 function setup(
   bill: { status: string; subtotal: Prisma.Decimal; totalAmount: Prisma.Decimal } | null,
   orderStatus = 'SUBMITTED',
-  settle = jest.fn(),
+  createPayment = jest.fn(),
 ) {
   const repository = {
     withLockedOrder: (_r: string, _t: unknown, run: (c: unknown) => unknown) =>
@@ -22,10 +22,10 @@ function setup(
           status: orderStatus,
           items: [{ quantity: 1, unitPrice: D('100.00'), kotItems: [{ quantity: 1 }] }],
         },
-        settle,
+        createPayment,
       }),
   } as unknown as BillsRepository;
-  return { service: new BillsService(repository), settle };
+  return { service: new BillsService(repository), createPayment };
 }
 
 describe('BillsService.recordPayment', () => {
@@ -38,19 +38,19 @@ describe('BillsService.recordPayment', () => {
   });
 
   it.each(['PAID', 'CANCELLED'])('409s for a %s bill', async (status) => {
-    const { service, settle } = setup({ ...open, status });
+    const { service, createPayment } = setup({ ...open, status });
     await expect(
       service.recordPayment(actor, 'b', { paymentMethod: 'CASH', amount: '118.00' }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(settle).not.toHaveBeenCalled();
+    expect(createPayment).not.toHaveBeenCalled();
   });
 
   it('400s when amount differs from the total', async () => {
-    const { service, settle } = setup(open);
+    const { service, createPayment } = setup(open);
     await expect(
       service.recordPayment(actor, 'b', { paymentMethod: 'CASH', amount: '100.00' }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(settle).not.toHaveBeenCalled();
+    expect(createPayment).not.toHaveBeenCalled();
   });
 
   it('maps a unique-index violation to 409', async () => {
@@ -65,19 +65,19 @@ describe('BillsService.recordPayment', () => {
   });
 
   it('discards the reference for CASH and keeps it for UPI', async () => {
-    const settle = jest.fn().mockRejectedValue(new PaymentConflictError());
-    const { service } = setup(open, 'SUBMITTED', settle);
+    const createPayment = jest.fn().mockRejectedValue(new PaymentConflictError());
+    const { service } = setup(open, 'SUBMITTED', createPayment);
     await service
       .recordPayment(actor, 'b', { paymentMethod: 'CASH', amount: '118.00', referenceNumber: 'x' })
       .catch(() => undefined);
     await service
       .recordPayment(actor, 'b', { paymentMethod: 'UPI', amount: '118.00', referenceNumber: 'x' })
       .catch(() => undefined);
-    expect(settle.mock.calls[0][0]).toMatchObject({
+    expect(createPayment.mock.calls[0][0]).toMatchObject({
       referenceNumber: null,
       recordedByUserId: 'u1',
     });
-    expect(settle.mock.calls[1][0]).toMatchObject({ referenceNumber: 'x' });
+    expect(createPayment.mock.calls[1][0]).toMatchObject({ referenceNumber: 'x' });
   });
 });
 

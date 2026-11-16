@@ -33,6 +33,7 @@ import {
   createOrderRequestSchema,
   type CurrentOrderQuery,
   currentOrderQuerySchema,
+  errorResponseSchema,
   type FireOrderRequest,
   fireOrderRequestSchema,
   type FireOrderResponse,
@@ -98,8 +99,8 @@ export class OrdersController {
   @ApiBody({ schema: zodOpenApiSchema(createOrderRequestSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(orderSchema) })
   @ApiConflictResponse({
-    description: 'An open order exists; resume existingOrder from this error envelope',
-    schema: zodOpenApiSchema(orderAlreadyOpenErrorSchema),
+    description: 'The table needs cleaning or an open order exists',
+    schema: zodOpenApiSchema(orderAlreadyOpenErrorSchema.or(errorResponseSchema)),
   })
   @ApiBadRequestResponse(apiError('Invalid input, inactive table, or unsuitable reservation'))
   @ApiNotFoundResponse(apiError('Table or reservation not found in the caller restaurant'))

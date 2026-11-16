@@ -1,5 +1,6 @@
 import {
   type Bill,
+  type BillCancellationReasonsResponse,
   billStatusSchema,
   cancelBillRequestSchema,
   type PaymentMethod,
@@ -42,9 +43,13 @@ export function cancellationDefaults(): z.infer<typeof cancellationFormSchema> {
 }
 export function toCancellationRequest(
   values: CancellationFormValues,
+  reasons: BillCancellationReasonsResponse,
 ): z.infer<typeof cancelBillRequestSchema> {
   return cancelBillRequestSchema.parse({
-    reason: values.reason === CUSTOM_CANCELLATION_REASON ? values.customReason : values.reason,
+    reason:
+      values.reason === CUSTOM_CANCELLATION_REASON
+        ? values.customReason
+        : reasons.find((reason) => reason.id === values.reason)?.name,
   });
 }
 

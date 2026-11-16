@@ -77,7 +77,7 @@ type NewOrder = {
 };
 
 export type OrderOpeningContext = {
-  table: { id: string; isActive: boolean } | null;
+  table: { id: string; isActive: boolean; currentStatus: { code: string } } | null;
   reservation: { id: string; tableId: string | null; status: string } | null;
   existingOrder: OrderRecord | null;
   create: (details: NewOrder) => Promise<OrderRecord>;
@@ -375,7 +375,7 @@ export class OrdersRepository {
 
       const table = await tx.restaurantTable.findFirst({
         where: { id: tableId, restaurantId },
-        select: { id: true, isActive: true },
+        select: { id: true, isActive: true, currentStatus: { select: { code: true } } },
       });
       const reservation = await tx.reservation.findFirst({
         where: { id: reservationId, restaurantId },
