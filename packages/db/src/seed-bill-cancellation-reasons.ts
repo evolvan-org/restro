@@ -41,9 +41,10 @@ async function main(): Promise<void> {
 }
 
 if (require.main === module) {
-  void main().catch(() => {
+  void main().catch((error) => {
     console.error(
       'Unable to seed bill cancellation reasons. Check database access and migrations.',
+      error,
     );
     process.exitCode = 1;
   });

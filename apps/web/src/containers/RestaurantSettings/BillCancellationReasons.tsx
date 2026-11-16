@@ -32,7 +32,7 @@ import {
 } from './cancellation-reason-mappers';
 import styles from './cancellation-reasons.module.css';
 
-export default function BillCancellationReasons(): ReactElement {
+export default function BillCancellationReasons({ canEdit }: { canEdit: boolean }): ReactElement {
   const pagination = useForm<CancellationReasonPagination>({
     resolver: zodResolver(cancellationReasonPaginationSchema),
     defaultValues: cancellationReasonPaginationDefaults(),
@@ -57,49 +57,53 @@ export default function BillCancellationReasons(): ReactElement {
     <Card size="sm" className="mt-6 min-w-0" id="bill-cancellation-reasons">
       <CardHeader>
         <CardTitle>Bill cancellation reasons</CardTitle>
-        <CardDescription>
-          Manage cancellation choices. Previously cancelled bills keep their saved reason.
-        </CardDescription>
+        {canEdit && (
+          <CardDescription>
+            Manage cancellation choices. Previously cancelled bills keep their saved reason.
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent className={styles.catalog}>
-        <form
-          noValidate
-          className={styles.addForm}
-          onSubmit={form.handleSubmit(async (input) => {
-            try {
-              await createReason(input);
-            } catch {
-              /* Request hook reports failures; retain the draft. */
-            }
-          })}
-        >
-          <Field className="min-w-0">
-            <FieldLabel className="sr-only" htmlFor="new-bill-cancellation-reason">
-              New reason
-            </FieldLabel>
-            <Input
-              id="new-bill-cancellation-reason"
-              className="min-h-11 text-base"
-              placeholder="New cancellation reason"
-              maxLength={255}
-              disabled={creating}
-              {...form.register('name')}
-              aria-invalid={Boolean(form.formState.errors.name)}
-              aria-describedby="new-bill-cancellation-reason-error"
-            />
-            <FieldError id="new-bill-cancellation-reason-error">
-              {form.formState.errors.name?.message}
-            </FieldError>
-          </Field>
-          <Button type="submit" className="min-h-11" disabled={creating} aria-label="Add reason">
-            {creating ? (
-              <LoaderCircle className="animate-spin" aria-hidden />
-            ) : (
-              <Plus aria-hidden />
-            )}
-            {creating ? 'Adding…' : 'Add'}
-          </Button>
-        </form>
+        {canEdit && (
+          <form
+            noValidate
+            className={styles.addForm}
+            onSubmit={form.handleSubmit(async (input) => {
+              try {
+                await createReason(input);
+              } catch {
+                /* Request hook reports failures; retain the draft. */
+              }
+            })}
+          >
+            <Field className="min-w-0">
+              <FieldLabel className="sr-only" htmlFor="new-bill-cancellation-reason">
+                New reason
+              </FieldLabel>
+              <Input
+                id="new-bill-cancellation-reason"
+                className="min-h-11 text-base"
+                placeholder="New cancellation reason"
+                maxLength={255}
+                disabled={creating}
+                {...form.register('name')}
+                aria-invalid={Boolean(form.formState.errors.name)}
+                aria-describedby="new-bill-cancellation-reason-error"
+              />
+              <FieldError id="new-bill-cancellation-reason-error">
+                {form.formState.errors.name?.message}
+              </FieldError>
+            </Field>
+            <Button type="submit" className="min-h-11" disabled={creating} aria-label="Add reason">
+              {creating ? (
+                <LoaderCircle className="animate-spin" aria-hidden />
+              ) : (
+                <Plus aria-hidden />
+              )}
+              {creating ? 'Adding…' : 'Add'}
+            </Button>
+          </form>
+        )}
         {reasons.isPending && (
           <p role="status" className="text-sm text-muted-foreground">
             Loading bill cancellation reasons…
@@ -127,7 +131,18 @@ export default function BillCancellationReasons(): ReactElement {
             <ul className={styles.list} aria-label="Bill cancellation reasons">
               {reasons.data.data.map((reason) => (
                 <li key={reason.id} className="min-w-0">
-                  <ReasonRow reason={reason} disabled={reasons.isPlaceholderData} />
+                  {canEdit ? (
+                    <ReasonRow reason={reason} disabled={reasons.isPlaceholderData} />
+                  ) : (
+                    <div className={styles.row}>
+                      <span className={`${styles.nameField} break-words text-sm`}>
+                        {reason.name}
+                      </span>
+                      <span className={styles.status} data-active={reason.isActive}>
+                        {reason.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

@@ -59,6 +59,7 @@ export default function RestaurantSettings(): ReactElement {
   const settings = useRestaurantSettings();
   const updateSettings = useUpdateRestaurantSettings();
   const { can } = usePermissions();
+  const canRead = can(Permission.RESTAURANT_READ);
   const canEdit = can(Permission.RESTAURANT_WRITE);
 
   const form = useForm<UpdateRestaurantSettingsRequest>({
@@ -258,7 +259,7 @@ export default function RestaurantSettings(): ReactElement {
           </form>
         </CardContent>
       </Card>
-      {canEdit && <BillCancellationReasons />}
+      {canRead && <BillCancellationReasons canEdit={canEdit} />}
     </div>
   );
 }

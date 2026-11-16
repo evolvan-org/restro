@@ -162,6 +162,8 @@ export class BillsService {
       throw new ConflictException(
         'Order items have changed. Resync the open bill before printing.',
       );
+    const splitRate = bill.gstRate.div(2);
+    const formattedRate = splitRate.toFixed(Math.max(2, splitRate.decimalPlaces()));
     const cgst = roundMoney(bill.gstAmount.div(2));
     const payment = bill.status === 'PAID' ? record?.payments[0] : undefined;
     return {
@@ -171,8 +173,8 @@ export class BillsService {
         address: bill.restaurant.address,
         gstNumber: bill.restaurant.gstNumber,
       },
-      cgst: { rate: bill.gstRate.div(2).toString(), amount: cgst.toFixed(2) },
-      sgst: { rate: bill.gstRate.div(2).toString(), amount: bill.gstAmount.minus(cgst).toFixed(2) },
+      cgst: { rate: formattedRate, amount: cgst.toFixed(2) },
+      sgst: { rate: formattedRate, amount: bill.gstAmount.minus(cgst).toFixed(2) },
       payment: payment
         ? {
             method: payment.paymentMethod,

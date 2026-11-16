@@ -25,15 +25,13 @@ export class BillCancellationReasonsService {
     return { data: items, meta: buildPageMeta(query.page, query.pageSize, total) };
   }
 
-  async create(
+  create(
     actor: Actor,
     input: CreateBillCancellationReasonRequest,
   ): Promise<ManagedBillCancellationReason> {
-    const highest = await this.repository.highestSortOrder(actor.restaurantId);
     return this.repository.create(actor.restaurantId, {
       name: input.name,
       code: `CUSTOM_${randomUUID()}`,
-      sortOrder: (highest ?? -1) + 1,
     });
   }
 

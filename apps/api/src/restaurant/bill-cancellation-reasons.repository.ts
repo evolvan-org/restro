@@ -34,23 +34,25 @@ export class BillCancellationReasonsRepository {
     );
   }
 
-  highestSortOrder(restaurantId: string): Promise<number | null> {
-    return this.prisma.billCancellationReason
-      .aggregate({
-        where: { restaurantId },
-        _max: { sortOrder: true },
-      })
-      .then((result) => result._max.sortOrder);
-  }
-
   create(
     restaurantId: string,
-    data: { name: string; code: string; sortOrder: number },
+    data: { name: string; code: string },
   ): Promise<ManagedBillCancellationReason> {
-    return this.prisma.billCancellationReason.create({
-      data: { ...data, restaurantId },
-      select: reasonSelect,
-    });
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Serialize appends per restaurant, including when it has no reasons yet.
+        await tx.$queryRaw`SELECT id FROM restaurants WHERE id = ${restaurantId}::uuid FOR NO KEY UPDATE`;
+        const { _max } = await tx.billCancellationReason.aggregate({
+          where: { restaurantId },
+          _max: { sortOrder: true },
+        });
+        return tx.billCancellationReason.create({
+          data: { ...data, restaurantId, sortOrder: (_max.sortOrder ?? -1) + 1 },
+          select: reasonSelect,
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
   }
 
   async update(

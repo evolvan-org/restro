@@ -50,9 +50,8 @@ import { BillCancellationReasonsService } from './bill-cancellation-reasons.serv
 @ApiTags('restaurant settings')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePermissions(Permission.RESTAURANT_WRITE)
 @ApiUnauthorizedResponse(apiError('Authentication required'))
-@ApiForbiddenResponse(apiError('Missing restaurant settings edit permission'))
+@ApiForbiddenResponse(apiError('Missing the required restaurant permission'))
 @ApiBadRequestResponse(apiError('Invalid reason, pagination, or identifier'))
 @ApiNotFoundResponse(apiError('Bill cancellation reason not found in the caller restaurant'))
 @Controller('restaurant/settings/bill-cancellation-reasons')
@@ -61,7 +60,8 @@ export class BillCancellationReasonsController {
 
   @Get()
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'List active and inactive bill cancellation reasons for management' })
+  @RequirePermissions(Permission.RESTAURANT_READ)
+  @ApiOperation({ summary: 'List active and inactive bill cancellation reasons' })
   @ApiZodQuery(managedBillCancellationReasonListQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(managedBillCancellationReasonListResponseSchema) })
   list(
@@ -74,6 +74,7 @@ export class BillCancellationReasonsController {
 
   @Post()
   @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({ summary: 'Add a bill cancellation reason to the caller restaurant' })
   @ApiBody({ schema: zodOpenApiSchema(createBillCancellationReasonRequestSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(managedBillCancellationReasonSchema) })
@@ -87,6 +88,7 @@ export class BillCancellationReasonsController {
 
   @Patch(':id')
   @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({ summary: 'Rename a reason without rewriting existing cancelled bills' })
   @ApiBody({ schema: zodOpenApiSchema(renameBillCancellationReasonRequestSchema) })
   @ApiOkResponse({ schema: zodOpenApiSchema(managedBillCancellationReasonSchema) })
@@ -101,6 +103,7 @@ export class BillCancellationReasonsController {
 
   @Patch(':id/deactivate')
   @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.RESTAURANT_WRITE)
   @ApiOperation({ summary: 'Deactivate a reason; preserve the catalog row and existing bill text' })
   @ApiBody({ schema: zodOpenApiSchema(deactivateBillCancellationReasonRequestSchema) })
   @ApiOkResponse({ schema: zodOpenApiSchema(managedBillCancellationReasonSchema) })
