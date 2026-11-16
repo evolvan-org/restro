@@ -130,12 +130,15 @@ export class BillsService {
           message: ['amount: Payment must equal the bill total; split payments are not supported'],
         });
       try {
-        const result = await context.settle({
-          paymentMethod: input.paymentMethod,
-          amount: bill.totalAmount,
-          referenceNumber: input.paymentMethod === 'CASH' ? null : input.referenceNumber || null,
-          recordedByUserId: actor.userId,
-        });
+        const result = await context.settle(
+          {
+            paymentMethod: input.paymentMethod,
+            amount: bill.totalAmount,
+            referenceNumber: input.paymentMethod === 'CASH' ? null : input.referenceNumber || null,
+            recordedByUserId: actor.userId,
+          },
+          context.order.status,
+        );
         return {
           payment: toPayment(result.payment),
           bill: toBill(result.bill),
@@ -146,8 +149,7 @@ export class BillsService {
           },
         };
       } catch (error) {
-        if (error instanceof PaymentConflictError)
-          throw new ConflictException('Bill is already paid');
+        if (error instanceof PaymentConflictError) throw new ConflictException(error.message);
         throw error;
       }
     });

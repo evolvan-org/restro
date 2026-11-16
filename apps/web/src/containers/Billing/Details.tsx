@@ -77,8 +77,14 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
   const { mutateAsync: updateBill, isPending: updating } = useUpdateBill();
   const { mutateAsync: cancelBill, isPending: cancelling } = useCancelBill();
   const { mutateAsync: reopenBill, isPending: reopening } = useGenerateBill();
-  const { mutateAsync: recordPayment, isPending: paying } = useRecordPayment();
-  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const {
+    mutateAsync: recordPayment,
+    isPending: paying,
+    isSuccess: paymentRecorded,
+  } = useRecordPayment();
+  const [paymentConfirmation, setPaymentConfirmation] = useState<string | null>(null);
+  const paymentVersion = `${bill.id}:${bill.status}:${bill.updatedAt}:${bill.currency}:${bill.totalAmount}`;
+  const confirmingPayment = paymentConfirmation === paymentVersion;
   const open = bill.status === 'OPEN';
   const reasons = useBillCancellationReasons(open && can(Permission.BILL_CANCEL));
   const discount = useForm<DiscountFormValues>({
@@ -98,10 +104,17 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
   const needsReference = paymentNeedsReference(paymentMethod);
   const { reset: resetDiscount } = discount;
   const { reset: resetCancellation } = cancellation;
+  const { reset: resetPayment } = payment;
   useEffect(() => {
     resetDiscount(discountDefaults(bill));
     resetCancellation(cancellationDefaults());
   }, [bill, resetDiscount, resetCancellation]);
+  useEffect(() => {
+    setPaymentConfirmation(null);
+  }, [paymentVersion]);
+  useEffect(() => {
+    if (paymentRecorded) resetPayment(paymentDefaults());
+  }, [paymentRecorded, resetPayment]);
   const busy = updating || cancelling || reopening || paying;
   async function resync(): Promise<void> {
     try {
@@ -224,16 +237,14 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               noValidate
               onSubmit={payment.handleSubmit(async (values) => {
                 if (!confirmingPayment) {
-                  setConfirmingPayment(true);
+                  setPaymentConfirmation(paymentVersion);
                   return;
                 }
+                setPaymentConfirmation(null);
                 try {
                   await recordPayment({ id: bill.id, input: toPaymentRequest(bill, values) });
-                  payment.reset(paymentDefaults());
                 } catch {
                   /* Hook owns the error; retain form values. */
-                } finally {
-                  setConfirmingPayment(false);
                 }
               })}
             >
@@ -245,7 +256,7 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                   Method
                   <NativeSelect
                     {...payment.register('paymentMethod', {
-                      onChange: () => setConfirmingPayment(false),
+                      onChange: () => setPaymentConfirmation(null),
                     })}
                     disabled={busy}
                   >
@@ -266,7 +277,7 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                   <Input
                     maxLength={255}
                     {...payment.register('referenceNumber', {
-                      onChange: () => setConfirmingPayment(false),
+                      onChange: () => setPaymentConfirmation(null),
                     })}
                     disabled={busy}
                     aria-invalid={Boolean(payment.formState.errors.referenceNumber)}
@@ -291,7 +302,7 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                     type="button"
                     variant="outline"
                     className={styles.touchButton}
-                    onClick={() => setConfirmingPayment(false)}
+                    onClick={() => setPaymentConfirmation(null)}
                   >
                     Back
                   </Button>

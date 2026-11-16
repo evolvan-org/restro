@@ -1,4 +1,4 @@
-import { Prisma } from '@rms/db';
+import type { OrderStatus, Prisma } from '@rms/db';
 
 import { setTableLifecycleStatus } from './table-lifecycle';
 
@@ -36,21 +36,17 @@ export async function completeOrderInTx(
   tx: Prisma.TransactionClient,
   restaurantId: string,
   lockedOrder: LockedOrderLifecycle,
+  expectedStatus: OrderStatus,
 ): Promise<boolean> {
-  const orderId = lockedOrder.id;
-  const order = await tx.order.findFirst({
-    where: { id: orderId, restaurantId },
-    select: { id: true, tableId: true, reservationId: true, status: true },
-  });
-  if (!order || !['OPEN', 'SUBMITTED'].includes(order.status)) return false;
-
-  await tx.order.update({
-    where: { id: order.id, restaurantId },
+  const { count } = await tx.order.updateMany({
+    where: { id: lockedOrder.id, restaurantId, status: expectedStatus },
     data: { status: 'COMPLETED', completedAt: new Date() },
   });
-  if (order.reservationId) {
+  if (count === 0) return false;
+
+  if (lockedOrder.reservationId) {
     await tx.reservation.updateMany({
-      where: { id: order.reservationId, restaurantId, status: 'SEATED' },
+      where: { id: lockedOrder.reservationId, restaurantId, status: 'SEATED' },
       data: { status: 'COMPLETED' },
     });
   }

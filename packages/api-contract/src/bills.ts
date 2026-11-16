@@ -18,7 +18,10 @@ export const billLineSchema = z
     name: z.string(),
     quantity: z.number().int().positive(),
     unitPrice: billMoneySchema,
-    amount: billMoneySchema,
+    amount: z
+      .string()
+      .regex(/^\d+\.\d{2}$/)
+      .describe('Live order line amount; it can exceed the stored bill total range before resync'),
   })
   .strict();
 

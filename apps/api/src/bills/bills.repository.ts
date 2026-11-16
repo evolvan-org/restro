@@ -71,11 +71,18 @@ export type SettlementResult = {
   order: { id: string; completedAt: Date | null };
 };
 
-/** Raised when the one-COMPLETED-payment-per-bill unique index rejects a settlement. */
-export class PaymentConflictError extends Error {}
+/** Raised when the database rejects a settlement because an expected state no longer holds. */
+export class PaymentConflictError extends Error {
+  constructor(message = 'Bill is already paid') {
+    super(message);
+  }
+}
 
 export type LockedBillingContext = {
-  settle: (data: NewPayment) => Promise<SettlementResult>;
+  settle: (
+    data: NewPayment,
+    expectedOrderStatus: OrderRecord['status'],
+  ) => Promise<SettlementResult>;
   order: OrderRecord | null;
   bill: BillRecord | null;
   restaurant: () => Promise<RestaurantRecord>;
@@ -149,7 +156,7 @@ export class BillsRepository {
               data: { ...data, restaurantId, orderId: orderId!, status: 'OPEN' },
               include: billInclude,
             }),
-          settle: async (data) => {
+          settle: async (data, expectedOrderStatus) => {
             const paidAt = new Date();
             let payment: PaymentRecord;
             try {
@@ -166,8 +173,10 @@ export class BillsRepository {
               data: { status: 'PAID', paidAt },
               include: billInclude,
             });
-            if (!(await completeOrderInTx(tx, restaurantId, lockedOrder!)))
-              throw new PaymentConflictError();
+            if (!(await completeOrderInTx(tx, restaurantId, lockedOrder!, expectedOrderStatus)))
+              throw new PaymentConflictError(
+                'Order status changed. Refresh the bill and try again.',
+              );
             await this.closeTableAfterSettlement(tx, restaurantId, lockedOrder!.tableId);
             const order = await tx.order.findUniqueOrThrow({
               where: { id: orderId!, restaurantId },
