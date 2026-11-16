@@ -121,6 +121,10 @@ export class BillsService {
       if (context.order?.status !== 'SUBMITTED')
         throw new ConflictException('Only a submitted order can be settled');
       this.requireSentItems(context.order);
+      if (!billingSubtotal(context.order.items).equals(bill.subtotal))
+        throw new ConflictException(
+          'Order items have changed. Resync the bill before recording payment.',
+        );
       if (!new Prisma.Decimal(input.amount).equals(bill.totalAmount))
         throw new BadRequestException({
           message: ['amount: Payment must equal the bill total; split payments are not supported'],

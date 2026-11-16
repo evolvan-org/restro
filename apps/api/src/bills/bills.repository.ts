@@ -1,8 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { BillCancellationReasonsResponse, BillListQuery } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import { completeOrderInTx, lockOrderLifecycle } from '../common/database/order-lifecycle';
+import {
+  completeOrderInTx,
+  lockOrderLifecycle,
+  markTableForCleaningInTx,
+} from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
 
 const restaurantSelect = {
@@ -82,6 +86,8 @@ export type LockedBillingContext = {
 
 @Injectable()
 export class BillsRepository {
+  private readonly logger = new Logger(BillsRepository.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   cancellationReasons(restaurantId: string): Promise<BillCancellationReasonsResponse> {
@@ -162,8 +168,9 @@ export class BillsRepository {
             });
             if (!(await completeOrderInTx(tx, restaurantId, lockedOrder!)))
               throw new PaymentConflictError();
+            await this.closeTableAfterSettlement(tx, restaurantId, lockedOrder!.tableId);
             const order = await tx.order.findUniqueOrThrow({
-              where: { id: orderId! },
+              where: { id: orderId!, restaurantId },
               select: { id: true, completedAt: true },
             });
             return { payment, bill: updated, order };
@@ -174,6 +181,22 @@ export class BillsRepository {
       },
       { timeout: 15_000 },
     );
+  }
+
+  private async closeTableAfterSettlement(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    tableId: string,
+  ): Promise<void> {
+    // Keep the existing table lock while isolating recoverable closure failures from settlement.
+    await tx.$executeRaw`SAVEPOINT billing_table_closure`;
+    try {
+      await markTableForCleaningInTx(tx, restaurantId, tableId);
+    } catch (error) {
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT billing_table_closure`;
+      this.logger.warn(`Unable to mark table ${tableId} for cleaning after payment`, error);
+    }
+    await tx.$executeRaw`RELEASE SAVEPOINT billing_table_closure`;
   }
 
   find(

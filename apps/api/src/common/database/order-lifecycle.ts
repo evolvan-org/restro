@@ -54,11 +54,23 @@ export async function completeOrderInTx(
       data: { status: 'COMPLETED' },
     });
   }
-  // Closure must never block settlement: skip when the status isn't configured.
-  const cleaning = await tx.tableStatus.findFirst({
-    where: { restaurantId, code: 'NEEDS_CLEANING', isActive: true },
+  return true;
+}
+
+/** Called while holding the order's table lock. */
+export async function markTableForCleaningInTx(
+  tx: Prisma.TransactionClient,
+  restaurantId: string,
+  tableId: string,
+): Promise<void> {
+  const occupied = await tx.restaurantTable.findFirst({
+    where: {
+      id: tableId,
+      restaurantId,
+      isActive: true,
+      currentStatus: { restaurantId, code: 'OCCUPIED' },
+    },
     select: { id: true },
   });
-  if (cleaning) await setTableLifecycleStatus(tx, restaurantId, order.tableId, 'NEEDS_CLEANING');
-  return true;
+  if (occupied) await setTableLifecycleStatus(tx, restaurantId, tableId, 'NEEDS_CLEANING');
 }

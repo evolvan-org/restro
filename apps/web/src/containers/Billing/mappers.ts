@@ -26,14 +26,7 @@ export const discountFormSchema = z.object({
 });
 export type DiscountFormValues = z.infer<typeof discountFormSchema>;
 export function discountDefaults(bill: Bill): DiscountFormValues {
-  const subtotal = BigInt(bill.subtotal.replace('.', ''));
-  const discount = BigInt(bill.discountAmount.replace('.', ''));
-  // Convert saved money to a percentage with exact half-up rounding to two decimals.
-  const percentage = subtotal > 0n ? (discount * 10_000n + subtotal / 2n) / subtotal : 0n;
-  return {
-    type: 'PERCENT',
-    value: `${percentage / 100n}.${(percentage % 100n).toString().padStart(2, '0')}`,
-  };
+  return { type: 'AMOUNT', value: bill.discountAmount };
 }
 export function toDiscountRequest(discount: DiscountFormValues): UpdateBillRequest {
   return updateBillRequestSchema.parse({ discount });

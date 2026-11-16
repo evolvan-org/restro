@@ -10,19 +10,26 @@ const actor = { userId: 'u1', restaurantId: 'r1', role: 'CASHIER' } as unknown a
 const D = (v: string): Prisma.Decimal => new Prisma.Decimal(v);
 
 function setup(
-  bill: { status: string; totalAmount: Prisma.Decimal } | null,
+  bill: { status: string; subtotal: Prisma.Decimal; totalAmount: Prisma.Decimal } | null,
   orderStatus = 'SUBMITTED',
   settle = jest.fn(),
 ) {
   const repository = {
     withLockedOrder: (_r: string, _t: unknown, run: (c: unknown) => unknown) =>
-      run({ bill, order: { status: orderStatus, items: [] }, settle }),
+      run({
+        bill,
+        order: {
+          status: orderStatus,
+          items: [{ quantity: 1, unitPrice: D('100.00'), kotItems: [{ quantity: 1 }] }],
+        },
+        settle,
+      }),
   } as unknown as BillsRepository;
   return { service: new BillsService(repository), settle };
 }
 
 describe('BillsService.recordPayment', () => {
-  const open = { status: 'OPEN', totalAmount: D('118.00') };
+  const open = { status: 'OPEN', subtotal: D('100.00'), totalAmount: D('118.00') };
 
   it('404s for an unknown bill', async () => {
     await expect(
