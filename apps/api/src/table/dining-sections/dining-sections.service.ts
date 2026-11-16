@@ -69,13 +69,18 @@ export class DiningSectionsService {
     sectionId: string,
     input: UpdateDiningSectionStatusRequest,
   ): Promise<DiningSection> {
-    const existing = await this.assertExists(actor.restaurantId, sectionId);
-    if (existing.isActive === input.isActive) return toDiningSection(existing);
+    await this.assertExists(actor.restaurantId, sectionId);
 
     const updated = await this.repository.updateStatus(
       actor.restaurantId,
       sectionId,
       input.isActive,
+      (hasActiveTables) => {
+        if (!input.isActive && hasActiveTables)
+          throw new ConflictException(
+            'Reassign or safely deactivate all active tables before archiving this section',
+          );
+      },
     );
     if (!updated) throw new NotFoundException('Dining section not found');
     return toDiningSection(updated);

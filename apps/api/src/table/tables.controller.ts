@@ -192,7 +192,9 @@ export class TablesController {
     schema: zodOpenApiSchema(createTableResponseSchema),
   })
   @ApiBadRequestResponse(apiError('Invalid data, section or status'))
-  @ApiConflictResponse(apiError('The table number is already in use'))
+  @ApiConflictResponse(
+    apiError('The table number is already in use, or the destination section is inactive'),
+  )
   create(
     @CurrentActor() actor: Actor,
     @Body(new ZodValidationPipe(createTableRequestSchema)) input: CreateTableRequest,
@@ -213,7 +215,9 @@ export class TablesController {
   })
   @ApiBadRequestResponse(apiError('Invalid data or section'))
   @ApiNotFoundResponse(apiError('No table with this id in your restaurant'))
-  @ApiConflictResponse(apiError('The table number is already in use'))
+  @ApiConflictResponse(
+    apiError('The table number is already in use, or the destination section is inactive'),
+  )
   update(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,
@@ -236,6 +240,11 @@ export class TablesController {
   })
   @ApiBadRequestResponse(apiError('Invalid active state'))
   @ApiNotFoundResponse(apiError('No table with this id in your restaurant'))
+  @ApiConflictResponse(
+    apiError(
+      'Active service or assigned bookings prevent deactivation; activation requires an active section',
+    ),
+  )
   updateActiveState(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

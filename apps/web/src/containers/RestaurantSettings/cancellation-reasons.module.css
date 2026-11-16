@@ -1,0 +1,60 @@
+.catalog {
+  container-type: inline-size;
+}
+
+.addForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.list {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.row {
+  display: grid;
+  grid-template-areas: 'name status actions';
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.nameField {
+  grid-area: name;
+  min-width: 0;
+}
+
+.status {
+  grid-area: status;
+  justify-self: start;
+  border-radius: 4px;
+  background: var(--muted);
+  padding: 2px 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.actions {
+  grid-area: actions;
+  display: flex;
+  gap: 4px;
+}
+
+@container (max-width: 448px) {
+  .row {
+    grid-template-areas: 'name actions' 'status actions';
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+  }
+}

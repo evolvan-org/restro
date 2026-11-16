@@ -9,6 +9,8 @@ const restaurantSettingsSelect = {
   timezone: true,
   gstNumber: true,
   defaultGstRate: true,
+  maxDiscountPercent: true,
+  address: true,
 } satisfies Prisma.RestaurantSelect;
 
 export type RestaurantSettingsRecord = Prisma.RestaurantGetPayload<{
@@ -21,6 +23,8 @@ export type RestaurantSettingsDetails = {
   timezone: string;
   gstNumber: string | null;
   defaultGstRate: number;
+  maxDiscountPercent: number;
+  address: string | null;
 };
 
 @Injectable()

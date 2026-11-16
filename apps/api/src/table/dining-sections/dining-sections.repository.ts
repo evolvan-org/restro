@@ -109,12 +109,26 @@ export class DiningSectionsRepository {
     restaurantId: string,
     sectionId: string,
     isActive: boolean,
+    validate: (hasActiveTables: boolean) => void,
   ): Promise<DiningSectionRecord | null> {
-    const { count } = await this.prisma.diningSection.updateMany({
-      where: { id: sectionId, restaurantId },
-      data: { isActive },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM dining_sections WHERE id = ${sectionId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+      const section = await tx.diningSection.findFirst({
+        where: { id: sectionId, restaurantId },
+        select: diningSectionSelect,
+      });
+      if (!section) return null;
+      const table = await tx.restaurantTable.findFirst({
+        where: { restaurantId, sectionId, isActive: true },
+        select: { id: true },
+      });
+      validate(Boolean(table));
+      return tx.diningSection.update({
+        where: { id: sectionId, restaurantId },
+        data: { isActive },
+        select: diningSectionSelect,
+      });
     });
-    return count === 0 ? null : this.findById(restaurantId, sectionId);
   }
 
   async reorder(restaurantId: string, orderedIds: string[]): Promise<void> {

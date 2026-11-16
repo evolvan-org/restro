@@ -22,6 +22,7 @@ export type AttentionEntry = { table: RestaurantTable; level: AttentionLevel };
 type AttentionRailProps = {
   attention: AttentionEntry[];
   upNext: Reservation[];
+  upNextTotal: number;
   nowMs: number;
   canViewOrder: boolean;
   canTransitionStatus: boolean;
@@ -202,6 +203,12 @@ export default function AttentionRail(props: AttentionRailProps): ReactElement {
       {props.canReadReservations && (
         <section>
           <h2 className="mb-2.5 text-sm font-semibold">Up next · 2 hrs</h2>
+          {props.upNextTotal > props.upNext.length && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              Showing the earliest {props.upNext.length} of {props.upNextTotal} reservations. View
+              the reservation list for more.
+            </p>
+          )}
           {props.upNext.length === 0 ? (
             <p className="rounded-[10px] border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
               No reservations in the next 2 hours

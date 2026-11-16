@@ -49,6 +49,6 @@ export class WalkInsService {
         return { captainUserId: table.captainUserId };
       },
     );
-    return toReservation(created);
+    return toReservation(created, actor);
   }
 }

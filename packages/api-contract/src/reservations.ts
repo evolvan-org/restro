@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { billSummarySchema } from './bill-summary';
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
 import { restaurantTableSchema } from './tables';
 
@@ -78,6 +79,7 @@ export const reservationTableSchema = restaurantTableSchema.pick({
 export const reservationSchema = z
   .object({
     id: z.string().uuid(),
+    billSummary: billSummarySchema.nullable(),
     guestId: z.string().uuid(),
     tableId: z.string().uuid().nullable(),
     table: reservationTableSchema.nullable(),
@@ -95,6 +97,10 @@ export const reservationSchema = z
   .strict();
 
 export const reservationListQuerySchema = paginationQuerySchema.extend({
+  sortDirection: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .describe('Defaults to descending reservation time'),
   tableId: z.string().uuid().optional(),
   status: reservationStatusSchema.optional(),
   // Inclusive reservationAt window (ISO-8601). Used by the floor board "Up next" list.

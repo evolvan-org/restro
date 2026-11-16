@@ -1,4 +1,6 @@
 import { z } from 'zod';
+
+import { billSummarySchema } from './bill-summary';
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
 import { tableStatusCodeSchema } from './table-statuses';
 
@@ -103,7 +105,13 @@ export const restaurantTableSchema = z
     // UTC timestamp used by the floor-board elapsed timer.
     statusChangedAt: z.string().datetime(),
     activeReservation: tableActiveReservationSchema.nullable(),
+    billSummary: billSummarySchema.nullable(),
     openOrderId: z.string().uuid().nullable(),
+    readyKotCount: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe('READY tickets across current active orders'),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })

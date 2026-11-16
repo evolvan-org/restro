@@ -8,6 +8,11 @@ import { guestSelect, GuestsRepository, type GuestUpdateDetails } from './guests
 const reservationSelect = {
   id: true,
   guestId: true,
+  orders: {
+    orderBy: [{ openedAt: 'desc' as const }, { id: 'desc' as const }],
+    take: 1,
+    select: { bill: { select: { id: true, billNumber: true, status: true } } },
+  },
   tableId: true,
   captainUserId: true,
   table: {
@@ -38,6 +43,7 @@ export type ReservationPageFilters = {
   status?: ReservationStatus;
   from?: Date;
   to?: Date;
+  sortDirection?: 'asc' | 'desc';
   skip: number;
   take: number;
 };
@@ -258,7 +264,7 @@ export class ReservationsRepository {
       this.prisma.reservation.findMany({
         where,
         select: reservationSelect,
-        orderBy: [{ reservationAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: [{ reservationAt: filters.sortDirection ?? 'desc' }, { id: 'asc' }],
         skip: filters.skip,
         take: filters.take,
       }),

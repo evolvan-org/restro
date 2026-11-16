@@ -68,7 +68,7 @@ export class NotificationsService {
   async ticketReady(restaurantId: string, ticketId: string): Promise<void> {
     await this.bestEffort(async () => {
       const ticket = await this.repository.findTicket(restaurantId, ticketId);
-      const captainId = ticket?.order.reservation?.captainUserId;
+      const captainId = ticket?.order.table.captainUserId;
       if (!ticket || !captainId) return;
       await this.notify(
         restaurantId,
@@ -82,6 +82,7 @@ export class NotificationsService {
           tableId: ticket.order.tableId,
         },
         captainId,
+        Permission.TABLE_BE_CAPTAIN,
       );
     });
   }
@@ -104,8 +105,9 @@ export class NotificationsService {
     permission: Permission,
     payload: NewNotification,
     recipientId?: string,
+    eligibility?: Permission,
   ): Promise<void> {
-    const ids = await this.recipients(restaurantId, permission, recipientId);
+    const ids = await this.recipients(restaurantId, permission, recipientId, eligibility);
     if (ids.length === 0) return;
     await this.repository.createForUsers(restaurantId, ids, payload);
     await this.publisher.publish(restaurantId, ids, { kind: 'created' });
@@ -115,6 +117,7 @@ export class NotificationsService {
     restaurantId: string,
     permission: Permission,
     recipientId?: string,
+    eligibility?: Permission,
   ): Promise<string[]> {
     const users = await this.repository.findActiveUsers(restaurantId);
     return users
@@ -122,7 +125,8 @@ export class NotificationsService {
         (user) =>
           (!recipientId || user.id === recipientId) &&
           isRole(user.role.name) &&
-          roleHasPermission(user.role.name, permission),
+          roleHasPermission(user.role.name, permission) &&
+          (!eligibility || roleHasPermission(user.role.name, eligibility)),
       )
       .map((user) => user.id);
   }

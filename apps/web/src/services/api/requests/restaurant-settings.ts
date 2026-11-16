@@ -10,11 +10,14 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
+import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 import { useAccessToken } from '@/store/hooks/auth';
 
 import { RestaurantQueryKey } from '../types/RestaurantQueryKey';
+import { BILL_QUERY_KEY } from './bills';
 
 export function useRestaurantSettings(): UseQueryResult<RestaurantSettingsResponse> {
   const accessToken = useAccessToken();
@@ -35,16 +38,20 @@ export function useUpdateRestaurantSettings(): UseMutationResult<
   UpdateRestaurantSettingsRequest
 > {
   const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to save restaurant settings.');
 
-  return useMutation({
+  return useMutation<RestaurantSettingsResponse, Error, UpdateRestaurantSettingsRequest>({
     mutationFn: async (
       input: UpdateRestaurantSettingsRequest,
     ): Promise<RestaurantSettingsResponse> => {
       const response = await api.patch('/restaurant/settings', input);
       return restaurantSettingsResponseSchema.parse(response.data);
     },
-    onSuccess: (settings) => {
+    onError: showApiError,
+    onSuccess: async (settings) => {
       queryClient.setQueryData([RestaurantQueryKey.Settings], settings);
+      await queryClient.invalidateQueries({ queryKey: [BILL_QUERY_KEY] });
+      toast.success('Restaurant settings saved.');
     },
   });
 }

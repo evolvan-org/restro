@@ -50,6 +50,10 @@ export const Permission = {
   // Billing
   BILL_READ: 'bill:read',
   BILL_WRITE: 'bill:write',
+  BILL_GENERATE: 'bill:generate',
+  BILL_UPDATE: 'bill:update',
+  BILL_CANCEL: 'bill:cancel',
+  BILL_DISCOUNT: 'bill:discount',
 
   // Payments
   PAYMENT_READ: 'payment:read',

@@ -3,7 +3,16 @@
 import { Popover } from '@base-ui/react/popover';
 import type { Notification } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
-import { Bell, CheckCheck, Volume2, VolumeX } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Bell,
+  BellRing,
+  CalendarCheck,
+  CheckCheck,
+  ChefHat,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type ReactElement, useEffect, useState } from 'react';
 
@@ -20,7 +29,13 @@ import {
 import { useShowSidePane } from '@/store/hooks/sidepane';
 import { SidePaneType } from '@/store/types/sidepane';
 
-import { notificationBody, notificationTimeAgo } from './mapper';
+import {
+  notificationBody,
+  notificationPanelDescription,
+  notificationTimeAgo,
+  notificationView,
+} from './mapper';
+import styles from './notifications.module.css';
 
 export default function NotificationBell(): ReactElement {
   const notifications = useNotifications();
@@ -49,6 +64,15 @@ export default function NotificationBell(): ReactElement {
   const unreadCount = notifications.data?.unreadCount ?? 0;
   const entries = notifications.data?.data ?? [];
   const busy = markingRead || openingReservation || openingOrder;
+  const presentationPermissions = {
+    canReadOrders: can(Permission.ORDER_READ),
+    canWriteReservations: can(Permission.RESERVATION_WRITE),
+  };
+  const panelDescription = notificationPanelDescription({
+    canManageRestaurant: can(Permission.RESTAURANT_WRITE),
+    canManageReservations: can(Permission.RESERVATION_WRITE),
+    canUpdateKots: can(Permission.KOT_UPDATE_STATUS),
+  });
 
   useEffect(() => {
     if (orderOpened && order) {
@@ -114,14 +138,21 @@ export default function NotificationBell(): ReactElement {
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
           <Popover.Popup className="w-[min(24rem,calc(100vw-1rem))] overflow-hidden rounded-2xl border bg-popover text-popover-foreground shadow-lg outline-none">
-            <div className="flex items-center justify-between border-b px-3 py-2">
-              <Popover.Title className="text-sm font-medium text-muted-foreground">
-                Notifications
-              </Popover.Title>
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+              <div className="min-w-0">
+                <Popover.Title className="text-sm font-semibold">
+                  Notifications{' '}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    {unreadCount} unread
+                  </span>
+                </Popover.Title>
+                <p className="mt-0.5 text-xs text-muted-foreground">{panelDescription}</p>
+              </div>
               <div className="flex gap-1">
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon"
+                  className="size-11"
                   onClick={toggleMuted}
                   aria-label={muted ? 'Unmute notification sounds' : 'Mute notification sounds'}
                   aria-pressed={muted}
@@ -130,7 +161,8 @@ export default function NotificationBell(): ReactElement {
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon"
+                  className="size-11"
                   onClick={() => void handleReadAll()}
                   disabled={busy || unreadCount === 0}
                   aria-label="Mark all notifications read"
@@ -141,7 +173,7 @@ export default function NotificationBell(): ReactElement {
             </div>
             <Popover.Description className="sr-only">
               Your latest 20 notifications, newest first. Select an alert to mark it read and open
-              its record.
+              its record when your role permits it.
             </Popover.Description>
             {realtime.isError && (
               <p className="px-3 py-2 text-xs text-destructive">
@@ -170,38 +202,66 @@ export default function NotificationBell(): ReactElement {
               <p className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</p>
             )}
             <ul className="max-h-96 overflow-y-auto" aria-label="Recent notifications">
-              {entries.map((notification) => (
-                <li key={notification.id}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void handleSelect(notification)}
-                    className="w-full px-3 py-3 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:opacity-60"
-                  >
-                    <span className="flex items-center gap-2">
-                      {!notification.readAt && (
-                        <span
-                          className="size-1.5 shrink-0 rounded-full bg-primary"
-                          aria-label="Unread"
-                        />
-                      )}
-                      <span className="min-w-0 flex-1 text-sm font-medium">
-                        {notification.title}
+              {entries.map((notification) => {
+                const view = notificationView(notification, presentationPermissions);
+                const Icon =
+                  notification.type === 'kot.ready'
+                    ? BellRing
+                    : notification.type === 'kot.sent'
+                      ? ChefHat
+                      : CalendarCheck;
+                return (
+                  <li key={notification.id}>
+                    <button
+                      type="button"
+                      disabled={busy || !view.action}
+                      onClick={() => void handleSelect(notification)}
+                      className={styles.entry}
+                      data-unread={!notification.readAt}
+                    >
+                      <span className={styles.icon} data-tone={view.tone}>
+                        <Icon aria-hidden />
                       </span>
-                      <time
-                        dateTime={notification.createdAt}
-                        title={new Date(notification.createdAt).toLocaleString()}
-                        className="shrink-0 text-[11px] text-muted-foreground"
-                      >
-                        {notificationTimeAgo(notification.createdAt)}
-                      </time>
-                    </span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      {notificationBody(notification)}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                      <span className={styles.content}>
+                        <span className="flex items-center gap-2">
+                          {!notification.readAt && (
+                            <span
+                              className="size-1.5 shrink-0 rounded-full bg-primary"
+                              aria-label="Unread"
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 text-sm font-medium">
+                            {notification.title}
+                          </span>
+                          <time
+                            dateTime={notification.createdAt}
+                            title={new Date(notification.createdAt).toLocaleString()}
+                            className="shrink-0 text-[11px] text-muted-foreground"
+                          >
+                            {notificationTimeAgo(notification.createdAt)}
+                          </time>
+                        </span>
+                        <span className={styles.category} data-tone={view.tone}>
+                          {view.category}
+                        </span>
+                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                          {notificationBody(notification)}
+                        </span>
+                        <span className={styles.action}>
+                          {view.action ? (
+                            <>
+                              {view.action}
+                              <ArrowUpRight aria-hidden />
+                            </>
+                          ) : (
+                            'This record is unavailable for your role.'
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </Popover.Popup>
         </Popover.Positioner>

@@ -3,6 +3,20 @@ import { RESERVATION_DURATION_MINUTES } from '@rms/shared';
 
 type DatabaseClient = Prisma.TransactionClient;
 
+export async function updateTableStatusIfCurrent(
+  db: DatabaseClient,
+  restaurantId: string,
+  tableId: string,
+  expectedStatusId: string,
+  targetStatusId: string,
+): Promise<boolean> {
+  const { count } = await db.restaurantTable.updateMany({
+    where: { id: tableId, restaurantId, currentStatusId: expectedStatusId },
+    data: { currentStatusId: targetStatusId, statusChangedAt: new Date() },
+  });
+  return count > 0;
+}
+
 export async function setTableLifecycleStatus(
   db: DatabaseClient,
   restaurantId: string,

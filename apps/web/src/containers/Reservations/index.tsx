@@ -9,11 +9,12 @@ import {
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Plus } from 'lucide-react';
+import Link from 'next/link';
 import type { ReactElement } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import {
   Table,
@@ -70,7 +71,8 @@ export default function Reservations(): ReactElement | null {
   const canRead = can(Permission.RESERVATION_READ);
   const canWrite = can(Permission.RESERVATION_WRITE);
   const canAssign = can(Permission.RESERVATION_ASSIGN_TABLE);
-  const canAct = canWrite || canAssign;
+  const canReadBill = can(Permission.BILL_READ);
+  const canAct = canWrite || canAssign || canReadBill;
   const filters = useForm<ReservationFilters>({ defaultValues: { status: '', page: 1 } });
   const status = useWatch({ control: filters.control, name: 'status' });
   const page = useWatch({ control: filters.control, name: 'page' });
@@ -177,6 +179,24 @@ export default function Reservations(): ReactElement | null {
                   </TableCell>
                   {canAct && (
                     <TableCell>
+                      {canReadBill && reservation.billSummary && (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <Link
+                            href={`/billing/${reservation.billSummary.id}`}
+                            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                          >
+                            View bill
+                          </Link>
+                          {reservation.billSummary.status !== 'CANCELLED' && (
+                            <Link
+                              href={`/billing/${reservation.billSummary.id}/invoice`}
+                              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                            >
+                              Invoice
+                            </Link>
+                          )}
+                        </div>
+                      )}
                       {canAssign && ACTIVE_RESERVATION_STATUSES.includes(reservation.status) && (
                         <Button
                           type="button"

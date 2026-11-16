@@ -122,30 +122,33 @@ enum PaymentStatus {
 // ----------------------------------------------------------------------------
 
 model Restaurant {
-  id             String           @id @default(uuid()) @db.Uuid
-  name           String           @db.VarChar(255)
-  gstNumber      String?          @map("gst_number") @db.VarChar(50)
-  defaultGstRate Decimal          @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
-  currency       String           @default("INR") @db.VarChar(10)
-  timezone       String           @default("Asia/Kolkata") @db.VarChar(100)
-  status         RestaurantStatus @default(ACTIVE)
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String           @id @default(uuid()) @db.Uuid
+  name               String           @db.VarChar(255)
+  gstNumber          String?          @map("gst_number") @db.VarChar(50)
+  defaultGstRate     Decimal          @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
+  maxDiscountPercent Decimal          @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
+  address            String?          @db.VarChar(500)
+  currency           String           @default("INR") @db.VarChar(10)
+  timezone           String           @default("Asia/Kolkata") @db.VarChar(100)
+  status             RestaurantStatus @default(ACTIVE)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  users          User[]
-  roles          Role[]
-  diningSections DiningSection[]
-  tableStatuses  TableStatus[]
-  tables         RestaurantTable[]
-  guests         Guest[]
-  reservations   Reservation[]
-  menuCategories MenuCategory[]
-  menuItems      MenuItem[]
-  stockItems     StockItem[]
-  orders         Order[]
-  kots           Kot[]
-  bills          Bill[]
-  notifications  Notification[]
+  users                   User[]
+  roles                   Role[]
+  diningSections          DiningSection[]
+  tableStatuses           TableStatus[]
+  tables                  RestaurantTable[]
+  guests                  Guest[]
+  reservations            Reservation[]
+  menuCategories          MenuCategory[]
+  menuItems               MenuItem[]
+  stockItems              StockItem[]
+  orders                  Order[]
+  kots                    Kot[]
+  bills                   Bill[]
+  notifications           Notification[]
+  billCancellationReasons BillCancellationReason[]
 
   @@map("restaurants")
 }
@@ -552,23 +555,41 @@ model KotItem {
 // Billing & payments
 // ----------------------------------------------------------------------------
 
+model BillCancellationReason {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  code         String   @db.VarChar(50)
+  name         String   @db.VarChar(255)
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+
+  @@unique([restaurantId, code])
+  @@index([restaurantId, isActive, sortOrder])
+  @@map("bill_cancellation_reasons")
+}
+
 model Bill {
-  id                String     @id @default(uuid()) @db.Uuid
-  restaurantId      String     @map("restaurant_id") @db.Uuid
+  id                 String     @id @default(uuid()) @db.Uuid
+  restaurantId       String     @map("restaurant_id") @db.Uuid
   /// MVP: one bill per order (split bills excluded).
-  orderId           String     @unique @map("order_id") @db.Uuid
-  generatedByUserId String     @map("generated_by_user_id") @db.Uuid
-  billNumber        String     @map("bill_number") @db.VarChar(50)
-  subtotal          Decimal    @default(0) @db.Decimal(12, 2)
-  discountAmount    Decimal    @default(0) @map("discount_amount") @db.Decimal(12, 2)
-  gstRate           Decimal    @default(0) @map("gst_rate") @db.Decimal(5, 2)
-  gstAmount         Decimal    @default(0) @map("gst_amount") @db.Decimal(12, 2)
-  totalAmount       Decimal    @default(0) @map("total_amount") @db.Decimal(12, 2)
-  status            BillStatus @default(OPEN)
-  generatedAt       DateTime   @map("generated_at") @db.Timestamptz(6)
-  paidAt            DateTime?  @map("paid_at") @db.Timestamptz(6)
-  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orderId            String     @unique @map("order_id") @db.Uuid
+  generatedByUserId  String     @map("generated_by_user_id") @db.Uuid
+  billNumber         String     @map("bill_number") @db.VarChar(50)
+  subtotal           Decimal    @default(0) @db.Decimal(12, 2)
+  discountAmount     Decimal    @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  cancellationReason String?    @map("cancellation_reason") @db.VarChar(255)
+  gstRate            Decimal    @default(0) @map("gst_rate") @db.Decimal(5, 2)
+  gstAmount          Decimal    @default(0) @map("gst_amount") @db.Decimal(12, 2)
+  totalAmount        Decimal    @default(0) @map("total_amount") @db.Decimal(12, 2)
+  status             BillStatus @default(OPEN)
+  generatedAt        DateTime   @map("generated_at") @db.Timestamptz(6)
+  paidAt             DateTime?  @map("paid_at") @db.Timestamptz(6)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant      Restaurant @relation(fields: [restaurantId], references: [id])
   order           Order      @relation(fields: [orderId], references: [id])

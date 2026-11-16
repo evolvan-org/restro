@@ -124,6 +124,9 @@ export class DiningSectionsController {
   @ApiOkResponse({ schema: zodOpenApiSchema(diningSectionSchema) })
   @ApiBadRequestResponse(apiError('Invalid status or id'))
   @ApiNotFoundResponse(apiError('No section with this id in the caller restaurant'))
+  @ApiConflictResponse(
+    apiError('Reassign or safely deactivate all active tables before archiving this section'),
+  )
   updateStatus(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,
@@ -139,6 +142,9 @@ export class DiningSectionsController {
   @ApiOkResponse({ schema: zodOpenApiSchema(diningSectionSchema) })
   @ApiBadRequestResponse(apiError('Invalid section id'))
   @ApiNotFoundResponse(apiError('No section with this id in the caller restaurant'))
+  @ApiConflictResponse(
+    apiError('Reassign or safely deactivate all active tables before archiving this section'),
+  )
   archive(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,

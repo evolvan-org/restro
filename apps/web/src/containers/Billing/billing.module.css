@@ -1,0 +1,407 @@
+.screen {
+  --billing-gutter: 1.25rem;
+  container: billing / inline-size;
+  min-height: calc(100svh - 3.5rem);
+  padding: var(--billing-gutter);
+  background: var(--background);
+}
+
+.content {
+  max-width: 90rem;
+  margin-inline: auto;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.touchButton {
+  min-height: 2.75rem;
+  border-radius: 0.875rem;
+  padding-inline: 1rem;
+}
+
+.backLink {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.backLink:hover {
+  color: var(--foreground);
+}
+
+.backLink:focus-visible,
+.billCard:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  background: var(--card);
+}
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.filter {
+  min-height: 2.75rem;
+  border-radius: 0.875rem;
+  padding-inline: 1rem;
+}
+
+.billGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.billCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  background: var(--card);
+  transition: border-color 150ms;
+}
+
+.billCard:hover {
+  border-color: var(--muted-foreground);
+}
+
+.cardTop,
+.cardBottom {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tableLabel {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.invoiceNumber {
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.amount {
+  overflow-wrap: anywhere;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 999px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status::before {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.status[data-status='OPEN'] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.status[data-status='PAID'] {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.status[data-status='CANCELLED'] {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.paginationControls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.empty {
+  display: flex;
+  min-height: 18rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.itemsPanel {
+  min-width: 0;
+}
+
+.panelHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 1.25rem;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.tools {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.totals {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: baseline;
+  gap: 0.875rem;
+  font-size: 0.875rem;
+}
+
+.totals dt {
+  color: var(--muted-foreground);
+}
+
+.totals dd {
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.totals .totalLabel,
+.totals .totalValue {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.summaryAction {
+  display: flex;
+  min-height: 3rem;
+  margin-top: 1.25rem;
+  border-radius: 1rem;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+}
+
+.form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.form input,
+.form select {
+  min-height: 3rem;
+  width: 100%;
+  border-radius: 0.875rem;
+  font-size: 1rem;
+}
+
+.formFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.note {
+  border-radius: 1rem;
+  padding: 1rem;
+  background: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.mobileBar {
+  display: none;
+}
+
+@container billing (min-width: 560px) {
+  .billGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container billing (min-width: 680px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 19rem;
+  }
+
+  .tools {
+    position: sticky;
+    top: 1.25rem;
+  }
+
+  .itemsPanel {
+    min-height: 30rem;
+  }
+}
+
+@container billing (min-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+  }
+
+  .billGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .screen {
+    --billing-gutter: 0.75rem;
+    padding: 1rem var(--billing-gutter);
+  }
+}
+
+@container billing (max-width: 679px) {
+  .detailScreen .content {
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+  }
+
+  .mobileBar {
+    position: fixed;
+    z-index: 30;
+    inset-inline: auto var(--billing-gutter);
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    display: flex;
+    width: 100cqw;
+    min-height: 4.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 1.25rem;
+    padding: 0.75rem 1rem;
+    background: var(--card);
+    box-shadow: 0 4px 18px #0001;
+  }
+
+  .mobileBar > div {
+    min-width: 0;
+  }
+
+  .mobileBar .amount {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 479px) {
+  .panel,
+  .billCard {
+    padding: 1rem;
+  }
+
+  .filterBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter {
+    flex: 1 1 auto;
+    padding-inline: 0.75rem;
+  }
+
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .paginationControls > button {
+    flex: 1;
+  }
+}

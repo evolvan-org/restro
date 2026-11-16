@@ -33,6 +33,7 @@ import {
   createOrderRequestSchema,
   type CurrentOrderQuery,
   currentOrderQuerySchema,
+  errorResponseSchema,
   type FireOrderRequest,
   fireOrderRequestSchema,
   type FireOrderResponse,
@@ -76,10 +77,12 @@ export class OrdersController {
   @Patch(':orderId/complete')
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.ORDER_UPDATE)
-  @ApiOperation({ summary: 'Complete an order and mark its table as cleaning' })
+  @ApiOperation({
+    summary: 'Return an already-completed, successfully paid order without changing service state',
+  })
   @ApiOkResponse({ schema: zodOpenApiSchema(completeOrderResponseSchema) })
   @ApiNotFoundResponse(apiError('Order not found in the caller restaurant'))
-  @ApiConflictResponse(apiError('Only an open or submitted order can be completed'))
+  @ApiConflictResponse(apiError('Record a successful bill payment to complete this order'))
   complete(
     @CurrentActor() actor: Actor,
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -96,8 +99,8 @@ export class OrdersController {
   @ApiBody({ schema: zodOpenApiSchema(createOrderRequestSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(orderSchema) })
   @ApiConflictResponse({
-    description: 'An open order exists; resume existingOrder from this error envelope',
-    schema: zodOpenApiSchema(orderAlreadyOpenErrorSchema),
+    description: 'The table needs cleaning or an open order exists',
+    schema: zodOpenApiSchema(orderAlreadyOpenErrorSchema.or(errorResponseSchema)),
   })
   @ApiBadRequestResponse(apiError('Invalid input, inactive table, or unsuitable reservation'))
   @ApiNotFoundResponse(apiError('Table or reservation not found in the caller restaurant'))

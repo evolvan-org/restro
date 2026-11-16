@@ -1,0 +1,100 @@
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  padding: 0.75rem 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.table td {
+  border-top: 1px solid var(--border);
+  padding: 1rem 0.5rem;
+  vertical-align: top;
+}
+
+.table th:first-child,
+.table td:first-child {
+  padding-left: 0;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 0;
+}
+
+.name {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.table .quantity {
+  width: 3rem;
+  text-align: center;
+}
+
+.table .unitPrice {
+  width: 6.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.table .amount {
+  width: 7rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.mobileMeta {
+  display: none;
+  margin-top: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.table .empty {
+  padding-block: 3rem;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+@container bill-lines (max-width: 520px) {
+  .quantity,
+  .unitPrice {
+    display: none;
+  }
+
+  .mobileMeta {
+    display: block;
+  }
+}
+
+@media print {
+  .quantity,
+  .unitPrice {
+    display: table-cell;
+  }
+
+  .mobileMeta {
+    display: none;
+  }
+
+  .table th,
+  .table td {
+    color: #111;
+  }
+}
+.wrapper {
+  container: bill-lines / inline-size;
+  min-width: 0;
+}

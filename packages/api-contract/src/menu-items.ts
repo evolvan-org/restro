@@ -12,14 +12,15 @@ const menuItemNameSchema = z
 
 const descriptionSchema = z.string().trim().max(255, 'Description must be 255 characters or fewer');
 
+export const MAX_MENU_ITEM_PRICE = '999999.99';
+
 const priceSchema = z
   .number({ invalid_type_error: 'Price must be a number' })
   .min(0, 'Price cannot be negative')
+  .max(Number(MAX_MENU_ITEM_PRICE), `Price cannot exceed ${MAX_MENU_ITEM_PRICE}`)
   .refine((value) => Number.isFinite(value) && Math.round(value * 100) / 100 === value, {
     message: 'Price can have at most 2 decimal places',
   });
-
-export const MAX_MENU_ITEM_PRICE = '999999.99';
 
 const decimalPricePattern = /^\d{1,10}(?:\.\d{1,2})?$/;
 

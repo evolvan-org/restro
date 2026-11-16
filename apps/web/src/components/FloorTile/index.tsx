@@ -13,13 +13,13 @@ import TableCaptainAction from '@/components/TableCaptainAction';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import useMediaQuery from '@/hooks/useMediaQuery';
-import { useCompleteOrder } from '@/services/api/requests/orders';
 import { getReservation } from '@/services/api/requests/reservations';
 import { useTransitionTableStatus } from '@/services/api/requests/tables';
 import { useShowSidePane } from '@/store/hooks/sidepane';
 import { SidePaneType } from '@/store/types/sidepane';
 
 import { elapsedMinutes, getTableAttention, minutesUntil } from './attention';
+import styles from './ready.module.css';
 
 export type StatusColorClasses = {
   /** Tile background + border. */
@@ -111,7 +111,7 @@ type FloorTileProps = {
   canEditReservation: boolean;
   canViewOrder: boolean;
   canStartOrder: boolean;
-  canUpdateOrder: boolean;
+  canReadBill: boolean;
   canAssignCaptain: boolean;
   canTransitionStatus: boolean;
   statuses: readonly { id: string; code: string; name: string }[];
@@ -126,6 +126,7 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
   const statusCode = table.currentStatus.code;
   const reservation = table.activeReservation;
   const attention = getTableAttention(table, nowMs);
+  const hasReadyTickets = table.readyKotCount > 0;
   const elapsed = elapsedMinutes(table.statusChangedAt, nowMs);
 
   const showsTimer = statusCode === 'OCCUPIED' || statusCode === 'NEEDS_CLEANING';
@@ -134,8 +135,9 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     : statusCode === 'RESERVED' && reservation
       ? formatClockTime(reservation.reservationAt)
       : null;
-  const subLine =
-    statusCode === 'AVAILABLE'
+  const subLine = hasReadyTickets
+    ? `${table.readyKotCount} ready to serve`
+    : statusCode === 'AVAILABLE'
       ? 'Free'
       : table.captain
         ? firstName(table.captain.name)
@@ -145,16 +147,16 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
 
   const ariaLabel = `Table ${table.tableNumber}, ${table.capacity} seats, ${table.currentStatus.name}${
     attention ? ', needs attention' : ''
-  }. Open actions`;
+  }${hasReadyTickets ? `, ${table.readyKotCount} tickets ready to serve` : ''}. Open actions`;
 
   const tileInner = (
     <>
-      {attention && (
+      {(hasReadyTickets || Boolean(attention)) && (
         <span
           aria-hidden
           className="absolute -right-[7px] -top-[7px] grid size-5 place-items-center rounded-full border-2 border-white bg-amber-500 text-[11px] font-bold leading-none text-stone-900"
         >
-          !
+          {hasReadyTickets ? '✓' : '!'}
         </span>
       )}
       <div className="flex w-full items-start justify-between">
@@ -198,7 +200,8 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     'xl:h-[120px] xl:w-[112px] xl:rounded-xl xl:px-[11px] xl:py-2.5',
     colorClasses.bg,
     colorClasses.border,
-    attention && 'ring-2 ring-amber-500',
+    hasReadyTickets && styles.ready,
+    attention && !hasReadyTickets && 'ring-2 ring-amber-500',
   );
 
   const popoverBody = (
@@ -261,13 +264,15 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
           collisionAvoidance={{ side: 'flip', align: 'shift' }}
           sticky
         >
-          <Popover.Popup className="max-h-[calc(100dvh-1.5rem)] w-[360px] overflow-y-auto rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-xl focus:outline-none">
-            <Popover.Arrow className="data-[side=bottom]:top-[-7px] data-[side=top]:bottom-[-7px]">
-              <svg width="14" height="7" viewBox="0 0 14 7" className="fill-popover">
-                <path d="M0 7 L7 0 L14 7 Z" className="stroke-border" strokeWidth="1" />
+          <Popover.Popup className="relative w-[360px] rounded-xl border bg-popover text-sm text-popover-foreground shadow-xl focus:outline-none">
+            <Popover.Arrow className="size-3.5 data-[side=bottom]:-top-[7px] data-[side=top]:-bottom-[7px] data-[side=top]:rotate-180 data-[side=left]:-right-[7px] data-[side=left]:rotate-90 data-[side=right]:-left-[7px] data-[side=right]:-rotate-90">
+              <svg width="14" height="14" viewBox="0 0 14 14" className="fill-popover">
+                <path d="M0 7 L7 0 L14 7" className="stroke-border" strokeWidth="1" />
               </svg>
             </Popover.Arrow>
-            {popoverBody}
+            <div className="max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[inherit] p-4">
+              {popoverBody}
+            </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
@@ -324,12 +329,11 @@ type TablePopoverBodyProps = FloorTileProps & {
 function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
   const { table, colorClasses, nowMs, attention, elapsed, statuses } = props;
   const showSidePane = useShowSidePane();
-  const completeOrder = useCompleteOrder();
   const transitionStatus = useTransitionTableStatus();
 
   const statusCode = table.currentStatus.code;
   const reservation = table.activeReservation;
-  const isBusy = completeOrder.isPending || transitionStatus.isPending;
+  const isBusy = transitionStatus.isPending;
 
   async function editReservation(): Promise<void> {
     if (!reservation) return;
@@ -389,21 +393,29 @@ function TablePopoverBody(props: TablePopoverBodyProps): ReactElement {
       orderAction
     );
 
-  const canCompleteOrder = Boolean(table.openOrderId) && props.canUpdateOrder;
   const canEditReservation = Boolean(reservation) && props.canEditReservation;
   const secondary: ReactNode[] = [];
-  if (canCompleteOrder) {
+  if (props.canReadBill && table.billSummary) {
     secondary.push(
-      <Button
-        key="complete"
-        variant="outline"
-        className="h-11 w-full xl:h-9"
-        disabled={isBusy}
-        onClick={() => void completeOrder.mutateAsync(table.openOrderId!)}
+      <Link
+        key="bill"
+        href={`/billing/${table.billSummary.id}`}
+        className={buttonVariants({ variant: 'outline' })}
       >
-        Complete order
-      </Button>,
+        View bill
+      </Link>,
     );
+    if (table.billSummary.status !== 'CANCELLED') {
+      secondary.push(
+        <Link
+          key="invoice"
+          href={`/billing/${table.billSummary.id}/invoice`}
+          className={buttonVariants({ variant: 'outline' })}
+        >
+          Invoice
+        </Link>,
+      );
+    }
   }
   if (canEditReservation) {
     secondary.push(

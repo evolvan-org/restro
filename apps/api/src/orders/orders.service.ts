@@ -56,6 +56,9 @@ export class OrdersService {
             existingOrder: toOrder(existingOrder),
           });
         }
+        if (table.currentStatus.code === 'NEEDS_CLEANING') {
+          throw new ConflictException('Mark the table available before starting an order');
+        }
         const created = await create({
           createdByUserId: actor.userId,
           reservationId: input.reservationId,
@@ -70,12 +73,12 @@ export class OrdersService {
   }
 
   async complete(actor: Actor, orderId: string): Promise<CompleteOrderResponse> {
-    const order = await this.repository.complete(actor.restaurantId, orderId);
+    const order = await this.repository.findCompletedPaidOrder(actor.restaurantId, orderId);
     if (order) return toOrder(order);
 
     const existing = await this.repository.findById(actor.restaurantId, orderId);
     if (!existing) throw new NotFoundException('Order not found');
-    throw new ConflictException('Only an open or submitted order can be completed');
+    throw new ConflictException('Record a successful bill payment to complete this order');
   }
 
   async kotBoard(actor: Actor, query: KotBoardQuery): Promise<KotBoardResponse> {
