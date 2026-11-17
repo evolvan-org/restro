@@ -478,6 +478,8 @@ model Order {
   bill          Bill?
 
   @@index([restaurantId])
+  @@index([restaurantId, createdAt])
+  @@index([restaurantId, status, completedAt])
   @@index([tableId])
   @@index([reservationId])
   @@index([createdByUserId])
@@ -598,6 +600,7 @@ model Bill {
 
   @@unique([restaurantId, billNumber]) // bill number unique per tenant
   @@index([restaurantId])
+  @@index([restaurantId, status, paidAt])
   @@index([generatedByUserId])
   @@index([status])
   @@map("bills")

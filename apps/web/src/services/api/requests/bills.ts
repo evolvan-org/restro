@@ -34,6 +34,7 @@ import { api } from '@/lib/api';
 import { OrderQueryKey } from '../types/OrderQueryKey';
 import { ReservationQueryKey } from '../types/ReservationQueryKey';
 import { TableQueryKey } from '../types/TableQueryKey';
+import { TODAY_SUMMARY_QUERY_KEY } from './dashboard';
 
 export const BILL_QUERY_KEY = 'bills';
 export const BILL_CANCELLATION_REASONS_QUERY_KEY = 'bill-cancellation-reasons';
@@ -192,6 +193,7 @@ export function useRecordPayment(): UseMutationResult<
         queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] }),
         queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Reservations] }),
         queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+        queryClient.invalidateQueries({ queryKey: [TODAY_SUMMARY_QUERY_KEY] }),
       ]);
     },
   });

@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { BillsModule } from './bills/bills.module';
 import { validateEnv } from './config/env.validation';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     }),
     StatusModule,
     AuthModule,
+    DashboardModule,
     UsersModule,
     RestaurantModule,
     TableModule,

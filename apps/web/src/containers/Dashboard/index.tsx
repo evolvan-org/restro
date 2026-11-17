@@ -14,6 +14,7 @@ import usePersistedState from '@/hooks/usePersistedState';
 
 import FloorBoard from '../FloorBoard';
 import ReportingPane from './ReportingPane';
+import TodaySummary from './TodaySummary';
 
 type DashboardView = 'live' | 'reporting';
 
@@ -21,7 +22,7 @@ const VIEW_STORAGE_KEY = 'rms-dashboard-view';
 const VIEW_ID_BASE = 'dashboard-view';
 const VIEWS: readonly SegmentedOption<DashboardView>[] = [
   { value: 'live', label: 'Live Floor View' },
-  { value: 'reporting', label: 'Reporting' },
+  { value: 'reporting', label: 'Summary' },
 ];
 const VIEW_VALUES: readonly DashboardView[] = VIEWS.map((view) => view.value);
 
@@ -62,7 +63,9 @@ export default function Dashboard(): ReactElement | null {
           aria-labelledby={segmentedTabId(VIEW_ID_BASE, 'reporting')}
           className="min-h-0 flex-1 overflow-y-auto px-6 py-6 xl:px-8"
         >
-          <ReportingPane />
+          <ReportingPane>
+            <TodaySummary />
+          </ReportingPane>
         </div>
       )}
     </div>
