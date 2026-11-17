@@ -1,10 +1,6 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import FloorBoard from '@/containers/FloorBoard';
-
-export const metadata: Metadata = {
-  title: 'Floor Board | Restaurant Management System',
-  description: 'Live view of table availability across the floor.',
-};
-
-export default FloorBoard;
+/** The live floor board now lives on the dashboard (default "Live Floor View"). */
+export default function FloorRedirect(): never {
+  redirect('/dashboard');
+}

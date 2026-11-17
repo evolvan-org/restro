@@ -58,7 +58,7 @@ export default function Billing(): ReactElement | null {
               <span className={styles.actionText}>Refresh</span>
             </Button>
             <Link
-              href="/floor"
+              href="/dashboard"
               className={`${buttonVariants({ variant: 'outline' })} ${styles.actionButton}`}
               aria-label="Floor board"
               title="Floor board"

@@ -9,7 +9,6 @@ import { useForm, useWatch } from 'react-hook-form';
 import { buildStatusColorMap } from '@/components/FloorTile';
 import { getTableAttention } from '@/components/FloorTile/attention';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useReservations } from '@/services/api/requests/reservations';
@@ -41,8 +40,7 @@ function formatAgo(ms: number): string {
 }
 
 export default function FloorBoard(): ReactElement | null {
-  const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
-  const { can } = usePermissions();
+  const { can, isLoading: permissionsLoading } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
   const canReadReservations = can(Permission.RESERVATION_READ);
   const permissions: TilePermissions = {
@@ -100,7 +98,16 @@ export default function FloorBoard(): ReactElement | null {
 
   const showWalkInForm = useShowWalkInFormSidePane();
 
-  if (!isAllowed) return null;
+  if (permissionsLoading) return null;
+  // Embedded in the dashboard (visible to every `dashboard:read` role), so show an in-pane notice
+  // instead of redirecting users who lack `restaurant:read`.
+  if (!canRead) {
+    return (
+      <p className="px-6 py-10 text-center text-sm text-muted-foreground xl:px-8">
+        You don&apos;t have access to the live floor board.
+      </p>
+    );
+  }
 
   const sections = options.data?.sections ?? [];
   const statuses = options.data?.statuses ?? [];
@@ -230,7 +237,7 @@ export default function FloorBoard(): ReactElement | null {
   };
 
   return (
-    <div className="flex h-[calc(100svh-3.5rem)] overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="shrink-0 border-b">
           <FloorHeader
@@ -263,7 +270,7 @@ export default function FloorBoard(): ReactElement | null {
             />
           )}
         </div>
-        <main className="flex-1 overflow-y-auto px-6 py-[18px] xl:px-8">
+        <div className="flex-1 overflow-y-auto px-6 py-[18px] xl:px-8">
           {isReconnecting && rows.length > 0 && (
             <ReconnectingBanner
               lastUpdatedLabel={`Last ${formatAgo(age)}.`}
@@ -272,7 +279,7 @@ export default function FloorBoard(): ReactElement | null {
             />
           )}
           {renderBody()}
-        </main>
+        </div>
       </div>
 
       <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-l bg-neutral-50 p-4 lg:block xl:w-[320px] xl:p-5 dark:bg-neutral-900/40">
