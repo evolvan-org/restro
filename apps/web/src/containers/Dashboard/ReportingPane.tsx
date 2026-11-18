@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 
 type ReportingPaneProps = {
   /**
-   * Report widgets (Stories 2 & 3). When nothing is mounted the pane shows its empty state, which
+   * Report widgets. When nothing is mounted the pane shows its empty state, which
    * keeps this story independent of the report content.
    */
   children?: ReactNode;

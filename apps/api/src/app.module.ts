@@ -8,6 +8,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
+import { ReportsModule } from './reports/reports.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { RestaurantModule } from './restaurant/restaurant.module';
 import { StatusModule } from './status/status.module';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     StatusModule,
     AuthModule,
     DashboardModule,
+    ReportsModule,
     UsersModule,
     RestaurantModule,
     TableModule,

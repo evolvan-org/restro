@@ -237,7 +237,7 @@ export default function FloorBoard(): ReactElement | null {
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex lg:h-full lg:overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="shrink-0 border-b">
           <FloorHeader
@@ -270,7 +270,7 @@ export default function FloorBoard(): ReactElement | null {
             />
           )}
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-[18px] xl:px-8">
+        <div className="flex-1 px-6 py-[18px] lg:overflow-y-auto xl:px-8">
           {isReconnecting && rows.length > 0 && (
             <ReconnectingBanner
               lastUpdatedLabel={`Last ${formatAgo(age)}.`}
