@@ -18,6 +18,7 @@ export * from './restaurant-settings';
 export * from './reservations';
 export * from './menu-categories';
 export * from './stock-items';
+export * from './inventory';
 export * from './menu-items';
 export * from './serving-types';
 export * from './orders';

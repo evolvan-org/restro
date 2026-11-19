@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import type { CategoryType, RecipeRow, ServingType } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import { lockRestaurantInventory } from '../common/database/inventory-lock';
 import { PrismaService } from '../common/database/prisma.service';
+import { StockItemsRepository } from '../stock/stock-items.repository';
 
 const menuItemSelect = {
   id: true,
@@ -41,9 +43,14 @@ export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {
   isActive?: boolean;
 };
 
+export class InactiveRecipeIngredientError extends Error {}
+
 @Injectable()
 export class MenuItemsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stockItems: StockItemsRepository,
+  ) {}
 
   findAll(
     restaurantId: string,
@@ -149,9 +156,12 @@ export class MenuItemsRepository {
 
   /** Creates the item and its recipe in one transaction so a half-written recipe never persists. */
   create(restaurantId: string, item: NewMenuItem, recipe: RecipeRow[]): Promise<MenuItemRecord> {
-    return this.prisma.menuItem.create({
-      data: { restaurantId, ...item, recipeItems: { create: recipe } },
-      select: menuItemSelect,
+    return this.prisma.$transaction(async (tx) => {
+      await this.requireRecipeIngredients(tx, restaurantId, recipe);
+      return tx.menuItem.create({
+        data: { restaurantId, ...item, recipeItems: { create: recipe } },
+        select: menuItemSelect,
+      });
     });
   }
 
@@ -163,6 +173,7 @@ export class MenuItemsRepository {
     recipe?: RecipeRow[],
   ): Promise<MenuItemRecord | null> {
     return this.prisma.$transaction(async (tx) => {
+      if (recipe) await this.requireRecipeIngredients(tx, restaurantId, recipe);
       const { count } = await tx.menuItem.updateMany({
         where: { id, restaurantId },
         // updatedAt keeps `data` non-empty for recipe-only edits (an empty update matches nothing).
@@ -179,6 +190,17 @@ export class MenuItemsRepository {
 
       return tx.menuItem.findFirst({ where: { id, restaurantId }, select: menuItemSelect });
     });
+  }
+
+  private async requireRecipeIngredients(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    recipe: RecipeRow[],
+  ): Promise<void> {
+    await lockRestaurantInventory(tx, restaurantId);
+    const ids = [...new Set(recipe.map(({ stockItemId }) => stockItemId))];
+    const activeIds = await this.stockItems.findActiveIds(restaurantId, ids, tx);
+    if (activeIds.length !== ids.length) throw new InactiveRecipeIngredientError();
   }
 
   /** Sets the explicit target; repeated requests leave the item and its timestamp unchanged. */

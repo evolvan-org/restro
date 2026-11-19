@@ -31,6 +31,7 @@ export const Permission = {
 
   // Stock
   STOCK_READ: 'stock:read',
+  INVENTORY_MANAGE: 'inventory:manage',
 
   // Reservations
   RESERVATION_READ: 'reservation:read',

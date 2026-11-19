@@ -10,7 +10,6 @@ import type {
   MenuItemListQuery,
   MenuItemSearchQuery,
   MenuItemSearchResponse,
-  RecipeRow,
   UpdateMenuItemAvailabilityRequest,
   UpdateMenuItemClassificationRequest,
   UpdateMenuItemPriceRequest,
@@ -19,19 +18,17 @@ import type {
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
-import { StockItemsRepository } from '../stock/stock-items.repository';
-import { type MenuItemRecord, MenuItemsRepository } from './menu-items.repository';
+import {
+  InactiveRecipeIngredientError,
+  type MenuItemRecord,
+  MenuItemsRepository,
+} from './menu-items.repository';
 
 const NAME_IN_USE_MESSAGE = 'A menu item with this name already exists in the category';
 
-// TODO(orders-epic): deduct stock on order confirmation (recipe quantity × ordered quantity).
-// Creating or editing an item only writes the recipe link; it never reads or mutates stock levels.
 @Injectable()
 export class MenuItemsService {
-  constructor(
-    private readonly repository: MenuItemsRepository,
-    private readonly stockItems: StockItemsRepository,
-  ) {}
+  constructor(private readonly repository: MenuItemsRepository) {}
 
   async list(actor: Actor, query: MenuItemListQuery): Promise<MenuItem[]> {
     const items = await this.repository.findAll(
@@ -61,10 +58,11 @@ export class MenuItemsService {
     const { restaurantId } = actor;
     await this.assertCategoryExists(restaurantId, input.categoryId);
     await this.assertNameAvailable(restaurantId, input.categoryId, input.name);
-    await this.assertRecipeStockItemsExist(restaurantId, input.recipe);
 
     const { recipe, ...fields } = input;
-    const created = await this.repository.create(restaurantId, fields, recipe);
+    const created = await this.repository
+      .create(restaurantId, fields, recipe)
+      .catch(translateRecipeError);
     return toMenuItem(created);
   }
 
@@ -81,10 +79,11 @@ export class MenuItemsService {
     if (categoryId !== existing.categoryId || name.toLowerCase() !== existing.name.toLowerCase()) {
       await this.assertNameAvailable(restaurantId, categoryId, name, id);
     }
-    if (input.recipe) await this.assertRecipeStockItemsExist(restaurantId, input.recipe);
 
     const { recipe, ...fields } = input;
-    const updated = await this.repository.update(restaurantId, id, fields, recipe);
+    const updated = await this.repository
+      .update(restaurantId, id, fields, recipe)
+      .catch(translateRecipeError);
     if (!updated) throw new NotFoundException('Menu item not found');
     return toMenuItem(updated);
   }
@@ -158,18 +157,13 @@ export class MenuItemsService {
       throw new ConflictException(NAME_IN_USE_MESSAGE);
     }
   }
+}
 
-  /** Ingredients come only from the restaurant's seeded master; anything else is rejected. */
-  private async assertRecipeStockItemsExist(
-    restaurantId: string,
-    recipe: RecipeRow[],
-  ): Promise<void> {
-    const wanted = [...new Set(recipe.map((row) => row.stockItemId))];
-    const found = new Set(await this.stockItems.findActiveIds(restaurantId, wanted));
-    if (wanted.some((id) => !found.has(id))) {
-      throw new BadRequestException('Recipe contains an ingredient that is not in the stock list');
-    }
+function translateRecipeError(error: unknown): never {
+  if (error instanceof InactiveRecipeIngredientError) {
+    throw new BadRequestException('Recipe contains an ingredient that is not in the stock list');
   }
+  throw error;
 }
 
 function toMenuItem(record: MenuItemRecord): MenuItem {

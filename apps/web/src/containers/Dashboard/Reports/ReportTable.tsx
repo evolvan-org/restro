@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { downloadBlob } from '@/lib/download-blob';
 
 type ReportRow = readonly [string, string, string];
 
@@ -41,14 +42,7 @@ function downloadCsv({ headers, rows, total, filename }: ReportTableData): void 
         .join(','),
     )
     .join('\r\n');
-  const url = URL.createObjectURL(new Blob([`${csv}\r\n`], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(new Blob([`${csv}\r\n`], { type: 'text/csv;charset=utf-8' }), filename);
 }
 
 export default function ReportTable({
