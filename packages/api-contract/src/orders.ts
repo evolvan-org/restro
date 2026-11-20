@@ -162,7 +162,13 @@ export type FireOrderResponse = z.infer<typeof fireOrderResponseSchema>;
 export const ACTIVE_KOT_STATUSES = ['PENDING', 'PREPARING', 'READY'] as const satisfies KotStatus[];
 
 export const kotQueueItemSchema = kotSchema.extend({
-  table: z.object({ id: z.string().uuid(), tableNumber: z.string() }).strict(),
+  table: z
+    .object({
+      id: z.string().uuid(),
+      tableNumber: z.string(),
+      section: z.object({ id: z.string().uuid(), name: z.string() }).strict(),
+    })
+    .strict(),
 });
 
 /** A complete active station snapshot, without pagination. */

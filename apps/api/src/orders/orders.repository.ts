@@ -62,7 +62,17 @@ const kotSelect = {
 
 const kotQueueSelect = {
   ...kotSelect,
-  order: { select: { table: { select: { id: true, tableNumber: true } } } },
+  order: {
+    select: {
+      table: {
+        select: {
+          id: true,
+          tableNumber: true,
+          section: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
 } satisfies Prisma.KotSelect;
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
