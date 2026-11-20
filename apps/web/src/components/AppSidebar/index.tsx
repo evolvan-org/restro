@@ -78,45 +78,48 @@ function SidebarNav({
 
   return (
     <nav aria-label="Primary" className="flex flex-1 flex-col overflow-y-auto px-3 py-2">
-      {visibleGroups.map((group, groupIdx) => (
-        <div key={group.label} className={cn(groupIdx > 0 && 'mt-5')}>
-          {collapsed ? (
-            groupIdx > 0 ? (
-              <div className="my-2 mx-1 border-t border-sidebar-border/60" aria-hidden />
-            ) : null
-          ) : (
-            <div className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60 select-none">
-              {group.label}
+      {visibleGroups.map((group, groupIdx) => {
+        const groupKey = group.label ?? `group-${groupIdx}`;
+        return (
+          <div key={groupKey} className={cn(groupIdx > 0 && (group.label ? 'mt-5' : 'mt-1'))}>
+            {collapsed ? (
+              groupIdx > 0 ? (
+                <div className="my-2 mx-1 border-t border-sidebar-border/60" aria-hidden />
+              ) : null
+            ) : group.label ? (
+              <div className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60 select-none">
+                {group.label}
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-1">
+              {group.items.map(({ label, icon: Icon, href, activePaths }) => {
+                const active =
+                  isActiveRoute(pathname, href) ||
+                  Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
+                    title={collapsed ? label : undefined}
+                    className={cn(
+                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
+                      collapsed && 'justify-center px-0',
+                      active
+                        ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                    )}
+                  >
+                    <Icon className="size-5 shrink-0" aria-hidden />
+                    <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+                  </Link>
+                );
+              })}
             </div>
-          )}
-          <div className="flex flex-col gap-1">
-            {group.items.map(({ label, icon: Icon, href, activePaths }) => {
-              const active =
-                isActiveRoute(pathname, href) ||
-                Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={onNavigate}
-                  aria-current={active ? 'page' : undefined}
-                  title={collapsed ? label : undefined}
-                  className={cn(
-                    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
-                    collapsed && 'justify-center px-0',
-                    active
-                      ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                  )}
-                >
-                  <Icon className="size-5 shrink-0" aria-hidden />
-                  <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
-                </Link>
-              );
-            })}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }
