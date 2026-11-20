@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 
-import KotBoard from '@/components/KotBoard';
+import BarDisplay from '@/components/BarDisplay';
 
 export default function BarPage(): ReactElement {
-  return <KotBoard destination="BAR" />;
+  return <BarDisplay />;
 }
