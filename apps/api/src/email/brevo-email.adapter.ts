@@ -5,8 +5,10 @@ import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { type EmailAdapter, EmailDeliveryError, type ProviderEmail } from './email.types';
 
 const BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email';
-const REQUEST_TIMEOUT_MS = 10_000;
-const MAX_ATTEMPTS = 3;
+// Sends run inside user-facing requests: keep the worst case (2 x 5s plus one backoff) well under
+// typical 30s proxy timeouts, so a slow provider can't turn a success into a gateway error.
+const REQUEST_TIMEOUT_MS = 5_000;
+const MAX_ATTEMPTS = 2;
 
 @Injectable()
 export class BrevoEmailAdapter implements EmailAdapter {
