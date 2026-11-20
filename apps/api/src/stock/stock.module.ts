@@ -13,6 +13,6 @@ import { StockItemsService } from './stock-items.service';
   imports: [DatabaseModule, AuthorizationModule],
   controllers: [StockItemsController, InventoryController],
   providers: [StockItemsService, StockItemsRepository, InventoryService, InventoryRepository],
-  exports: [StockItemsRepository],
+  exports: [StockItemsRepository, InventoryService],
 })
 export class StockModule {}

@@ -7,6 +7,7 @@ import { validateEnv } from './config/env.validation';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrdersModule } from './orders/orders.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReservationsModule } from './reservations/reservations.module';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     BillsModule,
     StockModule,
     ReservationsModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}
