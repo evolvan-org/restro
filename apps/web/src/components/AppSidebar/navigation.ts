@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   type LucideIcon,
   PackageOpen,
+  Receipt,
   Rows3,
   Soup,
   Store,
@@ -64,6 +65,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { label: 'Tables', icon: Table2, href: '/tables', permission: Permission.RESTAURANT_READ },
   { label: 'Orders', icon: ClipboardList, permission: Permission.ORDER_READ },
+  {
+    label: 'Billing',
+    icon: Receipt,
+    href: '/billing',
+    permission: Permission.BILL_READ,
+  },
   {
     label: 'Kitchen display',
     icon: ChefHat,
