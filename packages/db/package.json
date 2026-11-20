@@ -17,6 +17,7 @@
     "generate": "prisma generate",
     "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "migrate:reset": "dotenv -e ../../.env -- prisma migrate reset",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "format": "prisma format",
     "validate": "dotenv -e ../../.env -- prisma validate",
@@ -40,6 +41,6 @@
     "typescript": "^5.6.2"
   },
   "prisma": {
-    "seed": "yarn seed"
+    "seed": "yarn seed:restaurant"
   }
 }

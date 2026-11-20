@@ -1,10 +1,6 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import Tables from '@/containers/Tables';
-
-export const metadata: Metadata = {
-  title: 'Tables | Restaurant Management System',
-  description: 'View and manage restaurant tables.',
-};
-
-export default Tables;
+/** Tables setup is consolidated into restaurant settings. */
+export default function TablesRedirect(): never {
+  redirect('/restaurant/settings/tables');
+}

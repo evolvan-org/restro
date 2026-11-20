@@ -1,10 +1,6 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import TableStatuses from '@/containers/TableStatuses';
-
-export const metadata: Metadata = {
-  title: 'Table Statuses | Restaurant Management System',
-  description: 'Configure table statuses for your restaurant.',
-};
-
-export default TableStatuses;
+/** Table statuses setup is consolidated into restaurant settings. */
+export default function TableStatusesRedirect(): never {
+  redirect('/restaurant/settings/table-statuses');
+}

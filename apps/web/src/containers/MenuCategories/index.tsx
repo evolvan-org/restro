@@ -25,7 +25,11 @@ import {
 import { useShowMenuCategoryStatusModal } from '@/store/hooks/modal';
 import { useShowMenuCategoryFormSidePane } from '@/store/hooks/sidepane';
 
-export default function MenuCategories(): ReactElement | null {
+export default function MenuCategories({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.MENU_READ]);
   const { can } = usePermissions();
   const canRead = can(Permission.MENU_READ);
@@ -56,25 +60,44 @@ export default function MenuCategories(): ReactElement | null {
     }
   };
 
+  const Container = embedded ? 'div' : 'main';
+
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div className="max-w-2xl">
-          <p className="text-sm font-medium text-muted-foreground">Menu</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Menu categories</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {canWrite
-              ? 'Create and arrange the categories that group your menu items.'
-              : 'The active and inactive menu categories configured for your restaurant.'}
-          </p>
+    <Container className={embedded ? 'w-full' : 'mx-auto w-full max-w-6xl px-6 py-10 sm:py-14'}>
+      {embedded ? (
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Menu categories</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create and arrange the categories that group your menu items.
+            </p>
+          </div>
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add category
+            </Button>
+          )}
         </div>
-        {canWrite && (
-          <Button type="button" onClick={() => showForm()}>
-            <Plus aria-hidden />
-            Add category
-          </Button>
-        )}
-      </div>
+      ) : (
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-sm font-medium text-muted-foreground">Menu</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Menu categories</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {canWrite
+                ? 'Create and arrange the categories that group your menu items.'
+                : 'The active and inactive menu categories configured for your restaurant.'}
+            </p>
+          </div>
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add category
+            </Button>
+          )}
+        </div>
+      )}
 
       {categories.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
@@ -179,6 +202,6 @@ export default function MenuCategories(): ReactElement | null {
           </Table>
         </div>
       )}
-    </main>
+    </Container>
   );
 }

@@ -2,12 +2,23 @@
 
 import { LogOut, Menu, User } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ReactElement } from 'react';
 
 import NotificationBell from '@/components/NotificationBell';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useLogout } from '@/store/hooks/auth';
+
+const SETTINGS_TAB_LABELS: Record<string, string> = {
+  general: 'General',
+  team: 'Team',
+  'dining-sections': 'Dining sections',
+  tables: 'Tables',
+  'table-statuses': 'Table statuses',
+  'menu-categories': 'Menu categories',
+  'tax-discounts': 'Tax & discounts',
+  'cancellation-reasons': 'Cancellation reasons',
+};
 
 /**
  * Top bar of the app shell. Primary navigation lives in the sidebar; the header carries the mobile
@@ -16,12 +27,20 @@ import { useLogout } from '@/store/hooks/auth';
  */
 export default function AppHeader({ onMenuClick }: { onMenuClick: () => void }): ReactElement {
   const router = useRouter();
+  const pathname = usePathname();
   const logout = useLogout();
 
   const handleLogout = (): void => {
     logout();
     router.replace('/auth/login');
   };
+
+  const isRestaurantSettings = pathname.startsWith('/restaurant/settings');
+  const settingsSegment = isRestaurantSettings
+    ? pathname.replace('/restaurant/settings', '').replace(/^\//, '').split('/')[0]
+    : '';
+  const currentSettingsTab =
+    (settingsSegment ? SETTINGS_TAB_LABELS[settingsSegment] : undefined) ?? 'General';
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4 sm:px-6">
@@ -35,19 +54,36 @@ export default function AppHeader({ onMenuClick }: { onMenuClick: () => void }):
         <Menu aria-hidden />
       </Button>
 
-      {/* Page-title slot — pages can fill this in a later change. */}
-      <div className="flex-1" />
+      {/* Page-title slot — renders breadcrumb for settings, or empty slot */}
+      {isRestaurantSettings ? (
+        <div className="flex flex-1 items-center gap-2 text-sm">
+          <Link
+            href="/restaurant/settings"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Restaurant settings
+          </Link>
+          <span className="text-muted-foreground/60">/</span>
+          <span className="font-semibold text-foreground">{currentSettingsTab}</span>
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       <nav aria-label="Account" className="flex items-center gap-1">
         <NotificationBell />
-        <Link href="/profile" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-          <User aria-hidden />
-          <span className="hidden sm:inline">Profile</span>
-        </Link>
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          <LogOut aria-hidden />
-          <span className="hidden sm:inline">Log out</span>
-        </Button>
+        {!isRestaurantSettings && (
+          <>
+            <Link href="/profile" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+              <User aria-hidden />
+              <span className="hidden sm:inline">Profile</span>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut aria-hidden />
+              <span className="hidden sm:inline">Log out</span>
+            </Button>
+          </>
+        )}
       </nav>
     </header>
   );

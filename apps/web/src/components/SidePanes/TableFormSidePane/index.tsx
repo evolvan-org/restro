@@ -66,7 +66,7 @@ export default function TableFormSidePane({
       captainUserId: table?.captainUserId ?? null,
     },
   });
-  const { errors } = form.formState;
+  const { errors, isDirty } = form.formState;
 
   const onSubmit = form.handleSubmit(async (values) => {
     let detailsSaved = false;
@@ -279,7 +279,11 @@ export default function TableFormSidePane({
       </form>
 
       <SheetFooter>
-        <Button type="submit" form={FORM_ID} disabled={isSaving || options.isError}>
+        <Button
+          type="submit"
+          form={FORM_ID}
+          disabled={isSaving || options.isError || (isEdit && !isDirty)}
+        >
           {isSaving ? 'Saving...' : isEdit ? 'Save changes' : 'Create table'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
