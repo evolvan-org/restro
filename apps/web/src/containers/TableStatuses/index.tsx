@@ -20,7 +20,11 @@ import { useTableStatuses } from '@/services/api/requests/table-statuses';
 import { useShowTableStatusActionModal } from '@/store/hooks/modal';
 import { useShowTableStatusFormSidePane } from '@/store/hooks/sidepane';
 
-export default function TableStatuses(): ReactElement | null {
+export default function TableStatuses({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
   const { can } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
@@ -33,25 +37,44 @@ export default function TableStatuses(): ReactElement | null {
 
   const rows = statuses.data ?? [];
 
+  const Container = embedded ? 'div' : 'main';
+
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div className="max-w-2xl">
-          <p className="text-sm font-medium text-muted-foreground">Restaurant settings</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Table statuses</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {canWrite
-              ? 'Configure the statuses your team uses to track table availability.'
-              : 'Statuses available for tables in your restaurant.'}
-          </p>
+    <Container className={embedded ? 'w-full' : 'mx-auto w-full max-w-6xl px-6 py-10 sm:py-14'}>
+      {embedded ? (
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Table statuses</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure the statuses your team uses to track table availability.
+            </p>
+          </div>
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add status
+            </Button>
+          )}
         </div>
-        {canWrite && (
-          <Button type="button" onClick={() => showForm()}>
-            <Plus aria-hidden />
-            Add status
-          </Button>
-        )}
-      </div>
+      ) : (
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-sm font-medium text-muted-foreground">Restaurant settings</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Table statuses</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {canWrite
+                ? 'Configure the statuses your team uses to track table availability.'
+                : 'Statuses available for tables in your restaurant.'}
+            </p>
+          </div>
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add status
+            </Button>
+          )}
+        </div>
+      )}
 
       {statuses.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
@@ -151,6 +174,6 @@ export default function TableStatuses(): ReactElement | null {
           </Table>
         </div>
       )}
-    </main>
+    </Container>
   );
 }

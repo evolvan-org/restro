@@ -50,7 +50,11 @@ const STATUS_BADGES: Record<
   SUSPENDED: { label: 'Suspended', variant: 'destructive' },
 };
 
-export default function Staff(): ReactElement | null {
+export default function Staff({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.USER_READ]);
   const { data: profile } = useProfile();
   const { can } = usePermissions();
@@ -101,30 +105,58 @@ export default function Staff(): ReactElement | null {
   const rows = staff.data?.data ?? [];
   const hasFilters = Boolean(debouncedSearch || status);
 
+  const Container = embedded ? 'div' : 'main';
+
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div className="max-w-2xl">
-          <p className="text-sm font-medium text-muted-foreground">Administration</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Staff accounts</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {canWrite
-              ? 'Create accounts for your team, assign roles, and control who can log in.'
-              : 'Everyone with an account in your restaurant.'}
-          </p>
+    <Container className={embedded ? 'w-full' : 'mx-auto w-full max-w-6xl px-6 py-10 sm:py-14'}>
+      {embedded ? (
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Team</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create accounts for your team, assign roles, and control access.
+            </p>
+          </div>
+          {canWrite && (
+            <Button
+              type="button"
+              disabled={!profile?.emailVerifiedAt}
+              title={
+                profile?.emailVerifiedAt ? undefined : 'Verify your email before inviting staff'
+              }
+              onClick={() => showStaffForm()}
+            >
+              <Plus aria-hidden />
+              Add staff
+            </Button>
+          )}
         </div>
-        {canWrite && (
-          <Button
-            type="button"
-            disabled={!profile?.emailVerifiedAt}
-            title={profile?.emailVerifiedAt ? undefined : 'Verify your email before inviting staff'}
-            onClick={() => showStaffForm()}
-          >
-            <Plus aria-hidden />
-            Add staff
-          </Button>
-        )}
-      </div>
+      ) : (
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-sm font-medium text-muted-foreground">Administration</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Staff accounts</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {canWrite
+                ? 'Create accounts for your team, assign roles, and control who can log in.'
+                : 'Everyone with an account in your restaurant.'}
+            </p>
+          </div>
+          {canWrite && (
+            <Button
+              type="button"
+              disabled={!profile?.emailVerifiedAt}
+              title={
+                profile?.emailVerifiedAt ? undefined : 'Verify your email before inviting staff'
+              }
+              onClick={() => showStaffForm()}
+            >
+              <Plus aria-hidden />
+              Add staff
+            </Button>
+          )}
+        </div>
+      )}
 
       <form
         aria-label="Staff filters"
@@ -305,6 +337,6 @@ export default function Staff(): ReactElement | null {
           </div>
         </div>
       )}
-    </main>
+    </Container>
   );
 }

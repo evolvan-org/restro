@@ -24,7 +24,11 @@ import {
 import { useShowDiningSectionActionModal } from '@/store/hooks/modal';
 import { useShowDiningSectionFormSidePane } from '@/store/hooks/sidepane';
 
-export default function DiningSections(): ReactElement | null {
+export default function DiningSections({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
   const { can } = usePermissions();
   const canRead = can(Permission.RESTAURANT_READ);
@@ -55,25 +59,44 @@ export default function DiningSections(): ReactElement | null {
     }
   };
 
+  const Container = embedded ? 'div' : 'main';
+
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div className="max-w-2xl">
-          <p className="text-sm font-medium text-muted-foreground">Restaurant configuration</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Dining sections</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {canWrite
-              ? 'Create and arrange the areas used to organize your restaurant tables.'
-              : 'The active and inactive areas configured for your restaurant.'}
-          </p>
+    <Container className={embedded ? 'w-full' : 'mx-auto w-full max-w-6xl px-6 py-10 sm:py-14'}>
+      {embedded ? (
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Dining sections</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create and arrange the areas used to organize your restaurant tables.
+            </p>
+          </div>
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add section
+            </Button>
+          )}
         </div>
-        {canWrite && (
-          <Button type="button" onClick={() => showForm()}>
-            <Plus aria-hidden />
-            Add section
-          </Button>
-        )}
-      </div>
+      ) : (
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-sm font-medium text-muted-foreground">Restaurant configuration</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Dining sections</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {canWrite
+                ? 'Create and arrange the areas used to organize your restaurant tables.'
+                : 'The active and inactive areas configured for your restaurant.'}
+            </p>
+          </div>
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add section
+            </Button>
+          )}
+        </div>
+      )}
 
       {sections.isError ? (
         <div className="space-y-3 rounded-md border px-4 py-6 text-center">
@@ -180,6 +203,6 @@ export default function DiningSections(): ReactElement | null {
           </Table>
         </div>
       )}
-    </main>
+    </Container>
   );
 }
