@@ -56,7 +56,7 @@ export default function MenuCategoryFormSidePane({
       ? { name: category.name, categoryType: category.categoryType, sortOrder: category.sortOrder }
       : { name: '', categoryType: 'FOOD' },
   });
-  const { errors } = form.formState;
+  const { errors, isDirty } = form.formState;
   const sortOrderField = form.register('sortOrder', {
     setValueAs: (value: string) => (value === '' ? undefined : Number(value)),
   });
@@ -145,7 +145,7 @@ export default function MenuCategoryFormSidePane({
       </form>
 
       <SheetFooter>
-        <Button type="submit" form={FORM_ID} disabled={isSaving}>
+        <Button type="submit" form={FORM_ID} disabled={isSaving || (Boolean(category) && !isDirty)}>
           {isSaving ? 'Saving…' : category ? 'Save changes' : 'Create category'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>

@@ -1,10 +1,6 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import DiningSections from '@/containers/DiningSections';
-
-export const metadata: Metadata = {
-  title: 'Dining Sections | Restaurant Management System',
-  description: 'View and manage the dining sections for your restaurant.',
-};
-
-export default DiningSections;
+/** Dining sections setup is consolidated into restaurant settings. */
+export default function DiningSectionsRedirect(): never {
+  redirect('/restaurant/settings/dining-sections');
+}

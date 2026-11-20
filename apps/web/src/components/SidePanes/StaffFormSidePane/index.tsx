@@ -63,7 +63,7 @@ export default function StaffFormSidePane({
       roleId: account?.role.id ?? '',
     },
   });
-  const { errors } = form.formState;
+  const { errors, isDirty } = form.formState;
 
   useEffect(() => {
     if (isUpdated) hideSidePane();
@@ -196,7 +196,7 @@ export default function StaffFormSidePane({
       </form>
 
       <SheetFooter>
-        <Button type="submit" form={FORM_ID} disabled={isSaving}>
+        <Button type="submit" form={FORM_ID} disabled={isSaving || (isEdit && !isDirty)}>
           {isSaving ? 'Saving…' : isEdit ? 'Save changes' : 'Create account'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>

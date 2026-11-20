@@ -55,7 +55,13 @@ function useTimezoneOptions(selected: string): string[] {
   );
 }
 
-export default function RestaurantSettings(): ReactElement {
+export default function RestaurantSettings({
+  view = 'all',
+  embedded = false,
+}: {
+  view?: 'general' | 'tax' | 'all';
+  embedded?: boolean;
+} = {}): ReactElement {
   const settings = useRestaurantSettings();
   const updateSettings = useUpdateRestaurantSettings();
   const { can } = usePermissions();
@@ -74,7 +80,7 @@ export default function RestaurantSettings(): ReactElement {
       maxDiscountPercent: 20,
     },
   });
-  const { errors } = form.formState;
+  const { errors, isDirty } = form.formState;
 
   const currencyOptions = useCurrencyOptions(settings.data?.currency ?? '');
   const timezoneOptions = useTimezoneOptions(settings.data?.timezone ?? '');
@@ -88,6 +94,7 @@ export default function RestaurantSettings(): ReactElement {
   const submit = form.handleSubmit(async (values) => {
     try {
       await updateSettings.mutateAsync(values);
+      form.reset(values);
     } catch {
       // The request hook reports API failures; retain the settings form.
     }
@@ -95,7 +102,13 @@ export default function RestaurantSettings(): ReactElement {
 
   if (settings.isPending) {
     return (
-      <div className="mx-auto flex max-w-6xl items-center justify-center px-6 py-24">
+      <div
+        className={
+          embedded
+            ? 'flex items-center justify-center py-20'
+            : 'mx-auto flex max-w-6xl items-center justify-center px-6 py-24'
+        }
+      >
         <p className="text-sm text-muted-foreground">Loading restaurant settings…</p>
       </div>
     );
@@ -103,7 +116,13 @@ export default function RestaurantSettings(): ReactElement {
 
   if (settings.isError) {
     return (
-      <div className="mx-auto flex max-w-6xl items-center justify-center px-6 py-24">
+      <div
+        className={
+          embedded
+            ? 'flex items-center justify-center py-20'
+            : 'mx-auto flex max-w-6xl items-center justify-center px-6 py-24'
+        }
+      >
         <div className="space-y-4 text-center">
           <p role="alert" className="text-sm text-destructive">
             {getApiErrorMessage(settings.error, 'Unable to load the restaurant settings.')}
@@ -116,150 +135,183 @@ export default function RestaurantSettings(): ReactElement {
     );
   }
 
+  const showGeneral = view === 'all' || view === 'general';
+  const showTax = view === 'all' || view === 'tax';
+
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <div className="mb-8">
-        <p className="text-sm font-medium text-muted-foreground">Restaurant</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Restaurant settings</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Manage Basic Restaurant Settings</p>
-      </div>
+    <div className={embedded ? 'w-full' : 'mx-auto w-full max-w-6xl px-6 py-10 sm:py-14'}>
+      {embedded ? (
+        <div className="mb-6">
+          <h2 className="text-xl font-bold tracking-tight">
+            {view === 'tax' ? 'Tax & discounts' : 'General settings'}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {view === 'tax'
+              ? 'Configure GST details, default tax rate, and maximum discount limits.'
+              : 'Manage your restaurant identity, regional options, and address.'}
+          </p>
+        </div>
+      ) : (
+        <div className="mb-8">
+          <p className="text-sm font-medium text-muted-foreground">Restaurant</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Restaurant settings</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Manage Basic Restaurant Settings</p>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Store aria-hidden />
-            Basic settings
+            {view === 'tax' ? 'Tax & discount rules' : 'Basic settings'}
           </CardTitle>
           <CardDescription>
             {canEdit
-              ? 'Update your restaurant identity, regional and tax settings.'
+              ? view === 'tax'
+                ? 'Update tax rate and discount ceiling rules.'
+                : 'Update your restaurant identity, regional and address settings.'
               : 'You can view these settings but only a manager or owner can change them.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} noValidate>
             <FieldGroup>
-              <Field data-invalid={Boolean(errors.name)}>
-                <FieldLabel htmlFor="restaurant-name">Restaurant name</FieldLabel>
-                <Input
-                  id="restaurant-name"
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.name)}
-                  {...form.register('name')}
-                />
-                <FieldError>{errors.name?.message}</FieldError>
-              </Field>
+              {showGeneral && (
+                <>
+                  <Field data-invalid={Boolean(errors.name)}>
+                    <FieldLabel htmlFor="restaurant-name">Restaurant name</FieldLabel>
+                    <Input
+                      id="restaurant-name"
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.name)}
+                      {...form.register('name')}
+                    />
+                    <FieldError>{errors.name?.message}</FieldError>
+                  </Field>
 
-              <Field data-invalid={Boolean(errors.currency)}>
-                <FieldLabel htmlFor="restaurant-currency">Currency</FieldLabel>
-                <NativeSelect
-                  id="restaurant-currency"
-                  className="w-full"
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.currency)}
-                  {...form.register('currency')}
-                >
-                  {currencyOptions.map(({ code, label }) => (
-                    <NativeSelectOption key={code} value={code}>
-                      {label}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <FieldError>{errors.currency?.message}</FieldError>
-              </Field>
+                  <Field data-invalid={Boolean(errors.currency)}>
+                    <FieldLabel htmlFor="restaurant-currency">Currency</FieldLabel>
+                    <NativeSelect
+                      id="restaurant-currency"
+                      className="w-full"
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.currency)}
+                      {...form.register('currency')}
+                    >
+                      {currencyOptions.map(({ code, label }) => (
+                        <NativeSelectOption key={code} value={code}>
+                          {label}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    <FieldError>{errors.currency?.message}</FieldError>
+                  </Field>
 
-              <Field data-invalid={Boolean(errors.timezone)}>
-                <FieldLabel htmlFor="restaurant-timezone">Timezone</FieldLabel>
-                <NativeSelect
-                  id="restaurant-timezone"
-                  className="w-full"
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.timezone)}
-                  {...form.register('timezone')}
-                >
-                  {timezoneOptions.map((timezone) => (
-                    <NativeSelectOption key={timezone} value={timezone}>
-                      {timezone}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <FieldError>{errors.timezone?.message}</FieldError>
-              </Field>
+                  <Field data-invalid={Boolean(errors.timezone)}>
+                    <FieldLabel htmlFor="restaurant-timezone">Timezone</FieldLabel>
+                    <NativeSelect
+                      id="restaurant-timezone"
+                      className="w-full"
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.timezone)}
+                      {...form.register('timezone')}
+                    >
+                      {timezoneOptions.map((timezone) => (
+                        <NativeSelectOption key={timezone} value={timezone}>
+                          {timezone}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    <FieldError>{errors.timezone?.message}</FieldError>
+                  </Field>
 
-              <Field data-invalid={Boolean(errors.gstNumber)}>
-                <FieldLabel htmlFor="restaurant-gst-number">GST number</FieldLabel>
-                <Input
-                  id="restaurant-gst-number"
-                  maxLength={GST_NUMBER_MAX_LENGTH}
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.gstNumber)}
-                  {...form.register('gstNumber')}
-                />
-                <FieldDescription>Optional. Leave empty to clear it.</FieldDescription>
-                <FieldError>{errors.gstNumber?.message}</FieldError>
-              </Field>
+                  <Field data-invalid={Boolean(errors.address)}>
+                    <FieldLabel htmlFor="restaurant-address">
+                      Restaurant address (optional)
+                    </FieldLabel>
+                    <Input
+                      id="restaurant-address"
+                      maxLength={500}
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.address)}
+                      {...form.register('address')}
+                    />
+                    <FieldError>{errors.address?.message}</FieldError>
+                  </Field>
+                </>
+              )}
 
-              <Field data-invalid={Boolean(errors.defaultGstRate)}>
-                <FieldLabel htmlFor="restaurant-gst-rate">Default GST rate (%)</FieldLabel>
-                <Input
-                  id="restaurant-gst-rate"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min={GST_RATE_MIN}
-                  max={GST_RATE_MAX}
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.defaultGstRate)}
-                  {...form.register('defaultGstRate', { valueAsNumber: true })}
-                />
-                <FieldDescription>
-                  Applied to bills by default. Between {GST_RATE_MIN} and {GST_RATE_MAX}, up to 2
-                  decimal places.
-                </FieldDescription>
-                <FieldError>{errors.defaultGstRate?.message}</FieldError>
-              </Field>
+              {showTax && (
+                <>
+                  <Field data-invalid={Boolean(errors.gstNumber)}>
+                    <FieldLabel htmlFor="restaurant-gst-number">GST number</FieldLabel>
+                    <Input
+                      id="restaurant-gst-number"
+                      maxLength={GST_NUMBER_MAX_LENGTH}
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.gstNumber)}
+                      {...form.register('gstNumber')}
+                    />
+                    <FieldDescription>Optional. Leave empty to clear it.</FieldDescription>
+                    <FieldError>{errors.gstNumber?.message}</FieldError>
+                  </Field>
 
-              <Field data-invalid={Boolean(errors.address)}>
-                <FieldLabel htmlFor="restaurant-address">Restaurant address (optional)</FieldLabel>
-                <Input
-                  id="restaurant-address"
-                  maxLength={500}
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.address)}
-                  {...form.register('address')}
-                />
-                <FieldError>{errors.address?.message}</FieldError>
-              </Field>
-              <Field data-invalid={Boolean(errors.maxDiscountPercent)}>
-                <FieldLabel htmlFor="restaurant-discount-cap">Maximum bill discount (%)</FieldLabel>
-                <Input
-                  id="restaurant-discount-cap"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  max={100}
-                  step="0.01"
-                  disabled={!canEdit}
-                  aria-invalid={Boolean(errors.maxDiscountPercent)}
-                  {...form.register('maxDiscountPercent', { valueAsNumber: true })}
-                />
-                <FieldDescription>
-                  Maximum discount as a percentage of subtotal. Applies to amount and percentage
-                  discounts.
-                </FieldDescription>
-                <FieldError>{errors.maxDiscountPercent?.message}</FieldError>
-              </Field>
+                  <Field data-invalid={Boolean(errors.defaultGstRate)}>
+                    <FieldLabel htmlFor="restaurant-gst-rate">Default GST rate (%)</FieldLabel>
+                    <Input
+                      id="restaurant-gst-rate"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min={GST_RATE_MIN}
+                      max={GST_RATE_MAX}
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.defaultGstRate)}
+                      {...form.register('defaultGstRate', { valueAsNumber: true })}
+                    />
+                    <FieldDescription>
+                      Applied to bills by default. Between {GST_RATE_MIN} and {GST_RATE_MAX}, up to
+                      2 decimal places.
+                    </FieldDescription>
+                    <FieldError>{errors.defaultGstRate?.message}</FieldError>
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.maxDiscountPercent)}>
+                    <FieldLabel htmlFor="restaurant-discount-cap">
+                      Maximum bill discount (%)
+                    </FieldLabel>
+                    <Input
+                      id="restaurant-discount-cap"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      disabled={!canEdit}
+                      aria-invalid={Boolean(errors.maxDiscountPercent)}
+                      {...form.register('maxDiscountPercent', { valueAsNumber: true })}
+                    />
+                    <FieldDescription>
+                      Maximum discount as a percentage of subtotal. Applies to amount and percentage
+                      discounts.
+                    </FieldDescription>
+                    <FieldError>{errors.maxDiscountPercent?.message}</FieldError>
+                  </Field>
+                </>
+              )}
 
               {canEdit && (
-                <Button type="submit" disabled={updateSettings.isPending}>
-                  {updateSettings.isPending ? 'Saving…' : 'Save changes'}
-                </Button>
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" disabled={!isDirty || updateSettings.isPending}>
+                    {updateSettings.isPending ? 'Saving…' : 'Save changes'}
+                  </Button>
+                </div>
               )}
             </FieldGroup>
           </form>
         </CardContent>
       </Card>
-      {canRead && <BillCancellationReasons canEdit={canEdit} />}
+      {view === 'all' && canRead && <BillCancellationReasons canEdit={canEdit} />}
     </div>
   );
 }

@@ -1,10 +1,6 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import MenuCategories from '@/containers/MenuCategories';
-
-export const metadata: Metadata = {
-  title: 'Menu Categories | Restaurant Management System',
-  description: 'View and manage the menu categories for your restaurant.',
-};
-
-export default MenuCategories;
+/** Menu categories setup is consolidated into restaurant settings. */
+export default function MenuCategoriesRedirect(): never {
+  redirect('/restaurant/settings/menu-categories');
+}

@@ -1,10 +1,6 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import Staff from '@/containers/Staff';
-
-export const metadata: Metadata = {
-  title: 'Staff Accounts | Restaurant Management System',
-  description: 'View and manage staff accounts for your restaurant.',
-};
-
-export default Staff;
+/** Staff setup is consolidated into restaurant settings. */
+export default function StaffRedirect(): never {
+  redirect('/restaurant/settings/team');
+}
