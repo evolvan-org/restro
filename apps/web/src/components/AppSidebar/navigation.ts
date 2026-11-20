@@ -1,18 +1,14 @@
 import { Permission } from '@rms/permissions';
 import {
+  Box,
   CalendarCheck,
   ChefHat,
   ClipboardList,
   LayoutDashboard,
+  LayoutGrid,
   type LucideIcon,
-  PackageOpen,
   Receipt,
-  Rows3,
   Soup,
-  Store,
-  Table2,
-  Users,
-  UtensilsCrossed,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -26,74 +22,77 @@ export type NavItem = {
   permission?: Permission;
 };
 
+export type NavGroup = {
+  label: string;
+  items: readonly NavItem[];
+};
+
 /**
- * Primary module navigation, in order of most to least commonly used. The full roadmap lives here;
- * an item appears in the sidebar only once it has an `href` (its page exists) and the role holds its
- * `permission`. Ship a module → give its item an `href`.
+ * Primary navigation grouped by domain ("SERVICE" and "MANAGE").
+ * An item appears only when its module has an `href` and the role holds its `permission`.
  */
-export const NAV_ITEMS: readonly NavItem[] = [
+export const NAV_GROUPS: readonly NavGroup[] = [
   {
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-    href: '/dashboard',
-    permission: Permission.DASHBOARD_READ,
-  },
-  { label: 'Staff', icon: Users, href: '/staff', permission: Permission.USER_READ },
-  {
-    label: 'Dining sections',
-    icon: Store,
-    href: '/dining-sections',
-    permission: Permission.RESTAURANT_READ,
-  },
-  {
-    label: 'Menu categories',
-    icon: UtensilsCrossed,
-    href: '/menu/categories',
-    permission: Permission.MENU_READ,
-  },
-  {
-    label: 'Menu items',
-    icon: Soup,
-    href: '/menu/items',
-    permission: Permission.MENU_READ,
-  },
-  {
-    label: 'Inventory',
-    icon: PackageOpen,
-    href: '/inventory',
-    permission: Permission.INVENTORY_MANAGE,
-  },
-  { label: 'Tables', icon: Table2, href: '/tables', permission: Permission.RESTAURANT_READ },
-  { label: 'Orders', icon: ClipboardList, permission: Permission.ORDER_READ },
-  {
-    label: 'Billing',
-    icon: Receipt,
-    href: '/billing',
-    permission: Permission.BILL_READ,
-  },
-  {
-    label: 'Kitchen display',
-    icon: ChefHat,
-    href: '/kitchen',
-    activePaths: ['/bar'],
-    permission: Permission.KOT_READ,
+    label: 'SERVICE',
+    items: [
+      {
+        label: 'Dashboard',
+        icon: LayoutDashboard,
+        href: '/dashboard',
+        permission: Permission.DASHBOARD_READ,
+      },
+      {
+        label: 'Floor',
+        icon: LayoutGrid,
+        href: '/floor',
+        permission: Permission.DASHBOARD_READ,
+      },
+      {
+        label: 'Orders',
+        icon: ClipboardList,
+        href: '/orders',
+        permission: Permission.ORDER_READ,
+      },
+      {
+        label: 'Kitchen display',
+        icon: ChefHat,
+        href: '/kitchen',
+        activePaths: ['/bar'],
+        permission: Permission.KOT_READ,
+      },
+      {
+        label: 'Reservations',
+        icon: CalendarCheck,
+        href: '/reservations',
+        permission: Permission.RESERVATION_READ,
+      },
+      {
+        label: 'Billing',
+        icon: Receipt,
+        href: '/billing',
+        permission: Permission.BILL_READ,
+      },
+    ],
   },
   {
-    label: 'Reservations',
-    icon: CalendarCheck,
-    href: '/reservations',
-    permission: Permission.RESERVATION_READ,
-  },
-  {
-    label: 'Table statuses',
-    icon: Rows3,
-    href: '/table-statuses',
-    permission: Permission.RESTAURANT_READ,
-  },
-  {
-    label: 'Restaurant',
-    icon: Store,
-    href: '/restaurant/settings',
-    permission: Permission.RESTAURANT_READ,
+    label: 'MANAGE',
+    items: [
+      {
+        label: 'Menu items',
+        icon: Soup,
+        href: '/menu/items',
+        activePaths: ['/menu'],
+        permission: Permission.MENU_READ,
+      },
+      {
+        label: 'Inventory',
+        icon: Box,
+        href: '/inventory',
+        permission: Permission.INVENTORY_MANAGE,
+      },
+    ],
   },
 ];
+
+/** Flat list of all navigation items across all groups. */
+export const NAV_ITEMS: readonly NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
