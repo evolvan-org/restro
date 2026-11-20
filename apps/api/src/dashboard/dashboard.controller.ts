@@ -22,9 +22,9 @@ import { DashboardService } from './dashboard.service';
 @ApiTags('dashboard')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePermissions(Permission.DASHBOARD_READ)
+@RequirePermissions(Permission.DASHBOARD_READ, Permission.REPORT_READ)
 @ApiUnauthorizedResponse(apiError('Authentication failed or the account is inactive'))
-@ApiForbiddenResponse(apiError('Missing dashboard permission'))
+@ApiForbiddenResponse(apiError('Missing dashboard or report permission'))
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}

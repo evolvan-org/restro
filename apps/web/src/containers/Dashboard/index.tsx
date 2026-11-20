@@ -10,6 +10,7 @@ import {
   segmentedTabId,
 } from '@/components/ui/segmented-control';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
+import usePermissions from '@/hooks/auth/usePermissions';
 import usePersistedState from '@/hooks/usePersistedState';
 import { useProfile } from '@/services/api/requests/profile';
 
@@ -29,7 +30,11 @@ const VIEWS: readonly SegmentedOption<DashboardView>[] = [
 const VIEW_VALUES: readonly DashboardView[] = VIEWS.map((view) => view.value);
 
 function DashboardContent({ storageKey }: { storageKey: string }): ReactElement {
-  const [view, setView, isViewRestored] = usePersistedState(storageKey, 'live', VIEW_VALUES);
+  const [storedView, setView, isViewRestored] = usePersistedState(storageKey, 'live', VIEW_VALUES);
+  const { can } = usePermissions();
+  const canReport = can(Permission.REPORT_READ);
+  // Roles without report access only ever see the live floor, whatever view was stored.
+  const view: DashboardView = canReport ? storedView : 'live';
   const isLive = view === 'live';
 
   return (
@@ -41,14 +46,16 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
             Real-time overview of today&apos;s service
           </p>
         </div>
-        <SegmentedControl
-          idBase={VIEW_ID_BASE}
-          aria-label="Dashboard view"
-          options={VIEWS}
-          value={view}
-          onChange={setView}
-          className="w-full rounded-xl border sm:w-fit [&>button]:flex-1 [&>button]:justify-center sm:[&>button]:flex-none"
-        />
+        {canReport && (
+          <SegmentedControl
+            idBase={VIEW_ID_BASE}
+            aria-label="Dashboard view"
+            options={VIEWS}
+            value={view}
+            onChange={setView}
+            className="w-full rounded-xl border sm:w-fit [&>button]:flex-1 [&>button]:justify-center sm:[&>button]:flex-none"
+          />
+        )}
       </header>
 
       <div
@@ -67,7 +74,7 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
         className="min-h-0 flex-1 px-4 pt-2 pb-6 sm:px-6 lg:overflow-y-auto xl:px-8"
         hidden={isLive}
       >
-        {isViewRestored && !isLive && (
+        {isViewRestored && canReport && !isLive && (
           <ReportingPane>
             <TodaySummary />
             <Reports />
