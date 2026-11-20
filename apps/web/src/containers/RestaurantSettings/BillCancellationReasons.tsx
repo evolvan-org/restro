@@ -94,7 +94,12 @@ export default function BillCancellationReasons({ canEdit }: { canEdit: boolean 
                 {form.formState.errors.name?.message}
               </FieldError>
             </Field>
-            <Button type="submit" className="min-h-11" disabled={creating} aria-label="Add reason">
+            <Button
+              type="submit"
+              className="min-h-11"
+              disabled={creating || !form.formState.isDirty}
+              aria-label="Add reason"
+            >
               {creating ? (
                 <LoaderCircle className="animate-spin" aria-hidden />
               ) : (
@@ -207,6 +212,7 @@ function ReasonRow({
       onSubmit={form.handleSubmit(async (input) => {
         try {
           await renameReason({ id: reason.id, input });
+          form.reset(input);
         } catch {
           /* Request hook reports failures; retain the draft. */
         }

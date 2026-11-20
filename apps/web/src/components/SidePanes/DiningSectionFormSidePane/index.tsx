@@ -81,7 +81,7 @@ export default function DiningSectionFormSidePane({
     resolver: zodResolver(config.schema),
     defaultValues: config.defaultValues,
   });
-  const { errors } = form.formState;
+  const { errors, isDirty } = form.formState;
   const sortOrderField = form.register('sortOrder', {
     setValueAs: (value: string) => (value === '' ? undefined : Number(value)),
   });
@@ -166,7 +166,7 @@ export default function DiningSectionFormSidePane({
       </form>
 
       <SheetFooter>
-        <Button type="submit" form={FORM_ID} disabled={isSaving}>
+        <Button type="submit" form={FORM_ID} disabled={isSaving || (Boolean(section) && !isDirty)}>
           {isSaving ? 'Saving…' : config.submitLabel}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>

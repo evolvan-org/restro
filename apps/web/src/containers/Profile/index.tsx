@@ -52,6 +52,9 @@ export default function Profile(): ReactElement {
     },
   });
 
+  const { isDirty: isProfileDirty } = profileForm.formState;
+  const { isDirty: isPasswordDirty } = passwordForm.formState;
+
   useEffect(() => {
     if (profile.data) {
       profileForm.reset({
@@ -75,6 +78,7 @@ export default function Profile(): ReactElement {
         name: values.name,
         phone: values.phone || null,
       });
+      profileForm.reset(values);
     } catch {
       // The mutation hook reports the error through useShowApiError; preserve the form values.
     }
@@ -200,9 +204,11 @@ export default function Profile(): ReactElement {
                   </p>
                 )}
 
-                <Button type="submit" disabled={isUpdatingProfile}>
-                  {isUpdatingProfile ? 'Saving…' : 'Save changes'}
-                </Button>
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" disabled={!isProfileDirty || isUpdatingProfile}>
+                    {isUpdatingProfile ? 'Saving…' : 'Save changes'}
+                  </Button>
+                </div>
               </FieldGroup>
             </form>
           </CardContent>
@@ -258,9 +264,11 @@ export default function Profile(): ReactElement {
                   </p>
                 )}
 
-                <Button type="submit" disabled={isChangingPassword}>
-                  {isChangingPassword ? 'Updating…' : 'Update password'}
-                </Button>
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" disabled={!isPasswordDirty || isChangingPassword}>
+                    {isChangingPassword ? 'Updating…' : 'Update password'}
+                  </Button>
+                </div>
               </FieldGroup>
             </form>
           </CardContent>
