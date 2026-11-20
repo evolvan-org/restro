@@ -40,11 +40,12 @@ import { Prisma, type StockBatch, type StockItem } from '@rms/db';
 import { buildPageMeta, type Paginated } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { lockRestaurantInventory } from '../common/database/inventory-lock';
 import { mapDatabaseError } from '../common/filters/http-exception.filter';
 import {
   type InventoryPurchaseRecord,
   InventoryRepository,
-  type InventoryWriteContext,
+  InventoryWriteContext,
 } from './inventory.repository';
 import { inventoryCsvItems, inventoryCsvString } from './inventory-csv';
 import {
@@ -241,6 +242,30 @@ export class InventoryService {
       isActive: existing.isActive,
     });
     return { item, created: false };
+  }
+
+  /**
+   * Creates new ingredients, each with optional opening stock, inside the caller's transaction
+   * (guided onboarding writes everything in one). Takes the same inventory lock as every other
+   * stock write, so the usual name, unit and balance rules apply unchanged.
+   */
+  async createItemsInTransaction(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    actorId: string,
+    rows: readonly { item: CreateInventoryItem; opening?: OpeningInventoryStock }[],
+  ): Promise<{ created: number; opened: number }> {
+    await lockRestaurantInventory(tx, restaurantId);
+    const inventory = new InventoryWriteContext(tx, restaurantId);
+    let opened = 0;
+    for (const { item, opening } of rows) {
+      const created = await this.insertItem(inventory, item);
+      if (opening) {
+        await this.recordOpening(inventory, actorId, created, opening);
+        opened += 1;
+      }
+    }
+    return { created: rows.length, opened };
   }
 
   createItem(actor: Actor, input: CreateInventoryItem): Promise<InventoryItem> {

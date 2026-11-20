@@ -1,5 +1,6 @@
-import { errorResponseSchema } from '@rms/api-contract';
+import { type ApiErrorCode, errorResponseSchema } from '@rms/api-contract';
 import axios from 'axios';
+import type { ZodType } from 'zod';
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (!axios.isAxiosError(error)) {
@@ -20,4 +21,16 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
  */
 export function isRejectedLinkError(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 400;
+}
+
+/** The machine-readable `code` from the error envelope, when the API sent one. */
+export function getApiErrorCode(error: unknown): ApiErrorCode | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  return errorResponseSchema.safeParse(error.response?.data).data?.code;
+}
+
+/** The error body parsed with an extension schema (e.g. one carrying `stage` or `draft`). */
+export function getApiErrorBody<T>(error: unknown, schema: ZodType<T>): T | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  return schema.safeParse(error.response?.data).data;
 }

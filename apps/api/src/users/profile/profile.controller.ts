@@ -19,6 +19,7 @@ import {
   updateProfileRequestSchema,
 } from '@rms/api-contract';
 
+import { AllowDuringSetup } from '../../common/auth/allow-during-setup.decorator';
 import { CurrentUserId } from '../../common/auth/current-user-id.decorator';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -28,6 +29,7 @@ import { ProfileService } from './profile.service';
 @ApiTags('profile')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@AllowDuringSetup()
 @Controller('users/profile')
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { formatRoleLabel } from '@/lib/utils';
+import { useSetupChecklist } from '@/services/api/requests/onboarding';
 import { useProfile } from '@/services/api/requests/profile';
 
 import { NAV_GROUPS, type NavItem } from './navigation';
@@ -67,6 +68,8 @@ function SidebarNav({
 }): ReactElement {
   const pathname = usePathname();
   const { can } = usePermissions();
+  const missingRecipes =
+    useSetupChecklist(can(Permission.MENU_WRITE)).data?.missingRecipeCount ?? 0;
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
@@ -92,7 +95,8 @@ function SidebarNav({
               </div>
             ) : null}
             <div className="flex flex-col gap-1">
-              {group.items.map(({ label, icon: Icon, href, activePaths }) => {
+              {group.items.map(({ label, icon: Icon, href, activePaths, badge }) => {
+                const count = badge === 'missing-recipes' ? missingRecipes : 0;
                 const active =
                   isActiveRoute(pathname, href) ||
                   Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));

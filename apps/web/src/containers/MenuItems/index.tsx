@@ -221,7 +221,14 @@ export default function MenuItems(): ReactElement | null {
                 const category = categoriesById.get(item.categoryId);
                 return (
                   <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {item.name}
+                      {item.isActive && item.recipeRequired && item.recipe.length === 0 && (
+                        <Badge variant="outline" className="ml-2 border-amber-300 text-amber-800">
+                          Needs recipe
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {category?.name ?? '—'}
                       {category && (

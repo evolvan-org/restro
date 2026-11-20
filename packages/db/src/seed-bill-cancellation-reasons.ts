@@ -1,12 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
-export const BILL_CANCELLATION_REASONS = [
-  { code: 'GUEST_REQUEST', name: 'Guest request' },
-  { code: 'DUPLICATE_BILL', name: 'Duplicate bill' },
-  { code: 'BILLING_ERROR', name: 'Billing error' },
-  { code: 'ORDER_CHANGED', name: 'Order changed' },
-  { code: 'OTHER', name: 'Other' },
-] as const;
+import { BILL_CANCELLATION_REASONS } from './tenant-defaults';
 
 /** Add missing defaults for each restaurant without overwriting existing catalog entries. */
 export async function seedBillCancellationReasons(

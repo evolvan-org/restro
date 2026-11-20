@@ -7,6 +7,7 @@ import AppHeader from '@/components/AppHeader';
 import AppSidebar from '@/components/AppSidebar';
 import EmailVerificationBanner from '@/components/EmailVerificationBanner';
 import useAppLayout from '@/hooks/useAppLayout';
+import { useProfile } from '@/services/api/requests/profile';
 import { useAccessToken } from '@/store/hooks/auth';
 
 /**
@@ -27,6 +28,7 @@ export default function ProtectedLayout({
   const pathname = usePathname();
   const accessToken = useAccessToken();
   const { variant } = useAppLayout();
+  const profile = useProfile();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -34,6 +36,22 @@ export default function ProtectedLayout({
       router.replace('/auth/login');
     }
   }, [accessToken, router]);
+
+  // An account that isn't fully set up can only be on its setup routes: a one-time password must
+  // be replaced first, and an owner whose restaurant isn't finished goes through onboarding.
+  const setupRedirect = ((): string | null => {
+    if (!profile.data) return null;
+    if (profile.data.mustChangePassword) {
+      return pathname === '/change-password' ? null : '/change-password';
+    }
+    if (profile.data.onboarding === 'PENDING' && !pathname.startsWith('/onboarding')) {
+      return '/onboarding';
+    }
+    return null;
+  })();
+  useEffect(() => {
+    if (accessToken && setupRedirect) router.replace(setupRedirect);
+  }, [accessToken, setupRedirect, router]);
 
   // Close the mobile drawer on any route change, including back-navigation that bypasses link clicks.
   useEffect(() => {
@@ -45,7 +63,12 @@ export default function ProtectedLayout({
   }
 
   if (variant === 'bare') {
-    return <>{children}</>;
+    return setupRedirect ? null : <>{children}</>;
+  }
+
+  // Wait for the profile so a pending owner never sees the app shell (or its 403 toasts) first.
+  if (setupRedirect || (profile.isPending && !profile.isError)) {
+    return null;
   }
 
   return (

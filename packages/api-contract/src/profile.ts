@@ -1,4 +1,6 @@
 import { z } from 'zod';
+
+import { onboardingStateSchema } from './auth';
 import {
   PASSWORD_MAX_BYTES,
   userNameSchema,
@@ -16,6 +18,8 @@ export const profileResponseSchema = z
     phone: z.string().nullable(),
     role: z.string().min(1),
     emailVerifiedAt: z.string().datetime().nullable(),
+    onboarding: onboardingStateSchema,
+    mustChangePassword: z.boolean(),
   })
   .strict();
 

@@ -17,6 +17,7 @@ import { useProfile } from '@/services/api/requests/profile';
 import FloorBoard from '../FloorBoard';
 import ReportingPane from './ReportingPane';
 import Reports from './Reports';
+import SetupPrompts from './SetupPrompts';
 import TodaySummary from './TodaySummary';
 
 type DashboardView = 'live' | 'reporting';
@@ -57,6 +58,7 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
           />
         )}
       </header>
+      <SetupPrompts />
 
       <div
         role="tabpanel"

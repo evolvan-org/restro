@@ -20,6 +20,8 @@ const BARE_ROUTES: readonly RouteMatcher[] = [
   { path: '/forbidden', match: 'exact' },
   { path: '/kitchen', match: 'prefix' },
   { path: '/bar', match: 'prefix' },
+  { path: '/onboarding', match: 'prefix' },
+  { path: '/change-password', match: 'exact' },
 ];
 
 function matchesRoute(pathname: string, matcher: RouteMatcher): boolean {
