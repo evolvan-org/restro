@@ -1,13 +1,12 @@
 import { z } from 'zod';
 
+import { dateOnlySchema } from './common';
+
 export const REPORT_DEFAULT_DAYS = 7;
 export const REPORT_MAX_DAYS = 92;
 
 const MILLISECONDS_PER_DAY = 86_400_000;
-const reportDateSchema = z
-  .string({ required_error: 'Choose a date' })
-  .regex(/^(?!0000)\d{4}-\d{2}-\d{2}$/, 'Enter a date in YYYY-MM-DD format')
-  .date('Enter a valid date');
+const reportDateSchema = dateOnlySchema;
 const moneySchema = z.string().regex(/^-?\d+\.\d{2}$/);
 
 const reportDateRangeFields = z.object({ from: reportDateSchema, to: reportDateSchema }).strict();
@@ -63,27 +62,29 @@ export const reportDateRangeQuerySchema = reportDateRangeParamsSchema.superRefin
   },
 );
 
-const salesTotalsSchema = z
-  .object({ revenue: moneySchema, orders: z.number().int().nonnegative() })
-  .strict();
-const gstTotalsSchema = z.object({ taxableValue: moneySchema, gstCollected: moneySchema }).strict();
-const reportMetadata = { range: reportDateRangeFields, currency: z.string().length(3) };
+// Response schemas are deliberately not .strict(): the web parses them, and a field added to the
+// API must not make an older client reject the whole response.
+const salesTotalsSchema = z.object({
+  revenue: moneySchema,
+  orders: z.number().int().nonnegative(),
+});
+const gstTotalsSchema = z.object({ taxableValue: moneySchema, gstCollected: moneySchema });
+const reportMetadata = {
+  range: z.object({ from: reportDateSchema, to: reportDateSchema }),
+  currency: z.string().length(3),
+};
 
-export const dailySalesReportSchema = z
-  .object({
-    ...reportMetadata,
-    rows: z.array(salesTotalsSchema.extend({ date: reportDateSchema })),
-    total: salesTotalsSchema,
-  })
-  .strict();
+export const dailySalesReportSchema = z.object({
+  ...reportMetadata,
+  rows: z.array(salesTotalsSchema.extend({ date: reportDateSchema })),
+  total: salesTotalsSchema,
+});
 
-export const gstReportSchema = z
-  .object({
-    ...reportMetadata,
-    rows: z.array(gstTotalsSchema.extend({ date: reportDateSchema })),
-    total: gstTotalsSchema,
-  })
-  .strict();
+export const gstReportSchema = z.object({
+  ...reportMetadata,
+  rows: z.array(gstTotalsSchema.extend({ date: reportDateSchema })),
+  total: gstTotalsSchema,
+});
 
 export type ReportDateRange = z.infer<typeof reportDateRangeFields>;
 export type ReportDateRangeQuery = z.infer<typeof reportDateRangeQuerySchema>;

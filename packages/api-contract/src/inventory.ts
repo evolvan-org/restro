@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { paginatedResponseSchema, paginationQuerySchema } from './common';
+import { dateOnlySchema, paginatedResponseSchema, paginationQuerySchema } from './common';
 import { unitSchema } from './stock-items';
 
 const id = z.string().uuid();
@@ -17,9 +17,10 @@ const cost = z.string().regex(/^\d{1,10}(?:\.\d{1,8})?$/, 'Enter up to 8 decimal
 const reason = z.string().trim().min(1, 'Enter a reason').max(500);
 const notes = z.string().trim().max(500);
 const decimal = z.string();
-const dateOnly = z.string().date();
+const dateOnly = dateOnlySchema;
 
 export const inventoryBaseUnitSchema = z.enum(['G', 'ML', 'UNIT']);
+export const inventoryMovementKindSchema = z.enum(['OPENING', 'ADJUSTMENT', 'RECEIPT', 'WASTE']);
 export const inventoryItemFilterSchema = z.object({
   q: z.string().trim().max(150).optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'LOW_STOCK']).default('ACTIVE'),
@@ -33,7 +34,7 @@ export const inventoryBatchQuerySchema = paginationQuerySchema.extend({
 });
 export const inventoryMovementQuerySchema = paginationQuerySchema.extend({
   stockItemId: id.optional(),
-  kind: z.enum(['OPENING', 'ADJUSTMENT', 'RECEIPT', 'WASTE']).optional(),
+  kind: inventoryMovementKindSchema.optional(),
 });
 
 const itemFields = {
@@ -114,7 +115,7 @@ export const inventoryMovementSchema = z.object({
   id,
   stockItem: stockIdentity,
   batchNumber: z.string().nullable(),
-  kind: z.enum(['OPENING', 'ADJUSTMENT', 'RECEIPT', 'WASTE']),
+  kind: inventoryMovementKindSchema,
   quantity: decimal,
   unitCost: decimal.nullable(),
   reason: z.string(),

@@ -31,3 +31,12 @@ export function paginatedResponseSchema<TItem extends z.ZodTypeAny>(
 ): z.ZodObject<{ data: z.ZodArray<TItem>; meta: typeof pageMetaSchema }> {
   return z.object({ data: z.array(item), meta: pageMetaSchema });
 }
+
+/**
+ * Calendar date as `YYYY-MM-DD`. Rejects year 0000, which `z.string().date()` accepts but
+ * PostgreSQL's DATE type does not (it would otherwise surface as a 500, not a 400).
+ */
+export const dateOnlySchema = z
+  .string({ required_error: 'Choose a date' })
+  .regex(/^(?!0000)\d{4}-\d{2}-\d{2}$/, 'Enter a date in YYYY-MM-DD format')
+  .date('Enter a valid date');
