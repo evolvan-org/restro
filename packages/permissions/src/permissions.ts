@@ -19,6 +19,9 @@ export const Permission = {
   USER_WRITE: 'user:write',
   USER_DELETE: 'user:delete',
 
+  // Guided restaurant setup after signup (owner only)
+  ONBOARDING_MANAGE: 'onboarding:manage',
+
   // Restaurant configuration
   RESTAURANT_READ: 'restaurant:read',
   RESTAURANT_WRITE: 'restaurant:write',

@@ -5,7 +5,8 @@ import { Role } from './roles';
  * Role → permission mapping. This is the authoritative policy consulted by
  * the API's authorization guard and mirrored by the web app for UI gating.
  *
- * OWNER holds every permission except `table:be-captain`; MANAGER also lacks `user:delete`.
+ * OWNER holds every permission except `table:be-captain`; MANAGER also lacks `user:delete` and
+ * `onboarding:manage` (guided setup belongs to the owner alone).
  * `be-captain` is an eligibility marker held only by CAPTAIN, so the staff escalation check
  * ignores it (see `ELIGIBILITY_ONLY_PERMISSIONS`) and a manager can still assign the CAPTAIN role.
  *
@@ -16,7 +17,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   [Role.OWNER]: ALL_PERMISSIONS.filter((permission) => permission !== Permission.TABLE_BE_CAPTAIN),
   [Role.MANAGER]: ALL_PERMISSIONS.filter(
     (permission) =>
-      permission !== Permission.USER_DELETE && permission !== Permission.TABLE_BE_CAPTAIN,
+      permission !== Permission.USER_DELETE &&
+      permission !== Permission.ONBOARDING_MANAGE &&
+      permission !== Permission.TABLE_BE_CAPTAIN,
   ),
   [Role.CAPTAIN]: [
     Permission.DASHBOARD_READ,
