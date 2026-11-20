@@ -35,9 +35,10 @@ export default function Register(): ReactElement {
 
   const onSubmit = form.handleSubmit(({ confirmPassword: _confirmPassword, ...payload }) => {
     registerUser.mutate(payload, {
-      onSuccess: ({ emailSent }) => {
-        // Keep the issued token for resend/banner actions while guiding the owner to their inbox.
-        router.push(emailSent ? '/auth/check-email' : '/auth/check-email?sent=0');
+      // Straight into guided setup. Verification stays non-blocking: the email is already on its
+      // way, and the dashboard banner offers a resend.
+      onSuccess: () => {
+        router.push('/onboarding');
       },
     });
   });

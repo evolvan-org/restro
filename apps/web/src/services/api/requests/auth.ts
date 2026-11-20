@@ -33,7 +33,8 @@ const useLogin = () => {
 
   return useMutation({
     mutationFn: async (loginRequest: LoginRequest): Promise<LoginResponse> => {
-      const response = await api.post('/auth/login', loginRequest);
+      // The login form renders failures itself (including the "not ready yet" notice).
+      const response = await api.post('/auth/login', loginRequest, { errorDisplay: 'inline' });
       return loginResponseSchema.parse(response.data);
     },
     onSuccess: (response) => {

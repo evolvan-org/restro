@@ -16,6 +16,7 @@ export function LoginForm({
   onSubmit,
   register,
   submitError,
+  notice,
   ...props
 }: React.ComponentProps<'div'> & {
   errors?: Partial<Record<keyof LoginRequest, string>>;
@@ -23,6 +24,8 @@ export function LoginForm({
   onSubmit: React.FormEventHandler<HTMLFormElement>;
   register: UseFormRegister<LoginRequest>;
   submitError?: string;
+  /** Blue, non-error notice (e.g. the restaurant isn't ready for staff yet). */
+  notice?: { title: string; body: string };
 }) {
   return (
     <div className={cn('flex flex-col gap-6', className)} {...props}>
@@ -32,6 +35,15 @@ export function LoginForm({
           <CardDescription>Enter your email below to login to your account</CardDescription>
         </CardHeader>
         <CardContent>
+          {notice && (
+            <div
+              role="status"
+              className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900"
+            >
+              <p className="font-semibold">{notice.title}</p>
+              <p>{notice.body}</p>
+            </div>
+          )}
           <form onSubmit={onSubmit}>
             <FieldGroup>
               <Field data-invalid={!!errors?.email}>
