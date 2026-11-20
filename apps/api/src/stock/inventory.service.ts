@@ -40,6 +40,7 @@ import { Prisma, type StockBatch, type StockItem } from '@rms/db';
 import { buildPageMeta, type Paginated } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { mapDatabaseError } from '../common/filters/http-exception.filter';
 import {
   type InventoryPurchaseRecord,
   InventoryRepository,
@@ -199,8 +200,16 @@ export class InventoryService {
           if (result.created) created += 1;
           else updated += 1;
         } catch (error) {
-          if (error instanceof HttpException && error.getStatus() < 500) {
-            throw new HttpException(`CSV line ${line}: ${error.message}`, error.getStatus());
+          // Prefix client-attributable failures (validation or a DB constraint) with the row, so
+          // the user can find which of up to 200 lines to fix.
+          const mapped =
+            error instanceof HttpException
+              ? { status: error.getStatus(), message: error.message }
+              : mapDatabaseError(error);
+          if (mapped && mapped.status < 500) {
+            throw new HttpException(`CSV line ${line}: ${mapped.message}`, mapped.status, {
+              cause: error,
+            });
           }
           throw error;
         }

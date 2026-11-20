@@ -9,14 +9,14 @@ import {
 import { type ErrorResponse, orderAlreadyOpenErrorSchema } from '@rms/api-contract';
 import type { Request, Response } from 'express';
 
-type MappedDbError = { status: HttpStatus; message: string };
+export type MappedDbError = { status: HttpStatus; message: string };
 
 /**
  * Maps Prisma errors to client-facing responses without importing the client
  * (matched by name/code so the filter stays decoupled from the DB package).
  * Returns null for anything that is not a recognised, client-attributable failure.
  */
-function mapDatabaseError(exception: unknown): MappedDbError | null {
+export function mapDatabaseError(exception: unknown): MappedDbError | null {
   if (!(exception instanceof Error)) return null;
 
   if (exception.name === 'PrismaClientKnownRequestError') {
