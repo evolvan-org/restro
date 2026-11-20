@@ -16,11 +16,14 @@ export type TodaySummaryRecord = {
 export class DashboardRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  todaySummary(restaurantId: string): Promise<TodaySummaryRecord | null> {
+  async todaySummary(restaurantId: string): Promise<TodaySummaryRecord | null> {
+    // Reconcile in its own short READ COMMITTED transaction: running this UPDATE inside the
+    // REPEATABLE READ snapshot below fails with a serialization error whenever a concurrent
+    // floor write touches the same table row, turning a routine poll into a 500.
+    await this.prisma.$transaction((tx) => reconcileRestaurantTableStatuses(tx, restaurantId));
+
     return this.prisma.$transaction(
       async (tx) => {
-        await reconcileRestaurantTableStatuses(tx, restaurantId);
-
         const rows = await tx.$queryRaw<TodaySummaryRecord[]>`
           WITH restaurant_context AS (
             SELECT
