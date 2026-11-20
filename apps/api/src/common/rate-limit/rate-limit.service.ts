@@ -1,13 +1,15 @@
 import { createHmac } from 'node:crypto';
 
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type AuthRateLimitAction } from '@rms/db';
 
+import { errorDiagnostics } from '../logging/error-diagnostics';
 import { RateLimitRepository } from './rate-limit.repository';
 
 @Injectable()
 export class RateLimitService {
+  private readonly logger = new Logger(RateLimitService.name);
   private cleanupCounter = 0;
 
   constructor(
@@ -33,7 +35,12 @@ export class RateLimitService {
     });
 
     this.cleanupCounter += 1;
-    if (this.cleanupCounter % 100 === 0) await this.repository.deleteExpired(now);
+    // Housekeeping runs in the background: a failed cleanup must not fail a request within limits.
+    if (this.cleanupCounter % 100 === 0) {
+      this.repository.deleteExpired(now).catch((error: unknown) => {
+        this.logger.warn('Rate-limit counter cleanup failed', errorDiagnostics(error));
+      });
+    }
 
     if (count > limit) {
       throw new HttpException(
