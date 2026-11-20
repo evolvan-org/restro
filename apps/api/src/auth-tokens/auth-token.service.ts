@@ -1,11 +1,15 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { type UserTokenType } from '@rms/db';
 
+import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { AuthTokenRepository, InvalidTokenTargetError } from './auth-token.repository';
 
 const TOKEN_BYTES = 32;
+/** Expired tokens are kept a day for support lookups, then deleted. */
+const EXPIRED_RETENTION_MS = 24 * 60 * 60 * 1_000;
+const CLEANUP_EVERY_N_ISSUES = 100;
 const EXPIRY_MS: Record<UserTokenType, number> = {
   EMAIL_VERIFICATION: 24 * 60 * 60 * 1_000,
   PASSWORD_RESET: 60 * 60 * 1_000,
@@ -16,6 +20,9 @@ export type IssuedAuthToken = { rawToken: string; id: string; expiresAt: Date; i
 
 @Injectable()
 export class AuthTokenService {
+  private readonly logger = new Logger(AuthTokenService.name);
+  private issueCount = 0;
+
   constructor(private readonly repository: AuthTokenRepository) {}
 
   /**
@@ -49,7 +56,17 @@ export class AuthTokenService {
       expiresAt,
       now,
     });
+    this.issueCount += 1;
+    if (this.issueCount % CLEANUP_EVERY_N_ISSUES === 0) this.deleteExpiredInBackground(now);
     return { rawToken, id: created.id, expiresAt, issuedAt: created.createdAt };
+  }
+
+  /** Housekeeping must never fail the request that triggered it. */
+  private deleteExpiredInBackground(now: Date): void {
+    const cutoff = new Date(now.getTime() - EXPIRED_RETENTION_MS);
+    this.repository.deleteExpired(cutoff).catch((error: unknown) => {
+      this.logger.warn('Expired auth token cleanup failed', errorDiagnostics(error));
+    });
   }
 
   async verifyEmail(rawToken: string): Promise<void> {

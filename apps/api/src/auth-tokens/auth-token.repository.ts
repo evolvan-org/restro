@@ -60,6 +60,11 @@ export class AuthTokenRepository {
     });
   }
 
+  /** Deletes tokens (used or not) that expired before `cutoff`; they can never be redeemed. */
+  async deleteExpired(cutoff: Date): Promise<void> {
+    await this.prisma.userToken.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+  }
+
   findByHash(tokenHash: string): Promise<AuthTokenRecord | null> {
     return this.prisma.userToken.findUnique({ where: { tokenHash }, select: tokenSelect });
   }

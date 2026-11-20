@@ -234,6 +234,7 @@ model UserToken {
   @@index([restaurantId])
   @@index([userId])
   @@index([userId, type, createdAt])
+  @@index([expiresAt])
   @@map("user_tokens")
 }
 
