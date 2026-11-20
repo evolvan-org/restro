@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { messageResponseSchema } from './common';
-import { userEmailSchema, userPasswordSchema } from './user-fields';
+import { userEmailSchema, userNameSchema, userPasswordSchema } from './user-fields';
 
 export const loginRequestSchema = z.object({
   email: userEmailSchema,
@@ -14,7 +14,7 @@ export const loginResponseSchema = z.object({
 });
 
 export const registerRequestSchema = z.object({
-  name: z.string().min(1),
+  name: userNameSchema,
   restaurantName: z.string().trim().min(1).max(255),
   email: userEmailSchema,
   password: userPasswordSchema,
