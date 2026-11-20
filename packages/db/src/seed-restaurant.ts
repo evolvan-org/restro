@@ -18,6 +18,8 @@
  * password — it (re)sets every seeded account to SHARED_PASSWORD, even one that
  * already existed, so the known credentials below always work.
  *
+ * Only runs against a local/compose DATABASE_URL host; set ALLOW_SEED=1 to override.
+ *
  *   yarn workspace @rms/db seed:restaurant
  */
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -29,6 +31,7 @@ import { DINING_SECTIONS, RESTAURANT_PROFILE } from './seed/catalog';
 import { seedInventoryActivity, seedStockItems, seedSuppliers } from './seed/inventory';
 import { seedMenu } from './seed/menu';
 import { type SeedTable, type SeedUser, seedServiceHistory } from './seed/service-history';
+import { assertSafeSeedTarget } from './seed/support';
 
 // Matches apps/api BCRYPT_ROUNDS; kept local so @rms/db does not depend on the api app.
 const BCRYPT_ROUNDS = 10;
@@ -261,6 +264,7 @@ async function loadTables(
 }
 
 async function main(): Promise<void> {
+  assertSafeSeedTarget();
   const prisma = new PrismaClient();
   const passwordHash = await hash(SHARED_PASSWORD, BCRYPT_ROUNDS);
 

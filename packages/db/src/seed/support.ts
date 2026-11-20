@@ -83,3 +83,28 @@ export function roundMoney(value: DecimalValue): DecimalValue {
 export const kotNumber = (n: number): string => `KOT-${String(n).padStart(6, '0')}`;
 export const billNumber = (year: number, n: number): string =>
   `INV-${year}-${String(n).padStart(6, '0')}`;
+
+const LOCAL_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', 'postgres']);
+
+/**
+ * The seed resets passwords on its fixed accounts and writes fake sales history, so refuse to run
+ * against anything but a local/compose database unless ALLOW_SEED=1 explicitly opts in.
+ */
+export function assertSafeSeedTarget(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed: NODE_ENV is production');
+  }
+  if (env.ALLOW_SEED === '1') return;
+
+  let host: string;
+  try {
+    host = new URL(env.DATABASE_URL ?? '').hostname;
+  } catch {
+    throw new Error('Refusing to seed: DATABASE_URL is missing or invalid');
+  }
+  if (!LOCAL_DATABASE_HOSTS.has(host)) {
+    throw new Error(
+      `Refusing to seed non-local database host "${host}". Set ALLOW_SEED=1 to seed it anyway.`,
+    );
+  }
+}
