@@ -24,6 +24,8 @@ export type NavItem = {
   activePaths?: readonly string[];
   /** Shown only when the role holds this permission. Omit for items everyone can see. */
   permission?: Permission;
+  /** A count badge fed by the setup checklist (owners and managers only). */
+  badge?: 'missing-recipes';
 };
 
 /**
@@ -56,6 +58,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Soup,
     href: '/menu/items',
     permission: Permission.MENU_READ,
+    badge: 'missing-recipes',
   },
   {
     label: 'Inventory',

@@ -1,5 +1,6 @@
 'use client';
 
+import { Permission } from '@rms/permissions';
 import { cn } from 'cn';
 import { PanelLeft, PanelLeftClose } from 'lucide-react';
 import Link from 'next/link';
@@ -9,6 +10,7 @@ import { type ReactElement, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
+import { useSetupChecklist } from '@/services/api/requests/onboarding';
 
 import { NAV_ITEMS, type NavItem } from './navigation';
 
@@ -55,6 +57,8 @@ function SidebarNav({
 }): ReactElement {
   const pathname = usePathname();
   const { can } = usePermissions();
+  const missingRecipes =
+    useSetupChecklist(can(Permission.MENU_WRITE)).data?.missingRecipeCount ?? 0;
 
   const visibleItems = NAV_ITEMS.filter(
     (item): item is NavItem & { href: string } =>
@@ -63,7 +67,8 @@ function SidebarNav({
 
   return (
     <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-      {visibleItems.map(({ label, icon: Icon, href, activePaths }) => {
+      {visibleItems.map(({ label, icon: Icon, href, activePaths, badge }) => {
+        const count = badge === 'missing-recipes' ? missingRecipes : 0;
         const active =
           isActiveRoute(pathname, href) ||
           Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
@@ -84,6 +89,17 @@ function SidebarNav({
           >
             <Icon className="size-5 shrink-0" aria-hidden />
             <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+            {count > 0 && (
+              <span
+                className={cn(
+                  'ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900',
+                  collapsed && 'sr-only',
+                )}
+              >
+                {count}
+                <span className="sr-only"> items need a recipe</span>
+              </span>
+            )}
           </Link>
         );
       })}
