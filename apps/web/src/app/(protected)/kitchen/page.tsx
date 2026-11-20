@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 
-import KotBoard from '@/components/KotBoard';
+import KitchenDisplay from '@/components/KitchenDisplay';
 
 export default function KitchenPage(): ReactElement {
-  return <KotBoard destination="KITCHEN" />;
+  return <KitchenDisplay />;
 }

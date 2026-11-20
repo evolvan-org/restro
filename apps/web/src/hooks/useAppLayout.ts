@@ -18,6 +18,8 @@ const BARE_ROUTES: readonly RouteMatcher[] = [
   { path: '/', match: 'exact' },
   { path: '/auth', match: 'prefix' },
   { path: '/forbidden', match: 'exact' },
+  { path: '/kitchen', match: 'prefix' },
+  { path: '/bar', match: 'prefix' },
   { path: '/onboarding', match: 'prefix' },
   { path: '/change-password', match: 'exact' },
 ];

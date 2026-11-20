@@ -2,7 +2,6 @@ import { Permission } from '@rms/permissions';
 import {
   Box,
   CalendarCheck,
-  ChefHat,
   ClipboardList,
   LayoutDashboard,
   LayoutGrid,
@@ -52,13 +51,6 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ClipboardList,
         href: '/orders',
         permission: Permission.ORDER_READ,
-      },
-      {
-        label: 'Kitchen display',
-        icon: ChefHat,
-        href: '/kitchen',
-        activePaths: ['/bar'],
-        permission: Permission.KOT_READ,
       },
       {
         label: 'Reservations',

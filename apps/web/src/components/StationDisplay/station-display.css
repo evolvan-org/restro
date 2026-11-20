@@ -1,0 +1,113 @@
+.kds[data-theme='dark'] {
+  --bg: #0b0d10;
+  --surface: #16191e;
+  --surface2: #22262d;
+  --border: #2b3038;
+  --text: #f3f4f6;
+  --muted: #a1a8b3;
+  --live: #34d399;
+  --pending: #cbd5e1;
+  --prep: #5aa9ff;
+  --ready: #34d399;
+  --pending-fg: #0b0d10;
+  --prep-fg: #051426;
+  --ready-fg: #04150d;
+  --primary: #f3f4f6;
+  --primary-fg: #0b0d10;
+  --note-bg: rgba(245, 179, 66, 0.16);
+  --note-fg: #fcd58a;
+  --warn-bg: rgba(245, 179, 66, 0.14);
+  --warn-border: rgba(245, 179, 66, 0.4);
+  --warn-fg: #fcd58a;
+}
+.kds[data-theme='light'] {
+  --bg: #edeff2;
+  --surface: #ffffff;
+  --surface2: #f1f3f5;
+  --border: #d9dde3;
+  --text: #0f1115;
+  --muted: #4b5563;
+  --live: #059669;
+  --pending: #64748b;
+  --prep: #1d4ed8;
+  --ready: #047857;
+  --pending-fg: #ffffff;
+  --prep-fg: #ffffff;
+  --ready-fg: #ffffff;
+  --primary: #0f1115;
+  --primary-fg: #ffffff;
+  --note-bg: #fff4d6;
+  --note-fg: #7a4b00;
+  --warn-bg: #fff4d6;
+  --warn-border: #f0c674;
+  --warn-fg: #6b4200;
+}
+.kds {
+  --amber: #f5b342;
+  --amber-fg: #1a1200;
+  --red: #dc2626;
+  --red-fg: #ffffff;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  font-feature-settings:
+    'tnum' 1,
+    'cv11' 1;
+}
+.kds button:focus-visible {
+  outline: 3px solid #7db4ff;
+  outline-offset: 2px;
+}
+.kds button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.kds-s-PENDING {
+  --s: var(--pending);
+  --s-fg: var(--pending-fg);
+}
+.kds-s-PREPARING {
+  --s: var(--prep);
+  --s-fg: var(--prep-fg);
+}
+.kds-s-READY {
+  --s: var(--ready);
+  --s-fg: var(--ready-fg);
+}
+.kds-enter {
+  animation: kds-in 0.25s ease-out;
+}
+.kds-late {
+  animation: kds-pulse 2s ease-in-out infinite;
+}
+@keyframes kds-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kds-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kds-enter,
+  .kds-late {
+    animation: none;
+  }
+}
