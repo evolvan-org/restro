@@ -139,17 +139,19 @@ enum PaymentStatus {
 // ----------------------------------------------------------------------------
 
 model Restaurant {
-  id                 String           @id @default(uuid()) @db.Uuid
-  name               String           @db.VarChar(255)
-  gstNumber          String?          @map("gst_number") @db.VarChar(50)
-  defaultGstRate     Decimal          @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
-  maxDiscountPercent Decimal          @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
-  address            String?          @db.VarChar(500)
-  currency           String           @default("INR") @db.VarChar(10)
-  timezone           String           @default("Asia/Kolkata") @db.VarChar(100)
-  status             RestaurantStatus @default(ACTIVE)
-  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                    String           @id @default(uuid()) @db.Uuid
+  name                  String           @db.VarChar(255)
+  gstNumber             String?          @map("gst_number") @db.VarChar(50)
+  defaultGstRate        Decimal          @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
+  maxDiscountPercent    Decimal          @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
+  address               String?          @db.VarChar(500)
+  currency              String           @default("INR") @db.VarChar(10)
+  timezone              String           @default("Asia/Kolkata") @db.VarChar(100)
+  status                RestaurantStatus @default(ACTIVE)
+  /// Null while the owner's guided setup is pending; set once by `POST /onboarding/complete`.
+  onboardingCompletedAt DateTime?        @map("onboarding_completed_at") @db.Timestamptz(6)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   users                   User[]
   userTokens              UserToken[]
@@ -172,8 +174,25 @@ model Restaurant {
   bills                   Bill[]
   notifications           Notification[]
   billCancellationReasons BillCancellationReason[]
+  onboardingDraft         OnboardingDraft?
 
   @@map("restaurants")
+}
+
+/// The owner's in-progress setup. Nothing in it touches business tables until onboarding completes,
+/// at which point the row is deleted. `version` guards against two tabs overwriting each other.
+model OnboardingDraft {
+  restaurantId String   @id @map("restaurant_id") @db.Uuid
+  currentStep  Int      @default(0) @map("current_step")
+  skippedSteps Int[]    @default([]) @map("skipped_steps")
+  data         Json     @default("{}")
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_drafts")
 }
 
 // ----------------------------------------------------------------------------
@@ -181,20 +200,22 @@ model Restaurant {
 // ----------------------------------------------------------------------------
 
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
-  restaurantId    String     @map("restaurant_id") @db.Uuid
-  roleId          String     @map("role_id") @db.Uuid
-  name            String     @db.VarChar(255)
-  email           String     @unique @db.VarChar(255) // globally unique across all tenants
-  phone           String?    @db.VarChar(30)
+  id                 String     @id @default(uuid()) @db.Uuid
+  restaurantId       String     @map("restaurant_id") @db.Uuid
+  roleId             String     @map("role_id") @db.Uuid
+  name               String     @db.VarChar(255)
+  email              String     @unique @db.VarChar(255) // globally unique across all tenants
+  phone              String?    @db.VarChar(30)
   /// Authentication-only; never expose through the API.
-  passwordHash    String?    @map("password_hash") @db.VarChar(255)
-  status          UserStatus @default(ACTIVE)
-  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(6)
-  authVersion     Int        @default(0) @map("auth_version")
-  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(6)
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  passwordHash       String?    @map("password_hash") @db.VarChar(255)
+  status             UserStatus @default(ACTIVE)
+  emailVerifiedAt    DateTime?  @map("email_verified_at") @db.Timestamptz(6)
+  authVersion        Int        @default(0) @map("auth_version")
+  /// Set for accounts created with a generated one-time password; cleared on the first password change.
+  mustChangePassword Boolean    @default(false) @map("must_change_password")
+  lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant Restaurant  @relation(fields: [restaurantId], references: [id])
   role       Role        @relation(fields: [roleId], references: [id]) // Restrict (default): can't delete a role in use
@@ -452,18 +473,20 @@ model MenuCategory {
 }
 
 model MenuItem {
-  id           String      @id @default(uuid()) @db.Uuid
-  restaurantId String      @map("restaurant_id") @db.Uuid
-  categoryId   String      @map("category_id") @db.Uuid
-  name         String      @db.VarChar(255)
-  description  String?     @db.VarChar(255)
-  price        Decimal     @db.Decimal(12, 2)
+  id             String      @id @default(uuid()) @db.Uuid
+  restaurantId   String      @map("restaurant_id") @db.Uuid
+  categoryId     String      @map("category_id") @db.Uuid
+  name           String      @db.VarChar(255)
+  description    String?     @db.VarChar(255)
+  price          Decimal     @db.Decimal(12, 2)
   /// FOOD or BAR — used for Kitchen/Bar routing.
-  itemType     ServingType @map("item_type")
-  isAvailable  Boolean     @default(true) @map("is_available")
-  isActive     Boolean     @default(true) @map("is_active")
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  itemType       ServingType @map("item_type")
+  isAvailable    Boolean     @default(true) @map("is_available")
+  isActive       Boolean     @default(true) @map("is_active")
+  /// False marks "No recipe needed" (e.g. bottled drinks), which silences the missing-recipe prompt.
+  recipeRequired Boolean     @default(true) @map("recipe_required")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant  Restaurant   @relation(fields: [restaurantId], references: [id])
   category    MenuCategory @relation(fields: [categoryId], references: [id])

@@ -1,11 +1,34 @@
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, type PageMeta } from '@rms/shared';
 import { z } from 'zod';
 
+/**
+ * Machine-readable reasons a client branches on, sent as `code` in the error envelope. Messages
+ * stay human-readable and may change; codes don't.
+ */
+export const API_ERROR_CODES = {
+  /** Login by a non-owner while the restaurant's setup is unfinished (403, no token issued). */
+  ONBOARDING_INCOMPLETE: 'ONBOARDING_INCOMPLETE',
+  /** The owner called a non-setup endpoint while setup is unfinished (403). */
+  ONBOARDING_REQUIRED: 'ONBOARDING_REQUIRED',
+  /** Finish was already run (409). */
+  ONBOARDING_ALREADY_COMPLETED: 'ONBOARDING_ALREADY_COMPLETED',
+  /** The draft was saved from somewhere else since it was loaded (409, latest draft attached). */
+  ONBOARDING_DRAFT_CONFLICT: 'ONBOARDING_DRAFT_CONFLICT',
+  /** Finish failed and rolled back; `stage` names the failing phase. */
+  ONBOARDING_STAGE_FAILED: 'ONBOARDING_STAGE_FAILED',
+  /** The account still has its one-time password (403). */
+  PASSWORD_CHANGE_REQUIRED: 'PASSWORD_CHANGE_REQUIRED',
+} as const;
+
+export const apiErrorCodeSchema = z.nativeEnum(API_ERROR_CODES);
+export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
+
 /** Envelope every error response conforms to (see docs/02-api-standards.md). */
 export const errorResponseSchema = z.object({
   statusCode: z.number(),
   message: z.union([z.string(), z.array(z.string())]),
   error: z.string().optional(),
+  code: apiErrorCodeSchema.optional(),
   timestamp: z.string(),
   path: z.string(),
 });

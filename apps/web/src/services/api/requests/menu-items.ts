@@ -30,6 +30,7 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 
 import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
+import { OnboardingQueryKey } from '../types/OnboardingQueryKey';
 
 type UpdateVariables = { id: string; input: UpdateMenuItemRequest };
 type AvailabilityVariables = { id: string; input: UpdateMenuItemAvailabilityRequest };
@@ -89,7 +90,12 @@ export function useCreateMenuItem(): UseMutationResult<MenuItem, Error, CreateMe
       const response = await api.post('/menu-items', input);
       return menuItemSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
+    onSuccess: () =>
+      // Saving an item can change how many still need a recipe (banner, checklist, nav badge).
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
+        queryClient.invalidateQueries({ queryKey: [OnboardingQueryKey.Checklist] }),
+      ]),
     onError: showApiError,
   });
 }
@@ -102,7 +108,12 @@ export function useUpdateMenuItem(): UseMutationResult<MenuItem, Error, UpdateVa
       const response = await api.patch(`/menu-items/${id}`, input);
       return menuItemSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
+    onSuccess: () =>
+      // Saving an item can change how many still need a recipe (banner, checklist, nav badge).
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
+        queryClient.invalidateQueries({ queryKey: [OnboardingQueryKey.Checklist] }),
+      ]),
     onError: showApiError,
   });
 }

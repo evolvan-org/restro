@@ -27,3 +27,4 @@ export * from './bill-cancellation-reasons';
 export * from './bill-summary';
 export * from './dashboard';
 export * from './reports';
+export * from './onboarding';

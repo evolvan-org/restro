@@ -4,11 +4,14 @@ import {
   type InventoryCsvItem,
   inventoryCsvItemSchema,
   type InventoryItem,
+  type OnboardingInventoryRow,
   type OpeningInventoryStock,
   openingStockSchema,
 } from '@rms/api-contract';
 
 type CsvRecord = { line: number; values: string[] };
+
+const MAX_CELL_LENGTH = 1000;
 
 export function encodeInventoryCsv(rows: readonly (readonly string[])[]): string {
   const contents = rows
@@ -32,7 +35,15 @@ export function unescapeInventoryCsvText(value: string): string {
   return escapeInventoryCsvText(text) === value ? text : value;
 }
 
-export function readInventoryCsv(buffer: Buffer, maxRecords: number): CsvRecord[] {
+/**
+ * Strict RFC 4180-style reader shared by every CSV upload. `maxRecords` includes the header row;
+ * `rowNoun` names the data rows in the limit message.
+ */
+export function readInventoryCsv(
+  buffer: Buffer,
+  maxRecords: number,
+  rowNoun = 'ingredient',
+): CsvRecord[] {
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
@@ -49,6 +60,10 @@ export function readInventoryCsv(buffer: Buffer, maxRecords: number): CsvRecord[
   let state: 'unquoted' | 'quoted' | 'closed' = 'unquoted';
 
   function finishField(): void {
+    // Far above any real column limit; keeps one runaway cell from bloating a preview or draft.
+    if (field.length > MAX_CELL_LENGTH) {
+      throw new BadRequestException(`CSV line ${recordLine}: A value is too long`);
+    }
     values.push(field);
     field = '';
     state = 'unquoted';
@@ -58,7 +73,7 @@ export function readInventoryCsv(buffer: Buffer, maxRecords: number): CsvRecord[
     finishField();
     if (values.some((value) => value !== '')) {
       if (records.length >= maxRecords) {
-        throw new BadRequestException(`CSV can include up to ${maxRecords - 1} ingredient rows`);
+        throw new BadRequestException(`CSV can include up to ${maxRecords - 1} ${rowNoun} rows`);
       }
       records.push({ line: recordLine, values });
     }
@@ -150,7 +165,8 @@ export function inventoryCsvString(items: readonly InventoryItem[]): string {
   ]);
 }
 
-export function inventoryCsvItems(file: Buffer): IngredientRow[] {
+/** Reads the file and checks its header; problems with the file as a whole are thrown. */
+function inventoryCsvRecords(file: Buffer): { columns: string[]; rows: CsvRecord[] } {
   const [header, ...rows] = readInventoryCsv(file, INVENTORY_CSV_MAX_ROWS + 1);
   if (!header || !rows.length)
     throw new BadRequestException('CSV must contain a header and at least one ingredient row');
@@ -162,6 +178,33 @@ export function inventoryCsvItems(file: Buffer): IngredientRow[] {
   const unknown = columns.filter((name) => !allowedHeaders.has(name));
   if (unknown.length)
     throw new BadRequestException(`Unrecognized CSV columns: ${unknown.join(', ')}`);
+  return { columns, rows };
+}
+
+/**
+ * The same file format as Inventory › Import, read as editable onboarding rows: row problems are
+ * left for the caller to report rather than thrown. Columns onboarding has no use for (ids,
+ * balances, opening reason) are accepted and ignored, so an export can be uploaded as-is.
+ */
+export function inventoryCsvDraftRows(file: Buffer, key: () => string): OnboardingInventoryRow[] {
+  const { columns, rows } = inventoryCsvRecords(file);
+  return rows.map(({ values, line }) => {
+    const get = (name: string): string => values[columns.indexOf(name)] ?? '';
+    return {
+      key: key(),
+      line,
+      name: unescapeInventoryCsvText(get('name')).trim(),
+      sku: unescapeInventoryCsvText(get('sku')).trim(),
+      baseUnit: get('base_unit').trim().toUpperCase(),
+      reorderLevel: get('reorder_level').trim(),
+      openingQuantity: get(openingColumns.quantity).trim(),
+      openingUnitCost: get(openingColumns.unitCost).trim(),
+    };
+  });
+}
+
+export function inventoryCsvItems(file: Buffer): IngredientRow[] {
+  const { columns, rows } = inventoryCsvRecords(file);
 
   const foundIds = new Set<string>();
   return rows.map(({ values, line }) => {

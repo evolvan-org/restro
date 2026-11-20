@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@rms/db';
+import { BILL_CANCELLATION_REASONS, Prisma, SYSTEM_TABLE_STATUSES } from '@rms/db';
 import { ALL_ROLES, Role, ROLE_PERMISSIONS } from '@rms/permissions';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -40,9 +40,10 @@ export class ProvisioningRepository {
 
   /**
    * Provisions a restaurant, seeds the system roles (with their permissions)
-   * from `@rms/permissions`, and creates the signing-up user with the OWNER
-   * role — all in a single transaction so a failure part-way leaves nothing
-   * behind (AC4).
+   * from `@rms/permissions`, the system table statuses and cancellation reasons
+   * the floor and billing code depend on, an empty onboarding draft, and creates
+   * the signing-up user with the OWNER role — all in a single transaction so a
+   * failure part-way leaves nothing behind (AC4).
    */
   provisionOwner(input: ProvisionOwnerInput): Promise<ProvisionOwnerResult> {
     return this.prisma.$transaction(async (tx) => {
@@ -77,6 +78,23 @@ export class ProvisioningRepository {
           ownerRoleId = created.id;
         }
       }
+
+      await tx.tableStatus.createMany({
+        data: SYSTEM_TABLE_STATUSES.map((status, sortOrder) => ({
+          ...status,
+          restaurantId: restaurant.id,
+          sortOrder,
+          isSystem: true,
+        })),
+      });
+      await tx.billCancellationReason.createMany({
+        data: BILL_CANCELLATION_REASONS.map((reason, sortOrder) => ({
+          ...reason,
+          restaurantId: restaurant.id,
+          sortOrder,
+        })),
+      });
+      await tx.onboardingDraft.create({ data: { restaurantId: restaurant.id } });
 
       // ALL_ROLES always contains OWNER; this guards against a policy regression.
       if (!ownerRoleId) {

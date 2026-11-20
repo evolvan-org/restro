@@ -23,6 +23,7 @@ const menuItemSelect = {
   itemType: true,
   isAvailable: true,
   isActive: true,
+  recipeRequired: true,
   createdAt: true,
   updatedAt: true,
   recipeItems: {
@@ -47,6 +48,7 @@ export type NewMenuItem = {
   price: number;
   itemType: CategoryType;
   isAvailable: boolean;
+  recipeRequired: boolean;
 };
 
 export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {

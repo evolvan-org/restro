@@ -8,6 +8,8 @@ const actorSelect = {
   status: true,
   authVersion: true,
   emailVerifiedAt: true,
+  mustChangePassword: true,
+  restaurant: { select: { onboardingCompletedAt: true } },
   role: {
     select: {
       name: true,

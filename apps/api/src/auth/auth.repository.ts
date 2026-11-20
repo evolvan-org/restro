@@ -13,7 +13,9 @@ const authUserSelect = {
   status: true,
   emailVerifiedAt: true,
   authVersion: true,
-  restaurant: { select: { name: true } },
+  mustChangePassword: true,
+  role: { select: { name: true } },
+  restaurant: { select: { name: true, onboardingCompletedAt: true } },
 } satisfies Prisma.UserSelect;
 
 export type AuthUserRecord = Prisma.UserGetPayload<{ select: typeof authUserSelect }>;

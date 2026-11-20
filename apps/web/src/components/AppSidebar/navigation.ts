@@ -20,6 +20,8 @@ export type NavItem = {
   activePaths?: readonly string[];
   /** Shown only when the role holds this permission. Omit for items everyone can see. */
   permission?: Permission;
+  /** A count badge fed by the setup checklist (owners and managers only). */
+  badge?: 'missing-recipes';
 };
 
 export type NavGroup = {
@@ -81,6 +83,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         href: '/menu/items',
         activePaths: ['/menu'],
         permission: Permission.MENU_READ,
+        badge: 'missing-recipes',
       },
       {
         label: 'Inventory',

@@ -7,10 +7,16 @@ export const loginRequestSchema = z.object({
   password: z.string().min(1),
 });
 
+export const onboardingStateSchema = z.enum(['PENDING', 'COMPLETED']);
+
 export const loginResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   accessToken: z.string(),
+  /** PENDING sends the owner into guided setup; only owners can log in while it is pending. */
+  onboarding: onboardingStateSchema,
+  /** True for an account still on its one-time password; it must be changed before anything else. */
+  mustChangePassword: z.boolean(),
 });
 
 export const registerRequestSchema = z.object({
@@ -24,6 +30,7 @@ export const registerResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   accessToken: z.string(),
+  onboarding: onboardingStateSchema,
   /** False when the account was created but the verification email could not be sent. */
   emailSent: z.boolean(),
 });

@@ -26,12 +26,12 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { ALL_ROLES, Role, ROLE_PERMISSIONS, type Role as RoleName } from '@rms/permissions';
 import { hash } from 'bcrypt';
 
-import { BILL_CANCELLATION_REASONS } from './seed-bill-cancellation-reasons';
 import { DINING_SECTIONS, RESTAURANT_PROFILE } from './seed/catalog';
 import { seedInventoryActivity, seedStockItems, seedSuppliers } from './seed/inventory';
 import { seedMenu } from './seed/menu';
 import { type SeedTable, type SeedUser, seedServiceHistory } from './seed/service-history';
 import { assertSafeSeedTarget } from './seed/support';
+import { BILL_CANCELLATION_REASONS, SYSTEM_TABLE_STATUSES } from './tenant-defaults';
 
 // Matches apps/api BCRYPT_ROUNDS; kept local so @rms/db does not depend on the api app.
 const BCRYPT_ROUNDS = 10;
@@ -51,14 +51,6 @@ const STAFF: readonly { role: RoleName; name: string; email: string }[] = [
   { role: Role.CASHIER, name: 'Chetan Cashier', email: 'cashier@gmail.com' },
 ];
 
-/** System lifecycle statuses (matches @rms/shared TABLE_STATUS_CODES). */
-const TABLE_STATUSES: readonly { code: string; name: string }[] = [
-  { code: 'AVAILABLE', name: 'Available' },
-  { code: 'RESERVED', name: 'Reserved' },
-  { code: 'OCCUPIED', name: 'Occupied' },
-  { code: 'NEEDS_CLEANING', name: 'Cleaning' },
-];
-
 /** Long enough for the bulk history inserts; the default 5s interactive timeout is not. */
 const TX_OPTIONS = { timeout: 120_000, maxWait: 10_000 } as const;
 
@@ -76,8 +68,9 @@ async function resolveRestaurantId(tx: Prisma.TransactionClient): Promise<string
   });
   if (existing) return existing.id;
 
+  // The demo restaurant is fully set up, so its owner skips guided onboarding.
   const created = await tx.restaurant.create({
-    data: { name: RESTAURANT_NAME },
+    data: { name: RESTAURANT_NAME, onboardingCompletedAt: new Date() },
     select: { id: true },
   });
   return created.id;
@@ -92,6 +85,7 @@ async function seedRestaurantProfile(
   const updated = await tx.restaurant.update({
     where: { id: restaurantId },
     data: {
+      onboardingCompletedAt: restaurant.onboardingCompletedAt ?? new Date(),
       gstNumber: restaurant.gstNumber ?? RESTAURANT_PROFILE.gstNumber,
       address: restaurant.address ?? RESTAURANT_PROFILE.address,
       defaultGstRate: restaurant.defaultGstRate.isZero()
@@ -183,7 +177,7 @@ async function seedFloor(
   restaurantId: string,
 ): Promise<Map<string, string>> {
   const statusIds = new Map<string, string>();
-  for (const [index, status] of TABLE_STATUSES.entries()) {
+  for (const [index, status] of SYSTEM_TABLE_STATUSES.entries()) {
     const row = await tx.tableStatus.upsert({
       where: { restaurantId_code: { restaurantId, code: status.code } },
       create: {
