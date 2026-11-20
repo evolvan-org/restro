@@ -31,6 +31,18 @@ function mapDatabaseError(exception: unknown): MappedDbError | null {
         return { status: HttpStatus.CONFLICT, message: 'A referenced record does not exist.' };
       case 'P2025':
         return { status: HttpStatus.NOT_FOUND, message: 'The requested record was not found.' };
+      // Interactive transaction timed out (e.g. waiting on a busy lock) or hit a write conflict:
+      // both are transient, so tell the client to retry instead of reporting a server fault.
+      case 'P2028':
+        return {
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          message: 'The system is busy with another update. Try again in a moment.',
+        };
+      case 'P2034':
+        return {
+          status: HttpStatus.CONFLICT,
+          message: 'This record was changed by another request. Try again.',
+        };
       default:
         return null;
     }

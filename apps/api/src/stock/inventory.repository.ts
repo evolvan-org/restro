@@ -10,7 +10,10 @@ import type {
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import { lockRestaurantInventory } from '../common/database/inventory-lock';
+import {
+  INVENTORY_WRITE_TIMEOUT_MS,
+  lockRestaurantInventory,
+} from '../common/database/inventory-lock';
 import { PrismaService } from '../common/database/prisma.service';
 
 type Page = { page: number; pageSize: number };
@@ -64,7 +67,7 @@ export class InventoryRepository {
         await lockRestaurantInventory(tx, restaurantId);
         return fn(new InventoryWriteContext(tx, restaurantId));
       },
-      { timeout: 15_000 },
+      { timeout: INVENTORY_WRITE_TIMEOUT_MS },
     );
   }
 

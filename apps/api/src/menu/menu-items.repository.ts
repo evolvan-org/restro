@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import type { CategoryType, RecipeRow, ServingType } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import { lockRestaurantInventory } from '../common/database/inventory-lock';
+import {
+  INVENTORY_LOCK_WAITER_TIMEOUT_MS,
+  lockRestaurantInventory,
+} from '../common/database/inventory-lock';
 import { PrismaService } from '../common/database/prisma.service';
 import { StockItemsRepository } from '../stock/stock-items.repository';
 
@@ -28,6 +31,9 @@ const menuItemSelect = {
 } satisfies Prisma.MenuItemSelect;
 
 export type MenuItemRecord = Prisma.MenuItemGetPayload<{ select: typeof menuItemSelect }>;
+
+/** Recipe writes wait on the restaurant's inventory lock, which a CSV import can hold for seconds. */
+const recipeTransactionOptions = { timeout: INVENTORY_LOCK_WAITER_TIMEOUT_MS };
 
 export type NewMenuItem = {
   categoryId: string;
@@ -162,7 +168,7 @@ export class MenuItemsRepository {
         data: { restaurantId, ...item, recipeItems: { create: recipe } },
         select: menuItemSelect,
       });
-    });
+    }, recipeTransactionOptions);
   }
 
   /** Updates fields and (when given) replaces the whole recipe atomically. */
@@ -189,7 +195,7 @@ export class MenuItemsRepository {
       }
 
       return tx.menuItem.findFirst({ where: { id, restaurantId }, select: menuItemSelect });
-    });
+    }, recipeTransactionOptions);
   }
 
   private async requireRecipeIngredients(
