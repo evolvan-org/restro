@@ -2,7 +2,7 @@
 
 import { Permission } from '@rms/permissions';
 import { cn } from 'cn';
-import { PanelLeft, Settings } from 'lucide-react';
+import { ArrowUpRight, ChefHat, ExternalLink, GlassWater, PanelLeft, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactElement, useEffect, useState } from 'react';
@@ -124,6 +124,55 @@ function SidebarNav({
   );
 }
 
+const STATION_LINKS = [
+  { label: 'Kitchen display', href: '/kitchen', icon: ChefHat },
+  { label: 'Bar display', href: '/bar', icon: GlassWater },
+] as const;
+
+/** Launchers for the full-screen station displays; they always open in a new tab. */
+function StationDisplayLinks({ collapsed }: { collapsed?: boolean }): ReactElement | null {
+  const { can } = usePermissions();
+  if (!can(Permission.KOT_READ)) return null;
+
+  return (
+    <div className="flex flex-col gap-0.5 border-b border-sidebar-border pb-2">
+      {!collapsed && (
+        <span className="px-3 pt-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60 select-none">
+          Station displays
+        </span>
+      )}
+      {STATION_LINKS.map(({ label, href, icon: Icon }) => (
+        <a
+          key={href}
+          href={href}
+          target="_blank"
+          rel="noopener"
+          aria-label={`${label}, opens in a new tab`}
+          title={`${label} (opens in new tab)`}
+          className={cn(
+            'group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
+            collapsed && 'justify-center px-0',
+          )}
+        >
+          <Icon className="size-5 shrink-0" aria-hidden />
+          {collapsed ? (
+            <ArrowUpRight
+              className="absolute top-1 right-1.5 size-[11px] text-sidebar-foreground/70"
+              strokeWidth={3}
+              aria-hidden
+            />
+          ) : (
+            <>
+              <span className="flex-1 truncate">{label}</span>
+              <ExternalLink className="size-4 shrink-0 text-sidebar-foreground/60" aria-hidden />
+            </>
+          )}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Sidebar footer carrying restaurant settings and the user profile summary.
  */
@@ -145,6 +194,7 @@ function SidebarFooter({
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-sidebar-border p-3">
+      <StationDisplayLinks collapsed={collapsed} />
       {canManageRestaurant && (
         <Link
           href="/restaurant/settings"
