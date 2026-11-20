@@ -30,8 +30,8 @@ import { buildPageMeta } from '@rms/shared';
 import { AuthTokenService } from '../../auth-tokens/auth-token.service';
 import type { Actor } from '../../common/auth/authenticated-request';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
-import { deliverBestEffort } from '../../email/email-delivery';
 import { EmailService } from '../../email/email.service';
+import { deliverBestEffort } from '../../email/email-delivery';
 import {
   type RoleRecord,
   type StaffDetails,

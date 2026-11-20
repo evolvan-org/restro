@@ -22,8 +22,8 @@ import { AuthTokenService } from '../auth-tokens/auth-token.service';
 import { BCRYPT_ROUNDS } from '../common/auth/password';
 import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { RateLimitService } from '../common/rate-limit/rate-limit.service';
-import { deliverBestEffort } from '../email/email-delivery';
 import { EmailService } from '../email/email.service';
+import { deliverBestEffort } from '../email/email-delivery';
 import { ProvisioningService } from '../provisioning/provisioning.service';
 import { AuthRepository, type AuthUserRecord } from './auth.repository';
 
@@ -47,23 +47,20 @@ export class AuthService {
     const { userId, restaurantId, roleId } = await this.provisioning.provisionOwner(input);
     // The account is committed at this point, so a provider outage must not turn registration into
     // an error: a retry would only hit "Email is already registered". The user can resend later.
-    const emailSent = await deliverBestEffort(
-      this.logger,
-      { flow: 'register', userId },
-      () =>
-        this.tokens.issueAndDeliver(restaurantId, userId, 'EMAIL_VERIFICATION', (token) =>
-          this.email.send({
-            to: { email: input.email, name: input.name },
-            template: 'VERIFY_EMAIL',
-            variables: {
-              name: input.name,
-              restaurantName: input.restaurantName,
-              verifyUrl: this.publicUrl('/auth/verify-email', token.rawToken),
-              expiresInHours: 24,
-            },
-            idempotencyKey: token.id,
-          }),
-        ),
+    const emailSent = await deliverBestEffort(this.logger, { flow: 'register', userId }, () =>
+      this.tokens.issueAndDeliver(restaurantId, userId, 'EMAIL_VERIFICATION', (token) =>
+        this.email.send({
+          to: { email: input.email, name: input.name },
+          template: 'VERIFY_EMAIL',
+          variables: {
+            name: input.name,
+            restaurantName: input.restaurantName,
+            verifyUrl: this.publicUrl('/auth/verify-email', token.rawToken),
+            expiresInHours: 24,
+          },
+          idempotencyKey: token.id,
+        }),
+      ),
     );
 
     return {
