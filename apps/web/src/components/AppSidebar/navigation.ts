@@ -23,7 +23,7 @@ export type NavItem = {
 };
 
 export type NavGroup = {
-  label: string;
+  label?: string;
   items: readonly NavItem[];
 };
 
@@ -33,7 +33,6 @@ export type NavGroup = {
  */
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
-    label: 'SERVICE',
     items: [
       {
         label: 'Dashboard',
@@ -41,12 +40,11 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         href: '/dashboard',
         permission: Permission.DASHBOARD_READ,
       },
-      {
-        label: 'Floor',
-        icon: LayoutGrid,
-        href: '/floor',
-        permission: Permission.DASHBOARD_READ,
-      },
+    ],
+  },
+  {
+    label: 'SERVICE',
+    items: [
       {
         label: 'Orders',
         icon: ClipboardList,
