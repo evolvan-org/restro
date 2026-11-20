@@ -6,7 +6,10 @@ import store from '@/store';
 import { useLogout } from '@/store/hooks/auth';
 
 /** The API's standard error envelope (see the global HttpExceptionFilter). */
-type ApiErrorBody = { message?: string };
+type ApiErrorBody = { message?: string; code?: string };
+
+/** Handled by routing (to onboarding / change-password), so a toast on top would only add noise. */
+const SETUP_CODES = new Set(['ONBOARDING_REQUIRED', 'PASSWORD_CHANGE_REQUIRED']);
 
 const FORBIDDEN_FALLBACK = 'You do not have permission to perform this action';
 const SERVER_ERROR_MESSAGE = 'Something went wrong. Please try again.';
@@ -61,8 +64,10 @@ export default function useSetupAxios(instance: AxiosInstance) {
           return Promise.reject(error);
         } else if (status === 403) {
           // Authorization denied on an action — surface the reason (AC4).
-          const message = (error.response?.data as ApiErrorBody | undefined)?.message;
-          toast.error(message ?? FORBIDDEN_FALLBACK);
+          const body = error.response?.data as ApiErrorBody | undefined;
+          if (!(body?.code && SETUP_CODES.has(body.code))) {
+            toast.error(body?.message ?? FORBIDDEN_FALLBACK);
+          }
         } else if (status !== undefined && status >= 500) {
           toast.error(SERVER_ERROR_MESSAGE);
         }
