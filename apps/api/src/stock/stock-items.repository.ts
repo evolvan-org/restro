@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma, StockItem } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
 
@@ -17,11 +18,15 @@ export class StockItemsRepository {
   }
 
   /** Ids from `stockItemIds` that are active ingredients of this restaurant's master. */
-  async findActiveIds(restaurantId: string, stockItemIds: string[]): Promise<string[]> {
-    const rows = await this.prisma.stockItem.findMany({
+  /** Active ingredients among `stockItemIds`, with the base unit their recipes must measure in. */
+  findActiveBaseUnits(
+    restaurantId: string,
+    stockItemIds: string[],
+    tx: Prisma.TransactionClient,
+  ): Promise<{ id: string; baseUnit: StockItem['baseUnit'] }[]> {
+    return tx.stockItem.findMany({
       where: { restaurantId, isActive: true, id: { in: stockItemIds } },
-      select: { id: true },
+      select: { id: true, baseUnit: true },
     });
-    return rows.map(({ id }) => id);
   }
 }

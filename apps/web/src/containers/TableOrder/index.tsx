@@ -177,7 +177,7 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
     <main className={styles.screen}>
       <div className={styles.toolbar}>
         <Link
-          href="/floor"
+          href="/dashboard"
           className="inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" aria-hidden />

@@ -22,7 +22,7 @@ export default function FloorHeader(props: FloorHeaderProps): ReactElement {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-[18px] xl:px-8">
       <div className="mr-auto min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">Live floor board</h1>
+        <h2 className="text-xl font-semibold tracking-tight">Live floor board</h2>
         <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span
             className={cn(

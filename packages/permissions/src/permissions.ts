@@ -11,6 +11,9 @@ export const Permission = {
   // App shell
   DASHBOARD_READ: 'dashboard:read',
 
+  // Reporting (revenue, GST, today's sales summary)
+  REPORT_READ: 'report:read',
+
   // Identity & Access
   USER_READ: 'user:read',
   USER_WRITE: 'user:write',
@@ -31,6 +34,7 @@ export const Permission = {
 
   // Stock
   STOCK_READ: 'stock:read',
+  INVENTORY_MANAGE: 'inventory:manage',
 
   // Reservations
   RESERVATION_READ: 'reservation:read',

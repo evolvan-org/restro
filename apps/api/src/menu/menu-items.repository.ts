@@ -1,8 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import type { CategoryType, RecipeRow, ServingType } from '@rms/api-contract';
+import {
+  type CategoryType,
+  inventorySupplyMeasures,
+  type RecipeRow,
+  type ServingType,
+} from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import {
+  INVENTORY_LOCK_WAITER_TIMEOUT_MS,
+  lockRestaurantInventory,
+} from '../common/database/inventory-lock';
 import { PrismaService } from '../common/database/prisma.service';
+import { StockItemsRepository } from '../stock/stock-items.repository';
 
 const menuItemSelect = {
   id: true,
@@ -27,6 +37,9 @@ const menuItemSelect = {
 
 export type MenuItemRecord = Prisma.MenuItemGetPayload<{ select: typeof menuItemSelect }>;
 
+/** Recipe writes wait on the restaurant's inventory lock, which a CSV import can hold for seconds. */
+const recipeTransactionOptions = { timeout: INVENTORY_LOCK_WAITER_TIMEOUT_MS };
+
 export type NewMenuItem = {
   categoryId: string;
   name: string;
@@ -41,9 +54,15 @@ export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {
   isActive?: boolean;
 };
 
+export class InactiveRecipeIngredientError extends Error {}
+export class IncompatibleRecipeUnitError extends Error {}
+
 @Injectable()
 export class MenuItemsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stockItems: StockItemsRepository,
+  ) {}
 
   findAll(
     restaurantId: string,
@@ -149,10 +168,13 @@ export class MenuItemsRepository {
 
   /** Creates the item and its recipe in one transaction so a half-written recipe never persists. */
   create(restaurantId: string, item: NewMenuItem, recipe: RecipeRow[]): Promise<MenuItemRecord> {
-    return this.prisma.menuItem.create({
-      data: { restaurantId, ...item, recipeItems: { create: recipe } },
-      select: menuItemSelect,
-    });
+    return this.prisma.$transaction(async (tx) => {
+      await this.requireRecipeIngredients(tx, restaurantId, recipe);
+      return tx.menuItem.create({
+        data: { restaurantId, ...item, recipeItems: { create: recipe } },
+        select: menuItemSelect,
+      });
+    }, recipeTransactionOptions);
   }
 
   /** Updates fields and (when given) replaces the whole recipe atomically. */
@@ -163,6 +185,7 @@ export class MenuItemsRepository {
     recipe?: RecipeRow[],
   ): Promise<MenuItemRecord | null> {
     return this.prisma.$transaction(async (tx) => {
+      if (recipe) await this.requireRecipeIngredients(tx, restaurantId, recipe);
       const { count } = await tx.menuItem.updateMany({
         where: { id, restaurantId },
         // updatedAt keeps `data` non-empty for recipe-only edits (an empty update matches nothing).
@@ -178,7 +201,27 @@ export class MenuItemsRepository {
       }
 
       return tx.menuItem.findFirst({ where: { id, restaurantId }, select: menuItemSelect });
+    }, recipeTransactionOptions);
+  }
+
+  private async requireRecipeIngredients(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    recipe: RecipeRow[],
+  ): Promise<void> {
+    await lockRestaurantInventory(tx, restaurantId);
+    const ids = [...new Set(recipe.map(({ stockItemId }) => stockItemId))];
+    const active = await this.stockItems.findActiveBaseUnits(restaurantId, ids, tx);
+    if (active.length !== ids.length) throw new InactiveRecipeIngredientError();
+
+    // Unconfigured ingredients (no base unit yet) accept any unit; saving a base unit later is
+    // rejected if it clashes with existing recipes (InventoryService.saveItem).
+    const baseUnits = new Map(active.map(({ id, baseUnit }) => [id, baseUnit]));
+    const mismatched = recipe.some(({ stockItemId, unit }) => {
+      const baseUnit = baseUnits.get(stockItemId);
+      return baseUnit != null && inventorySupplyMeasures[unit].baseUnit !== baseUnit;
     });
+    if (mismatched) throw new IncompatibleRecipeUnitError();
   }
 
   /** Sets the explicit target; repeated requests leave the item and its timestamp unchanged. */

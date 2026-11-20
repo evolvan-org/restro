@@ -1,167 +1,97 @@
 'use client';
 
 import { Permission } from '@rms/permissions';
-import {
-  ArrowRight,
-  CalendarCheck,
-  ChefHat,
-  ClipboardList,
-  LayoutGrid,
-  type LucideIcon,
-  Receipt,
-  Settings,
-  User,
-  Users,
-} from 'lucide-react';
-import Link from 'next/link';
 import type { ReactElement } from 'react';
 
-import { Badge } from '@/components/ui/badge';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  SegmentedControl,
+  type SegmentedOption,
+  segmentedPanelId,
+  segmentedTabId,
+} from '@/components/ui/segmented-control';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
+import usePersistedState from '@/hooks/usePersistedState';
 import { useProfile } from '@/services/api/requests/profile';
 
-type Module = {
-  title: string;
-  description: string;
-  icon: LucideIcon;
-  /** Shown only when the role holds this permission. Omit for modules everyone can see. */
-  permission?: Permission;
-  /** Present when the module has a live page; omitted modules render as "coming soon". */
-  href?: string;
-};
+import FloorBoard from '../FloorBoard';
+import ReportingPane from './ReportingPane';
+import Reports from './Reports';
+import TodaySummary from './TodaySummary';
 
-/** Modules the dashboard surfaces, gated by permission. Order = most to least commonly used. */
-const MODULES: readonly Module[] = [
-  {
-    title: 'Staff',
-    description: 'Create accounts, assign roles, and control who can log in.',
-    icon: Users,
-    permission: Permission.USER_READ,
-    href: '/staff',
-  },
-  {
-    title: 'My profile',
-    description: 'Update your personal details and change your password.',
-    icon: User,
-    href: '/profile',
-  },
-  {
-    title: 'Reservations',
-    description: 'Manage bookings and table availability.',
-    icon: CalendarCheck,
-    permission: Permission.RESERVATION_READ,
-    href: '/reservations',
-  },
-  {
-    title: 'Live floor board',
-    description: 'Real-time table availability across the floor.',
-    icon: LayoutGrid,
-    permission: Permission.RESTAURANT_READ,
-    href: '/floor',
-  },
-  {
-    title: 'Orders',
-    description: 'Take and track orders across the floor.',
-    icon: ClipboardList,
-    permission: Permission.ORDER_READ,
-  },
-  {
-    title: 'Kitchen display',
-    description: 'Work incoming tickets and mark items ready.',
-    icon: ChefHat,
-    permission: Permission.KOT_READ,
-    href: '/kitchen',
-  },
-  {
-    title: 'Billing',
-    description: 'Generate, manage and print bills.',
-    href: '/billing',
-    icon: Receipt,
-    permission: Permission.BILL_READ,
-  },
-  {
-    title: 'Restaurant settings',
-    href: '/restaurant/settings',
-    description: 'Configure taxes, currency, and restaurant details.',
-    icon: Settings,
-    permission: Permission.RESTAURANT_WRITE,
-  },
+type DashboardView = 'live' | 'reporting';
+
+const VIEW_STORAGE_KEY = 'rms-dashboard-view';
+const VIEW_ID_BASE = 'dashboard-view';
+const VIEWS: readonly SegmentedOption<DashboardView>[] = [
+  { value: 'live', label: 'Live Floor View' },
+  { value: 'reporting', label: 'Reporting' },
 ];
+const VIEW_VALUES: readonly DashboardView[] = VIEWS.map((view) => view.value);
 
-function ModuleCard({ module }: { module: Module }): ReactElement {
-  const { icon: Icon, title, description, href } = module;
-
-  const inner = (
-    <Card
-      className={
-        href
-          ? 'h-full transition-colors hover:border-foreground/20 hover:bg-muted/40'
-          : 'h-full opacity-70'
-      }
-    >
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex size-9 items-center justify-center rounded-md bg-muted text-foreground">
-            <Icon className="size-5" aria-hidden />
-          </div>
-          {href ? (
-            <ArrowRight className="size-4 text-muted-foreground" aria-hidden />
-          ) : (
-            <Badge variant="outline">Soon</Badge>
-          )}
-        </div>
-        <CardTitle className="mt-3">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-    </Card>
-  );
-
-  if (!href) {
-    return inner;
-  }
+function DashboardContent({ storageKey }: { storageKey: string }): ReactElement {
+  const [storedView, setView, isViewRestored] = usePersistedState(storageKey, 'live', VIEW_VALUES);
+  const { can } = usePermissions();
+  const canReport = can(Permission.REPORT_READ);
+  // Roles without report access only ever see the live floor, whatever view was stored.
+  const view: DashboardView = canReport ? storedView : 'live';
+  const isLive = view === 'live';
 
   return (
-    <Link
-      href={href}
-      className="rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      {inner}
-    </Link>
+    <div className="flex min-h-[calc(100svh-3.5rem)] flex-col bg-muted/35 lg:h-[max(38rem,calc(100svh-3.5rem))] lg:overflow-hidden">
+      <header className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 pt-5 pb-4 sm:px-6 sm:pt-6 xl:px-8">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-[32px]">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Real-time overview of today&apos;s service
+          </p>
+        </div>
+        {canReport && (
+          <SegmentedControl
+            idBase={VIEW_ID_BASE}
+            aria-label="Dashboard view"
+            options={VIEWS}
+            value={view}
+            onChange={setView}
+            className="w-full rounded-xl border sm:w-fit [&>button]:flex-1 [&>button]:justify-center sm:[&>button]:flex-none"
+          />
+        )}
+      </header>
+
+      <div
+        role="tabpanel"
+        id={segmentedPanelId(VIEW_ID_BASE, 'live')}
+        aria-labelledby={segmentedTabId(VIEW_ID_BASE, 'live')}
+        className="min-h-0 flex-1 border-t bg-background"
+        hidden={!isLive}
+      >
+        {isViewRestored && isLive && <FloorBoard />}
+      </div>
+      <div
+        role="tabpanel"
+        id={segmentedPanelId(VIEW_ID_BASE, 'reporting')}
+        aria-labelledby={segmentedTabId(VIEW_ID_BASE, 'reporting')}
+        className="min-h-0 flex-1 px-4 pt-2 pb-6 sm:px-6 lg:overflow-y-auto xl:px-8"
+        hidden={isLive}
+      >
+        {isViewRestored && canReport && !isLive && (
+          <ReportingPane>
+            <TodaySummary />
+            <Reports />
+          </ReportingPane>
+        )}
+      </div>
+    </div>
   );
 }
 
 export default function Dashboard(): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.DASHBOARD_READ]);
-  const { canAny } = usePermissions();
   const { data: profile } = useProfile();
 
-  if (!isAllowed) {
-    return null;
-  }
-
-  const visibleModules = MODULES.filter(
-    (module) => !module.permission || canAny([module.permission]),
-  );
+  if (!isAllowed || !profile) return null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <div className="mb-8">
-        <p className="text-sm font-medium text-muted-foreground">Dashboard</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-          {profile?.name ? `Welcome back, ${profile.name}` : 'Welcome back'}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Jump into the tools your role gives you access to.
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {visibleModules.map((module) => (
-          <ModuleCard key={module.title} module={module} />
-        ))}
-      </div>
-    </main>
+    <DashboardContent key={profile.email} storageKey={`${VIEW_STORAGE_KEY}:${profile.email}`} />
   );
 }
