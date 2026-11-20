@@ -109,17 +109,32 @@ export class StaffRepository {
     return user !== null;
   }
 
-  async create(
-    data: StaffDetails & { restaurantId: string; passwordHash: string },
-  ): Promise<StaffRecord> {
+  async create(data: StaffDetails & { restaurantId: string }): Promise<StaffRecord> {
     try {
-      return await this.prisma.user.create({ data, select: staffSelect });
+      return await this.prisma.user.create({
+        data: { ...data, passwordHash: null, status: 'INVITED' },
+        select: staffSelect,
+      });
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new StaffEmailConflictError();
       }
       throw error;
     }
+  }
+
+  findInvitationContext(
+    restaurantId: string,
+    inviterId: string,
+  ): Promise<{ inviterName: string; restaurantName: string } | null> {
+    return this.prisma.user
+      .findFirst({
+        where: { id: inviterId, restaurantId },
+        select: { name: true, restaurant: { select: { name: true } } },
+      })
+      .then((record) =>
+        record ? { inviterName: record.name, restaurantName: record.restaurant.name } : null,
+      );
   }
 
   async update(

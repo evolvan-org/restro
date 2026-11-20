@@ -12,6 +12,9 @@ export const errorResponseSchema = z.object({
 
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;
 
+export const messageResponseSchema = z.object({ message: z.string() }).strict();
+export type MessageResponse = z.infer<typeof messageResponseSchema>;
+
 /** `page` / `pageSize` query parameters accepted by every list endpoint. */
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(DEFAULT_PAGE),

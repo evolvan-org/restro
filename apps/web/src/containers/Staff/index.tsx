@@ -3,7 +3,7 @@
 import type { StaffStatus, UserStatus } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
-import { KeyRound, Pencil, Plus, Search } from 'lucide-react';
+import { KeyRound, MailPlus, Pencil, Plus, Search } from 'lucide-react';
 import { type ReactElement, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
@@ -26,10 +26,7 @@ import useDebouncedValue from '@/hooks/useDebouncedValue';
 import { formatRoleLabel } from '@/lib/utils';
 import { useProfile } from '@/services/api/requests/profile';
 import { useStaffList, useStaffRoles } from '@/services/api/requests/staff';
-import {
-  useShowStaffPasswordRegenerationModal,
-  useShowStaffStatusModal,
-} from '@/store/hooks/modal';
+import { useShowStaffEmailActionModal, useShowStaffStatusModal } from '@/store/hooks/modal';
 import { useShowStaffFormSidePane } from '@/store/hooks/sidepane';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -38,14 +35,16 @@ type StaffFilters = { search: string; status: StaffStatus | ''; page: number };
 
 const STATUS_FILTERS: { value: StaffStatus | ''; label: string }[] = [
   { value: '', label: 'All statuses' },
+  { value: 'INVITED', label: 'Invited / Pending' },
   { value: 'ACTIVE', label: 'Active' },
   { value: 'INACTIVE', label: 'Inactive' },
 ];
 
 const STATUS_BADGES: Record<
   UserStatus,
-  { label: string; variant: 'active' | 'inactive' | 'destructive' }
+  { label: string; variant: 'active' | 'inactive' | 'destructive' | 'secondary' }
 > = {
+  INVITED: { label: 'Invited / Pending', variant: 'secondary' },
   ACTIVE: { label: 'Active', variant: 'active' },
   INACTIVE: { label: 'Inactive', variant: 'inactive' },
   SUSPENDED: { label: 'Suspended', variant: 'destructive' },
@@ -81,7 +80,7 @@ export default function Staff(): ReactElement | null {
   const manageableRoleIds = new Set((assignableRoles.data ?? []).map((role) => role.id));
   const showStaffForm = useShowStaffFormSidePane();
   const showStatusModal = useShowStaffStatusModal();
-  const showPasswordRegeneration = useShowStaffPasswordRegenerationModal();
+  const showEmailAction = useShowStaffEmailActionModal();
   const showStaffError = useShowApiError('Unable to load staff accounts.');
   const showRolesError = useShowApiError('Unable to load staff roles.');
 
@@ -115,7 +114,12 @@ export default function Staff(): ReactElement | null {
           </p>
         </div>
         {canWrite && (
-          <Button type="button" onClick={() => showStaffForm()}>
+          <Button
+            type="button"
+            disabled={!profile?.emailVerifiedAt}
+            title={profile?.emailVerifiedAt ? undefined : 'Verify your email before inviting staff'}
+            onClick={() => showStaffForm()}
+          >
             <Plus aria-hidden />
             Add staff
           </Button>
@@ -199,7 +203,7 @@ export default function Staff(): ReactElement | null {
                     {canWrite && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {canManage && !isSelf && (
+                          {canManage && !isSelf && account.status !== 'INVITED' && (
                             <Button
                               type="button"
                               variant="ghost"
@@ -221,16 +225,30 @@ export default function Staff(): ReactElement | null {
                               Edit
                             </Button>
                           )}
-                          {canManage && !isSelf && (
+                          {canManage && !isSelf && account.status === 'INVITED' && (
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => showPasswordRegeneration(account)}
-                              aria-label={`Regenerate password for ${account.name}`}
+                              disabled={!profile?.emailVerifiedAt}
+                              onClick={() => showEmailAction(account, 'resend-invite')}
+                              aria-label={`Resend invitation to ${account.name}`}
+                            >
+                              <MailPlus aria-hidden />
+                              Resend invitation
+                            </Button>
+                          )}
+                          {canManage && !isSelf && account.status !== 'INVITED' && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={!profile?.emailVerifiedAt}
+                              onClick={() => showEmailAction(account, 'password-reset')}
+                              aria-label={`Send password reset to ${account.name}`}
                             >
                               <KeyRound aria-hidden />
-                              Regenerate password
+                              Send password reset
                             </Button>
                           )}
                         </div>

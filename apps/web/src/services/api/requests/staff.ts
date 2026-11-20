@@ -2,10 +2,10 @@ import {
   type CreateStaffRequest,
   type CreateStaffResponse,
   createStaffResponseSchema,
-  type RegenerateStaffPasswordResponse,
-  regenerateStaffPasswordResponseSchema,
   type StaffAccount,
   staffAccountSchema,
+  type StaffEmailActionResponse,
+  staffEmailActionResponseSchema,
   type StaffListQuery,
   type StaffListResponse,
   staffListResponseSchema,
@@ -72,7 +72,7 @@ export function useCreateStaff(): UseMutationResult<
       const response = await api.post('/users/staff', input);
       return createStaffResponseSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [StaffQueryKey.Staff] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: [StaffQueryKey.Staff] }),
     onError: showApiError,
   });
 }
@@ -109,17 +109,31 @@ export function useUpdateStaffStatus(): UseMutationResult<
   });
 }
 
-export function useRegenerateStaffPassword(): UseMutationResult<
-  RegenerateStaffPasswordResponse,
+export function useResendStaffInvite(): UseMutationResult<StaffEmailActionResponse, Error, string> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to resend the staff invitation.');
+
+  return useMutation<StaffEmailActionResponse, Error, string>({
+    mutationFn: async (id: string): Promise<StaffEmailActionResponse> => {
+      const response = await api.post(`/users/staff/${id}/resend-invite`);
+      return staffEmailActionResponseSchema.parse(response.data);
+    },
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [StaffQueryKey.Staff] }),
+    onError: showApiError,
+  });
+}
+
+export function useSendStaffPasswordReset(): UseMutationResult<
+  StaffEmailActionResponse,
   Error,
   string
 > {
-  const showApiError = useShowApiError('Unable to regenerate the staff password.');
-
-  return useMutation<RegenerateStaffPasswordResponse, Error, string>({
-    mutationFn: async (id: string): Promise<RegenerateStaffPasswordResponse> => {
-      const response = await api.post(`/users/staff/${id}/password`);
-      return regenerateStaffPasswordResponseSchema.parse(response.data);
+  const showApiError = useShowApiError('Unable to send the password reset email.');
+  return useMutation<StaffEmailActionResponse, Error, string>({
+    mutationFn: async (id: string): Promise<StaffEmailActionResponse> => {
+      const response = await api.post(`/users/staff/${id}/send-password-reset`);
+      return staffEmailActionResponseSchema.parse(response.data);
     },
     retry: false,
     onError: showApiError,

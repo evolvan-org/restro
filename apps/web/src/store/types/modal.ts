@@ -12,10 +12,9 @@ import { CaseReducer, PayloadAction } from '@reduxjs/toolkit';
 export enum ModalType {
   None,
   Sample,
-  StaffTemporaryPassword,
   StaffStatus,
   DiningSectionAction,
-  StaffPasswordRegeneration,
+  StaffEmailAction,
   TableStatusAction,
   TableActive,
   MenuCategoryStatus,

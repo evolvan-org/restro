@@ -161,8 +161,15 @@ async function seedUsers(
         name: person.name,
         email: person.email,
         passwordHash,
+        emailVerifiedAt: new Date(),
       },
-      update: { restaurantId, roleId, name: person.name, passwordHash },
+      update: {
+        restaurantId,
+        roleId,
+        name: person.name,
+        passwordHash,
+        emailVerifiedAt: new Date(),
+      },
       select: { id: true },
     });
     users.push({ id: user.id, role: person.role });

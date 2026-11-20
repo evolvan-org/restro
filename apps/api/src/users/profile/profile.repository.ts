@@ -9,6 +9,7 @@ const profileSelect = {
   email: true,
   phone: true,
   status: true,
+  emailVerifiedAt: true,
   role: {
     select: {
       name: true,

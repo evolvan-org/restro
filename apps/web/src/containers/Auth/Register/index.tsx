@@ -35,8 +35,8 @@ export default function Register(): ReactElement {
   const onSubmit = form.handleSubmit(({ confirmPassword: _confirmPassword, ...payload }) => {
     registerUser.mutate(payload, {
       onSuccess: () => {
-        // The token is stored in onSuccess of useRegister; land on the dashboard.
-        router.push('/dashboard');
+        // Keep the issued token for resend/banner actions while guiding the owner to their inbox.
+        router.push('/auth/check-email');
       },
     });
   });

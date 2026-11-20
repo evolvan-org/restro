@@ -6,6 +6,8 @@ import { PrismaService } from '../database/prisma.service';
 const actorSelect = {
   restaurantId: true,
   status: true,
+  authVersion: true,
+  emailVerifiedAt: true,
   role: {
     select: {
       name: true,

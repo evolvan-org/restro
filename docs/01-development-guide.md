@@ -14,6 +14,10 @@ cp .env.example .env
 yarn dev
 ```
 
+Before starting the API, configure a Brevo API key, the three active transactional-template IDs,
+and a verified sender in `.env`. The shared development sender is `sabarjits@evolvan.com`; production
+must replace it with an address on the project's authenticated domain.
+
 - Web: http://localhost:3001
 - API: http://localhost:3000
 - API status: http://localhost:3000/status

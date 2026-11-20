@@ -8,7 +8,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import { isRole, type Permission, roleHasAll } from '@rms/permissions';
 
-import { ActorRepository } from './actor.repository';
 import type { AuthorizedRequest } from './authenticated-request';
 import { REQUIRED_PERMISSIONS_KEY } from './require-permissions.decorator';
 
@@ -21,10 +20,7 @@ import { REQUIRED_PERMISSIONS_KEY } from './require-permissions.decorator';
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(
-    private readonly reflector: Reflector,
-    private readonly actorRepository: ActorRepository,
-  ) {}
+  constructor(private readonly reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const required =
@@ -34,22 +30,14 @@ export class PermissionsGuard implements CanActivate {
       ]) ?? [];
     const request = context.switchToHttp().getRequest<AuthorizedRequest>();
 
-    const userId = request.auth?.userId;
-    if (!userId) {
+    const actor = request.actor;
+    if (!actor) {
       throw new UnauthorizedException('Authentication is required');
     }
 
-    const user = await this.actorRepository.findById(userId);
-    if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('User account is not active');
-    }
-
-    const role = user.role.name;
-    if (!isRole(role) || !roleHasAll(role, required)) {
+    if (!isRole(actor.role) || !roleHasAll(actor.role, required)) {
       throw new ForbiddenException('You do not have permission to perform this action');
     }
-
-    request.actor = { userId, restaurantId: user.restaurantId, role };
     return true;
   }
 }

@@ -5,6 +5,7 @@ import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
 
 import AppHeader from '@/components/AppHeader';
 import AppSidebar from '@/components/AppSidebar';
+import EmailVerificationBanner from '@/components/EmailVerificationBanner';
 import useAppLayout from '@/hooks/useAppLayout';
 import { useAccessToken } from '@/store/hooks/auth';
 
@@ -52,6 +53,7 @@ export default function ProtectedLayout({
       <AppSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader onMenuClick={() => setMobileNavOpen(true)} />
+        <EmailVerificationBanner />
         <main className="flex-1">{children}</main>
       </div>
     </div>
