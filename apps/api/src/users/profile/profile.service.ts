@@ -50,7 +50,7 @@ export class ProfileService {
     const passwordHash = await hash(input.newPassword, BCRYPT_ROUNDS);
     await this.profileRepository.updatePasswordById(userId, passwordHash);
 
-    return { message: 'Password updated successfully' };
+    return { message: 'Password updated. Please sign in again.' };
   }
 
   private toProfileResponse(profile: ProfileRecord | null): ProfileResponse {

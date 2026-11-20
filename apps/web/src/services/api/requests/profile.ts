@@ -13,10 +13,11 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
-import { useAccessToken } from '@/store/hooks/auth';
+import { useAccessToken, useLogout } from '@/store/hooks/auth';
 
 import { ProfileQueryKey } from '../types/ProfileQueryKey';
 
@@ -59,11 +60,17 @@ export function useChangePassword(): UseMutationResult<
   ChangePasswordRequest
 > {
   const showApiError = useShowApiError('Unable to change the password.');
+  const logout = useLogout();
 
   return useMutation<ChangePasswordResponse, Error, ChangePasswordRequest>({
     mutationFn: async (input: ChangePasswordRequest): Promise<ChangePasswordResponse> => {
       const response = await api.patch('/users/profile/password', input);
       return changePasswordResponseSchema.parse(response.data);
+    },
+    // The API revokes every session on a password change, including this one.
+    onSuccess: ({ message }) => {
+      toast.success(message);
+      logout();
     },
     onError: showApiError,
   });

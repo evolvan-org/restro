@@ -51,10 +51,11 @@ export class ProfileRepository {
     });
   }
 
+  /** Also bumps authVersion so every existing session, including a stolen one, stops working. */
   async updatePasswordById(userId: string, passwordHash: string): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash },
+      data: { passwordHash, authVersion: { increment: 1 } },
     });
   }
 }
