@@ -47,7 +47,7 @@ const STEPS: readonly SetupStep[] = [
     icon: Store,
     title: 'Add your restaurant details',
     description: 'Your address and GSTIN are printed on every bill and GST invoice.',
-    primary: { label: 'Add details', href: '/restaurant/settings' },
+    primary: { label: 'Add details', href: '/restaurant/settings/general' },
   },
   {
     key: 'floor',
@@ -58,8 +58,8 @@ const STEPS: readonly SetupStep[] = [
     title: 'Set up your floor',
     description:
       'Add your dining sections and tables so the live floor board and your captains have something to work with.',
-    primary: { label: 'Add tables', href: '/tables' },
-    secondary: { label: 'Add sections', href: '/dining-sections' },
+    primary: { label: 'Add tables', href: '/restaurant/settings/tables' },
+    secondary: { label: 'Add sections', href: '/restaurant/settings/dining-sections' },
   },
   {
     key: 'menu',
@@ -93,7 +93,7 @@ const STEPS: readonly SetupStep[] = [
     title: 'Add your team',
     description:
       'Invite managers, captains and cashiers by email so they can log in and get to work.',
-    primary: { label: 'Invite your team', href: '/staff' },
+    primary: { label: 'Invite your team', href: '/restaurant/settings/team' },
   },
   {
     key: 'recipes',
