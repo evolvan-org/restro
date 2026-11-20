@@ -74,13 +74,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const isHttp = exception instanceof HttpException;
     const dbError = isHttp ? null : mapDatabaseError(exception);
+    const isEmailDeliveryError =
+      !isHttp && exception instanceof Error && exception.name === 'EmailDeliveryError';
     const status = isHttp
       ? exception.getStatus()
-      : (dbError?.status ?? HttpStatus.INTERNAL_SERVER_ERROR);
+      : isEmailDeliveryError
+        ? HttpStatus.SERVICE_UNAVAILABLE
+        : (dbError?.status ?? HttpStatus.INTERNAL_SERVER_ERROR);
 
     let message: string | string[] = dbError?.message ?? 'Internal server error';
     let error: string | undefined = dbError ? HttpStatus[dbError.status] : undefined;
     let existingOrder: unknown;
+
+    if (isEmailDeliveryError) {
+      message = 'Email delivery is temporarily unavailable. Please try again.';
+      error = 'Service Unavailable';
+    }
 
     if (isHttp) {
       const res = exception.getResponse();
@@ -100,7 +109,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         `Database error on ${request.method} ${request.url}: ${exception instanceof Error ? exception.message : ''}`,
       );
-    } else {
+    } else if (!isEmailDeliveryError) {
       this.logger.error(
         `Unhandled exception on ${request.method} ${request.url}`,
         exception instanceof Error ? exception.stack : String(exception),

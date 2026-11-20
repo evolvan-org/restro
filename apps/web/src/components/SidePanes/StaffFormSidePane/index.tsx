@@ -10,6 +10,7 @@ import {
 } from '@rms/api-contract';
 import { type ReactElement, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -19,7 +20,6 @@ import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/compon
 import { formatRoleLabel } from '@/lib/utils';
 import { useProfile } from '@/services/api/requests/profile';
 import { useCreateStaff, useStaffRoles, useUpdateStaff } from '@/services/api/requests/staff';
-import { useShowStaffTemporaryPasswordModal } from '@/store/hooks/modal';
 import { useHideSidePane } from '@/store/hooks/sidepane';
 
 /** Props come from `useShowStaffFormSidePane()(account?)`, plus `onCancel`. */
@@ -34,7 +34,7 @@ const FORM_ID = 'staff-form';
 /** Email is only part of the form when creating: it is fixed once the account exists. */
 type StaffFormValues = UpdateStaffRequest & Partial<Pick<CreateStaffRequest, 'email'>>;
 
-/** Create or edit a staff account. Creating one shows its temporary password afterwards. */
+/** Create a pending invitation or edit an existing staff account. */
 export default function StaffFormSidePane({
   account,
   onCancel,
@@ -45,19 +45,13 @@ export default function StaffFormSidePane({
   const isSelf = isEdit && profile?.email === account.email;
 
   const roles = useStaffRoles(true);
-  const {
-    mutateAsync: createStaff,
-    data: createdStaff,
-    isPending: isCreating,
-    isSuccess: isCreated,
-  } = useCreateStaff();
+  const { mutateAsync: createStaff, isPending: isCreating } = useCreateStaff();
   const {
     mutateAsync: updateStaff,
     isPending: isUpdating,
     isSuccess: isUpdated,
   } = useUpdateStaff();
   const hideSidePane = useHideSidePane();
-  const showTemporaryPassword = useShowStaffTemporaryPasswordModal();
 
   const form = useForm<StaffFormValues>({
     // Editing never validates or sends an email: it is fixed at creation.
@@ -75,13 +69,6 @@ export default function StaffFormSidePane({
     if (isUpdated) hideSidePane();
   }, [isUpdated, hideSidePane]);
 
-  useEffect(() => {
-    if (isCreated && createdStaff) {
-      hideSidePane();
-      showTemporaryPassword(createdStaff);
-    }
-  }, [isCreated, createdStaff, hideSidePane, showTemporaryPassword]);
-
   const roleOptions = [...(roles.data ?? [])];
   if (account && !roleOptions.some((role) => role.id === account.role.id)) {
     roleOptions.push(account.role);
@@ -97,7 +84,10 @@ export default function StaffFormSidePane({
         });
       } else if (values.email !== undefined) {
         // The create schema requires an email, so the resolver only gets here with one.
-        await createStaff({ ...values, email: values.email });
+        const created = await createStaff({ ...values, email: values.email });
+        if (created.emailSent) toast.success(created.message);
+        else toast.warning(created.message);
+        hideSidePane();
       }
     } catch {
       // The mutation hook reports the error through useShowApiError; keep the form open.
@@ -113,7 +103,7 @@ export default function StaffFormSidePane({
         <SheetDescription>
           {isEdit
             ? 'Update the account details and role.'
-            : 'A temporary password is generated when you create the account.'}
+            : 'The staff member will receive an email invitation to choose their password.'}
         </SheetDescription>
       </SheetHeader>
 

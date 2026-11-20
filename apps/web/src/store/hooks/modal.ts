@@ -1,5 +1,4 @@
 import type {
-  CreateStaffResponse,
   DiningSection,
   MenuCategory,
   MenuItem,
@@ -41,27 +40,14 @@ export function useModalPayload() {
   return useStoreSelector(({ modal }) => modal.payload);
 }
 
-/** Show the one-time temporary password after account creation or password regeneration. */
-export function useShowStaffTemporaryPasswordModal(): (
-  created: CreateStaffResponse,
-  mode?: 'created' | 'regenerated',
+/** Confirm resending an invitation or emailing a password-reset link. */
+export function useShowStaffEmailActionModal(): (
+  account: StaffAccount,
+  action: 'resend-invite' | 'password-reset',
 ) => void {
   const showModal = useShowModal();
-  return (created, mode = 'created') => {
-    showModal(ModalType.StaffTemporaryPassword, {
-      name: created.account.name,
-      email: created.account.email,
-      temporaryPassword: created.temporaryPassword,
-      mode,
-    });
-  };
-}
-
-/** Ask to confirm replacing a staff account's password. */
-export function useShowStaffPasswordRegenerationModal(): (account: StaffAccount) => void {
-  const showModal = useShowModal();
-  return (account) => {
-    showModal(ModalType.StaffPasswordRegeneration, { account });
+  return (account, action) => {
+    showModal(ModalType.StaffEmailAction, { account, action });
   };
 }
 

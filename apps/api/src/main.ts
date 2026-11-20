@@ -12,6 +12,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
+  if (config.get<string>('TRUST_PROXY') === 'true') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
   // Consistent error envelope across the whole API.
   app.useGlobalFilters(new HttpExceptionFilter());
 
@@ -30,7 +34,7 @@ async function bootstrap() {
       description: 'Access token returned by POST /auth/login (valid for 24 hours).',
     })
     .addTag('status', 'Health check')
-    .addTag('authentication', 'Log in to get an access token')
+    .addTag('authentication', 'Registration, login, verification and password recovery')
     .addTag('profile', "The signed-in user's own account: details and password")
     .addTag('staff', "Manage the restaurant's staff accounts (owners and managers)")
     .addTag('guests', 'Look up guest profiles')

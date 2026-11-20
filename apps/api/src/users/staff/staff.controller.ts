@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -22,6 +21,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -30,10 +30,10 @@ import {
   createStaffRequestSchema,
   type CreateStaffResponse,
   createStaffResponseSchema,
-  type RegenerateStaffPasswordResponse,
-  regenerateStaffPasswordResponseSchema,
   type StaffAccount,
   staffAccountSchema,
+  type StaffEmailActionResponse,
+  staffEmailActionResponseSchema,
   type StaffListQuery,
   staffListQuerySchema,
   type StaffListResponse,
@@ -52,6 +52,7 @@ import { CurrentActor } from '../../common/auth/current-actor.decorator';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/auth/permissions.guard';
 import { RequirePermissions } from '../../common/auth/require-permissions.decorator';
+import { VerifiedEmailGuard } from '../../common/auth/verified-email.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { apiError, ApiZodQuery, zodOpenApiSchema } from '../../common/swagger/zod-openapi';
 import { StaffService } from './staff.service';
@@ -104,11 +105,12 @@ export class StaffController {
   }
 
   @Post()
+  @UseGuards(VerifiedEmailGuard)
   @RequirePermissions(Permission.USER_WRITE)
   @ApiOperation({
     summary: 'Create a staff account',
     description:
-      'Creates an active account with the selected role and a generated temporary password, returned only in this response. Requires `user:write`.',
+      'Creates a pending account and emails a single-use invitation. Requires `user:write` and a verified caller email.',
   })
   @ApiBody({ schema: zodOpenApiSchema(createStaffRequestSchema) })
   @ApiCreatedResponse({
@@ -168,25 +170,42 @@ export class StaffController {
     return this.staffService.updateStatus(actor, id, input);
   }
 
-  @Post(':id/password')
+  @Post(':id/resend-invite')
   @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'no-store')
+  @UseGuards(VerifiedEmailGuard)
   @RequirePermissions(Permission.USER_WRITE)
   @ApiOperation({
-    summary: 'Regenerate a staff password',
+    summary: 'Resend a pending staff invitation',
     description:
-      'Replaces the password of a staff account you may manage and returns the new temporary password once. The old password no longer works. Account status is unchanged. Requires `user:write`; use your profile to change your own password.',
+      'Invalidates the previous invitation and emails a new single-use link. Requires `user:write` and a verified caller email.',
   })
   @ApiOkResponse({
-    description: 'The account and its new temporary password',
-    schema: zodOpenApiSchema(regenerateStaffPasswordResponseSchema),
+    description: 'Invitation sent',
+    schema: zodOpenApiSchema(staffEmailActionResponseSchema),
   })
   @ApiBadRequestResponse(apiError('Invalid staff account id'))
   @ApiNotFoundResponse(apiError('No staff account with this id in your restaurant'))
-  regeneratePassword(
+  @ApiResponse({ status: 429, ...apiError('Invitation requested too frequently') })
+  resendInvite(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<RegenerateStaffPasswordResponse> {
-    return this.staffService.regeneratePassword(actor, id);
+  ): Promise<StaffEmailActionResponse> {
+    return this.staffService.resendInvite(actor, id);
+  }
+
+  @Post(':id/send-password-reset')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(VerifiedEmailGuard)
+  @RequirePermissions(Permission.USER_WRITE)
+  @ApiOperation({ summary: 'Email a password-reset link to an established staff account' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(staffEmailActionResponseSchema) })
+  @ApiBadRequestResponse(apiError('A password reset cannot be sent for this account'))
+  @ApiNotFoundResponse(apiError('No staff account with this id in your restaurant'))
+  @ApiResponse({ status: 429, ...apiError('Password reset requested too frequently') })
+  sendPasswordReset(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<StaffEmailActionResponse> {
+    return this.staffService.sendPasswordReset(actor, id);
   }
 }

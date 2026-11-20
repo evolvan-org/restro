@@ -83,6 +83,12 @@ jobs:
       PUSHER_KEY: ci-placeholder
       PUSHER_SECRET: ci-placeholder
       PUSHER_CLUSTER: ap2
+      # Email and rate-limit config is validated at boot too; no email is sent in the smoke test.
+      RATE_LIMIT_HASH_SECRET: ci-smoke-rate-limit-secret-unused
+      EMAIL_PROVIDER_API_KEY: ci-placeholder
+      EMAIL_TEMPLATE_VERIFY_EMAIL_ID: '1'
+      EMAIL_TEMPLATE_RESET_PASSWORD_ID: '2'
+      EMAIL_TEMPLATE_STAFF_INVITE_ID: '3'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

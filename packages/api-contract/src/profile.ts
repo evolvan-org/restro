@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { userNameSchema, userPhoneSchema } from './user-fields';
-
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_BYTES = 72;
+import {
+  PASSWORD_MAX_BYTES,
+  userNameSchema,
+  userPasswordSchema,
+  userPhoneSchema,
+} from './user-fields';
 
 const passwordWithinBcryptLimit = (value: string): boolean =>
   new TextEncoder().encode(value).length <= PASSWORD_MAX_BYTES;
@@ -13,6 +15,7 @@ export const profileResponseSchema = z
     email: z.string().email(),
     phone: z.string().nullable(),
     role: z.string().min(1),
+    emailVerifiedAt: z.string().datetime().nullable(),
   })
   .strict();
 
@@ -30,11 +33,7 @@ export const changePasswordRequestSchema = z
       .min(1, 'Current password is required')
       .refine(passwordWithinBcryptLimit, 'Current password must be 72 bytes or fewer')
       .describe(`At most ${PASSWORD_MAX_BYTES} UTF-8 bytes`),
-    newPassword: z
-      .string()
-      .min(PASSWORD_MIN_LENGTH, `New password must be at least ${PASSWORD_MIN_LENGTH} characters`)
-      .refine(passwordWithinBcryptLimit, 'New password must be 72 bytes or fewer')
-      .describe(`${PASSWORD_MIN_LENGTH}+ characters, at most ${PASSWORD_MAX_BYTES} UTF-8 bytes`),
+    newPassword: userPasswordSchema,
   })
   .strict();
 

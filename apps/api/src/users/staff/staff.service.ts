@@ -3,13 +3,15 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   type CreateStaffRequest,
   type CreateStaffResponse,
-  type RegenerateStaffPasswordResponse,
   type StaffAccount,
+  type StaffEmailActionResponse,
   type StaffListQuery,
   type StaffListResponse,
   type StaffRolesResponse,
@@ -24,32 +26,44 @@ import {
   roleHasAll,
 } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
-import { hash } from 'bcrypt';
 
+import { AuthTokenService } from '../../auth-tokens/auth-token.service';
 import type { Actor } from '../../common/auth/authenticated-request';
-import { BCRYPT_ROUNDS, generateTemporaryPassword } from '../../common/auth/password';
+import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
+import { EmailService } from '../../email/email.service';
+import { deliverBestEffort } from '../../email/email-delivery';
 import {
+  type RoleRecord,
   type StaffDetails,
   StaffEmailConflictError,
   type StaffRecord,
   StaffRepository,
 } from './staff.repository';
 
-const EMAIL_IN_USE_MESSAGE = 'Email already taken. New-user invitations are coming soon.';
+const EMAIL_IN_USE_MESSAGE = 'Email is already registered';
+
+type InvitationContext = { restaurantName: string; inviterName: string };
 
 @Injectable()
 export class StaffService {
-  constructor(private readonly staffRepository: StaffRepository) {}
+  private readonly logger = new Logger(StaffService.name);
+
+  constructor(
+    private readonly repository: StaffRepository,
+    private readonly tokens: AuthTokenService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
+    private readonly rateLimit: RateLimitService,
+  ) {}
 
   async list(actor: Actor, query: StaffListQuery): Promise<StaffListResponse> {
     const { page, pageSize, search, status } = query;
-    const { items, total } = await this.staffRepository.findPage(actor.restaurantId, {
+    const { items, total } = await this.repository.findPage(actor.restaurantId, {
       search: search || undefined,
       status,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
-
     return {
       data: items.map(toStaffAccount),
       meta: buildPageMeta(page, pageSize, total),
@@ -57,47 +71,48 @@ export class StaffService {
   }
 
   async listAssignableRoles(actor: Actor): Promise<StaffRolesResponse> {
-    const roles = await this.staffRepository.findRoles(actor.restaurantId);
-    return roles.filter((role) => canAssignRole(actor, role.name));
+    return (await this.repository.findRoles(actor.restaurantId)).filter((role) =>
+      canAssignRole(actor, role.name),
+    );
   }
 
   async create(actor: Actor, input: CreateStaffRequest): Promise<CreateStaffResponse> {
-    await this.assertRoleAssignable(actor, input.roleId);
+    const role = await this.assertRoleAssignable(actor, input.roleId);
     await this.assertEmailAvailable(input.email);
-
-    const temporaryPassword = generateTemporaryPassword();
-    const passwordHash = await hash(temporaryPassword, BCRYPT_ROUNDS);
-
+    // Resolved before the account is created so a 403 can't leave a half-created invitation.
+    const context = await this.invitationContext(actor);
     const created = await this.mapEmailConflict(() =>
-      this.staffRepository.create({
-        restaurantId: actor.restaurantId,
-        passwordHash,
-        ...toStaffDetails(input),
-      }),
+      this.repository.create({ restaurantId: actor.restaurantId, ...toStaffDetails(input) }),
     );
-
-    return { account: toStaffAccount(created), temporaryPassword };
+    // The INVITED account is committed, so a provider outage must not fail the request (a retry
+    // would only hit "Email is already registered"); the manager can resend the invitation.
+    const emailSent = await deliverBestEffort(
+      this.logger,
+      { flow: 'staff-invite', userId: created.id },
+      () => this.sendInvitation(actor.restaurantId, created, role.name, context),
+    );
+    return {
+      account: toStaffAccount(created),
+      message: emailSent
+        ? 'Staff invitation sent'
+        : "Staff account created, but the invitation email couldn't be sent. Use Resend invitation to try again.",
+      emailSent,
+    };
   }
 
   async update(actor: Actor, userId: string, input: UpdateStaffRequest): Promise<StaffAccount> {
     const existing = await this.findManageable(actor, userId);
-
     if (input.roleId !== existing.role.id) {
-      if (userId === actor.userId) {
-        throw new ForbiddenException('You cannot change your own role');
-      }
+      if (userId === actor.userId) throw new ForbiddenException('You cannot change your own role');
       await this.assertRoleAssignable(actor, input.roleId);
     }
 
-    const updated = await this.staffRepository.update(actor.restaurantId, userId, {
+    const updated = await this.repository.update(actor.restaurantId, userId, {
       name: input.name,
       phone: input.phone || null,
       roleId: input.roleId,
     });
-    if (!updated) {
-      throw new NotFoundException('Staff account not found');
-    }
-
+    if (!updated) throw new NotFoundException('Staff account not found');
     return toStaffAccount(updated);
   }
 
@@ -109,71 +124,111 @@ export class StaffService {
     if (userId === actor.userId) {
       throw new ForbiddenException('You cannot change your own account status');
     }
-
     const existing = await this.findManageable(actor, userId);
-    if (existing.status === input.status) {
-      return toStaffAccount(existing);
+    if (existing.status === 'INVITED') {
+      throw new BadRequestException('Pending invitations cannot be activated manually');
     }
+    if (existing.status === input.status) return toStaffAccount(existing);
 
-    const updated = await this.staffRepository.updateStatus(
-      actor.restaurantId,
-      userId,
-      input.status,
-    );
-    if (!updated) {
-      throw new NotFoundException('Staff account not found');
-    }
+    const updated = await this.repository.updateStatus(actor.restaurantId, userId, input.status);
+    if (!updated) throw new NotFoundException('Staff account not found');
     return toStaffAccount(updated);
   }
 
-  async regeneratePassword(actor: Actor, userId: string): Promise<RegenerateStaffPasswordResponse> {
-    if (userId === actor.userId) {
-      throw new ForbiddenException('Use your profile to change your own password');
+  async resendInvite(actor: Actor, userId: string): Promise<StaffEmailActionResponse> {
+    const staff = await this.findManageable(actor, userId);
+    if (staff.status !== 'INVITED') {
+      throw new BadRequestException('Only pending invitations can be resent');
     }
-
-    await this.findManageable(actor, userId);
-    const temporaryPassword = generateTemporaryPassword();
-    const passwordHash = await hash(temporaryPassword, BCRYPT_ROUNDS);
-    const updated = await this.staffRepository.updatePassword(
+    await this.rateLimit.consume('RESEND_STAFF_INVITE_MINUTE', userId, 1, 60_000);
+    await this.rateLimit.consume('RESEND_STAFF_INVITE_HOUR', userId, 5, 60 * 60_000);
+    await this.sendInvitation(
       actor.restaurantId,
-      userId,
-      passwordHash,
+      staff,
+      staff.role.name,
+      await this.invitationContext(actor),
     );
-    if (!updated) {
-      throw new NotFoundException('Staff account not found');
-    }
-
-    return { account: toStaffAccount(updated), temporaryPassword };
+    return { message: 'Staff invitation resent' };
   }
 
-  /** Loads a staff account in the actor's restaurant that the actor is allowed to manage. */
-  private async findManageable(actor: Actor, userId: string): Promise<StaffRecord> {
-    const staff = await this.staffRepository.findById(actor.restaurantId, userId);
-    if (!staff) {
-      throw new NotFoundException('Staff account not found');
+  async sendPasswordReset(actor: Actor, userId: string): Promise<StaffEmailActionResponse> {
+    const staff = await this.findManageable(actor, userId);
+    if (staff.status === 'INVITED' || !['ACTIVE', 'INACTIVE'].includes(staff.status)) {
+      throw new BadRequestException('A password reset cannot be sent for this account');
     }
+    await this.rateLimit.consume('STAFF_PASSWORD_RESET_HOUR', userId, 5, 60 * 60_000);
+    await this.tokens.issueAndDeliver(actor.restaurantId, staff.id, 'PASSWORD_RESET', (token) =>
+      this.email.send({
+        to: { email: staff.email, name: staff.name },
+        template: 'RESET_PASSWORD',
+        variables: {
+          name: staff.name,
+          resetUrl: this.publicUrl('/auth/reset-password', token.rawToken),
+          expiresInMinutes: 60,
+        },
+        idempotencyKey: token.id,
+      }),
+    );
+    return { message: 'Password reset email sent' };
+  }
 
+  private async invitationContext(actor: Actor): Promise<InvitationContext> {
+    const context = await this.repository.findInvitationContext(actor.restaurantId, actor.userId);
+    if (!context) throw new ForbiddenException('Inviting user is no longer active');
+    return context;
+  }
+
+  private sendInvitation(
+    restaurantId: string,
+    staff: StaffRecord,
+    roleName: string,
+    context: InvitationContext,
+  ): Promise<void> {
+    return this.tokens.issueAndDeliver(restaurantId, staff.id, 'STAFF_INVITE', (token) =>
+      this.email.send({
+        to: { email: staff.email, name: staff.name },
+        template: 'STAFF_INVITE',
+        variables: {
+          staffName: staff.name,
+          restaurantName: context.restaurantName,
+          inviterName: context.inviterName,
+          roleName,
+          acceptUrl: this.publicUrl('/auth/accept-invite', token.rawToken),
+          expiresInDays: 7,
+        },
+        idempotencyKey: token.id,
+      }),
+    );
+  }
+
+  private publicUrl(path: string, token: string): string {
+    const url = new URL(path, this.config.getOrThrow<string>('APP_PUBLIC_URL'));
+    url.searchParams.set('token', token);
+    return url.toString();
+  }
+
+  private async findManageable(actor: Actor, userId: string): Promise<StaffRecord> {
+    const staff = await this.repository.findById(actor.restaurantId, userId);
+    if (!staff) throw new NotFoundException('Staff account not found');
     if (!canAssignRole(actor, staff.role.name)) {
       throw new ForbiddenException('You cannot manage an account with this role');
     }
-
     return staff;
   }
 
-  private async assertRoleAssignable(actor: Actor, roleId: string): Promise<void> {
-    const role = await this.staffRepository.findRole(actor.restaurantId, roleId);
+  private async assertRoleAssignable(actor: Actor, roleId: string): Promise<RoleRecord> {
+    const role = await this.repository.findRole(actor.restaurantId, roleId);
     if (!role || !canAssignRole(actor, role.name)) {
       throw new BadRequestException('The selected role cannot be assigned');
     }
+    return role;
   }
 
   private async assertEmailAvailable(email: string): Promise<void> {
-    if (await this.staffRepository.isEmailTaken(email)) {
+    if (await this.repository.isEmailTaken(email))
       throw new ConflictException(EMAIL_IN_USE_MESSAGE);
-    }
   }
 
-  /** Two concurrent requests can both pass the email check; the unique index decides. */
   private async mapEmailConflict<T>(write: () => Promise<T>): Promise<T> {
     try {
       return await write();
@@ -186,11 +241,6 @@ export class StaffService {
   }
 }
 
-/**
- * A staff role can be granted only if it is a known system role other than OWNER (the account
- * owner is provisioned at signup, never assigned) and grants nothing beyond the actor's own
- * permissions, so nobody can create an account above themselves.
- */
 function canAssignRole(actor: Actor, roleName: string): boolean {
   return (
     isRole(roleName) &&

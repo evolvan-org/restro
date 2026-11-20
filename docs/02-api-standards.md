@@ -25,9 +25,9 @@ Request and response shapes are defined once in `@rms/api-contract` as **Zod sch
 
 Full details, including every `401` cause: [API Reference](04-api-reference.md#authentication).
 
-- Access tokens are stateless JWTs that expire after 24 hours. `JwtAuthGuard` rejects missing, invalid or expired tokens with `401`.
+- Access tokens are stateless JWTs that expire after 24 hours and carry the user's current `authVersion`. `JwtAuthGuard` rejects missing, invalid, expired, inactive-account, or superseded-version tokens with `401`.
 - The web app stores the token in the persisted Redux `auth` slice (localStorage) and sends it through the axios request interceptor. A `401` response clears it.
-- **Logout is client-side:** the web app deletes the stored token, clears cached query data and redirects to `/auth/login`. There is no logout endpoint and no server-side revocation, so a copy of a token taken before logout stays valid until it expires.
+- **Logout is client-side:** the web app deletes the stored token, clears cached query data and redirects to `/auth/login`. Password recovery increments `authVersion`, immediately invalidating every previously issued token for that user.
 - Signed-in pages live under `app/(protected)/`. The layout redirects to `/auth/login` whenever there is no token, including after a refresh.
 
 ## Response conventions
@@ -55,18 +55,25 @@ Every error passes through a global exception filter and conforms to:
 
 ## Endpoints
 
-| Method | Path                | Auth / permission | Description                                                                                                                                                |
-| ------ | ------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/status`           | Public            | Reports the API is online (`StatusResponse`)                                                                                                               |
-| POST   | `/auth/login`       | Public            | Exchanges email + password for an access token (`LoginResponse`)                                                                                           |
-| GET    | `/profile`          | Bearer            | Returns the caller's own profile, including role, read-only (`ProfileResponse`)                                                                            |
-| PATCH  | `/profile`          | Bearer            | Updates the caller's name and phone (`UpdateProfileRequest` → `ProfileResponse`); email is immutable, sending it returns `400`                             |
-| PATCH  | `/profile/password` | Bearer            | Changes the caller's password (`ChangePasswordRequest` → `ChangePasswordResponse`); `400` if the current password is wrong                                 |
-| GET    | `/staff`            | `user:read`       | Lists the restaurant's staff, active and inactive (`StaffListQuery` → `StaffListResponse`); `search` matches name or email, `status` filters               |
-| GET    | `/staff/roles`      | `user:write`      | Roles the caller may assign (`StaffRolesResponse`)                                                                                                         |
-| POST   | `/staff`            | `user:write`      | Creates an active account with a generated temporary password, returned only once (`CreateStaffRequest` → `CreateStaffResponse`); `409` on duplicate email |
-| PATCH  | `/staff/:id`        | `user:write`      | Updates name, phone and role (`UpdateStaffRequest` → `StaffAccount`); email is immutable (`400` if sent); you cannot change your own role                  |
-| PATCH  | `/staff/:id/status` | `user:write`      | Activates or deactivates an account (`UpdateStaffStatusRequest` → `StaffAccount`); inactive accounts cannot log in; you cannot change your own status      |
+| Method | Path                                   | Auth / permission | Description                                                                                                                                           |
+| ------ | -------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/status`                              | Public            | Reports the API is online (`StatusResponse`)                                                                                                          |
+| POST   | `/auth/login`                          | Public            | Exchanges email + password for an access token                                                                                                        |
+| POST   | `/auth/verify-email`                   | Public            | Consumes a single-use verification token                                                                                                              |
+| POST   | `/auth/resend-verification`            | Bearer            | Replaces and emails the caller's verification token                                                                                                   |
+| POST   | `/auth/forgot-password`                | Public            | Returns an account-neutral response and emails a reset link for active accounts                                                                       |
+| POST   | `/auth/reset-password`                 | Public            | Consumes a reset token, changes the password, and invalidates existing JWTs                                                                           |
+| POST   | `/auth/accept-invite`                  | Public            | Activates an invited staff account after setting its password                                                                                         |
+| GET    | `/profile`                             | Bearer            | Returns the caller's own profile, including role, read-only (`ProfileResponse`)                                                                       |
+| PATCH  | `/profile`                             | Bearer            | Updates the caller's name and phone (`UpdateProfileRequest` → `ProfileResponse`); email is immutable, sending it returns `400`                        |
+| PATCH  | `/profile/password`                    | Bearer            | Changes the caller's password (`ChangePasswordRequest` → `ChangePasswordResponse`); `400` if the current password is wrong                            |
+| GET    | `/staff`                               | `user:read`       | Lists the restaurant's staff, active and inactive (`StaffListQuery` → `StaffListResponse`); `search` matches name or email, `status` filters          |
+| GET    | `/staff/roles`                         | `user:write`      | Roles the caller may assign (`StaffRolesResponse`)                                                                                                    |
+| POST   | `/users/staff`                         | `user:write`      | Creates an invited account and emails a single-use acceptance link; caller email must be verified                                                     |
+| POST   | `/users/staff/:id/resend-invite`       | `user:write`      | Replaces and resends a pending invitation                                                                                                             |
+| POST   | `/users/staff/:id/send-password-reset` | `user:write`      | Emails a reset link without changing the current password                                                                                             |
+| PATCH  | `/staff/:id`                           | `user:write`      | Updates name, phone and role (`UpdateStaffRequest` → `StaffAccount`); email is immutable (`400` if sent); you cannot change your own role             |
+| PATCH  | `/staff/:id/status`                    | `user:write`      | Activates or deactivates an account (`UpdateStaffStatusRequest` → `StaffAccount`); inactive accounts cannot log in; you cannot change your own status |
 
 Request and response examples, field rules and the error messages of every endpoint are in the [API Reference](04-api-reference.md).
 

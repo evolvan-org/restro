@@ -7,9 +7,8 @@ import MenuCategoryStatusModal from '@/components/Modals/MenuCategoryStatusModal
 import MenuItemStatusModal from '@/components/Modals/MenuItemStatusModal';
 import ReservationCancelModal from '@/components/Modals/ReservationCancelModal';
 import SampleModal from '@/components/Modals/SampleModal';
-import StaffPasswordRegenerationModal from '@/components/Modals/StaffPasswordRegenerationModal';
+import StaffEmailActionModal from '@/components/Modals/StaffEmailActionModal';
 import StaffStatusModal from '@/components/Modals/StaffStatusModal';
-import StaffTemporaryPasswordModal from '@/components/Modals/StaffTemporaryPasswordModal';
 import TableActiveModal from '@/components/Modals/TableActiveModal';
 import TableStatusActionModal from '@/components/Modals/TableStatusActionModal';
 import { useModalPayload, useModalType } from '@/store/hooks/modal';
@@ -25,9 +24,8 @@ import { ModalType } from '@/store/types/modal';
 const MODALS: Partial<Record<ModalType, ComponentType<any>>> = {
   [ModalType.None]: Fragment,
   [ModalType.Sample]: SampleModal,
-  [ModalType.StaffTemporaryPassword]: StaffTemporaryPasswordModal,
   [ModalType.StaffStatus]: StaffStatusModal,
-  [ModalType.StaffPasswordRegeneration]: StaffPasswordRegenerationModal,
+  [ModalType.StaffEmailAction]: StaffEmailActionModal,
   [ModalType.DiningSectionAction]: DiningSectionActionModal,
   [ModalType.TableStatusAction]: TableStatusActionModal,
   [ModalType.TableActive]: TableActiveModal,

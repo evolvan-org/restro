@@ -38,7 +38,7 @@ export class ProfileService {
   ): Promise<ChangePasswordResponse> {
     const user = await this.profileRepository.findPasswordById(userId);
 
-    if (!user || user.status !== 'ACTIVE') {
+    if (!user || user.status !== 'ACTIVE' || !user.passwordHash) {
       throw new UnauthorizedException('User account is not active');
     }
 
@@ -50,7 +50,7 @@ export class ProfileService {
     const passwordHash = await hash(input.newPassword, BCRYPT_ROUNDS);
     await this.profileRepository.updatePasswordById(userId, passwordHash);
 
-    return { message: 'Password updated successfully' };
+    return { message: 'Password updated. Please sign in again.' };
   }
 
   private toProfileResponse(profile: ProfileRecord | null): ProfileResponse {
@@ -61,6 +61,7 @@ export class ProfileService {
       email: profile.email,
       phone: profile.phone,
       role: profile.role.name,
+      emailVerifiedAt: profile.emailVerifiedAt?.toISOString() ?? null,
     });
   }
 

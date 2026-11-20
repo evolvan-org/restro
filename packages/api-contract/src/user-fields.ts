@@ -18,6 +18,18 @@ export const userEmailSchema = z
   .email('Enter a valid email address')
   .max(255, 'Email address is too long');
 
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_BYTES = 72;
+
+export const userPasswordSchema = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
+  .refine(
+    (value) => new TextEncoder().encode(value).length <= PASSWORD_MAX_BYTES,
+    `Password must be ${PASSWORD_MAX_BYTES} UTF-8 bytes or fewer`,
+  )
+  .describe(`${PASSWORD_MIN_LENGTH}+ characters, at most ${PASSWORD_MAX_BYTES} UTF-8 bytes`);
+
 export const userPhoneSchema = z
   .string()
   .trim()

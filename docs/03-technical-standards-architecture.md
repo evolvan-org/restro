@@ -57,6 +57,8 @@ Each domain is a self-contained NestJS module (currently `status/`; `auth/`, `or
 
 Environment variables are validated at boot via a Zod schema (`src/config/env.validation.ts`); the API fails fast on misconfiguration. The root `.env` is the source of truth in development.
 
+Transactional email is isolated behind `EmailService`; feature modules use logical template keys and typed variables only. Brevo owns subjects and bodies. Every environment uses the real provider, so a verified sender, API key, and active template IDs are required before starting the API.
+
 ## Testing
 
 - Backend: Jest (`yarn workspace @rms/api test`).

@@ -8,6 +8,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { RegisterForm, type RegisterFormValues } from '@/components/register-form';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { useRegister } from '@/services/api/requests/auth';
 
 // FE-only: confirm-password is validated in the browser and never sent to the API.
@@ -34,9 +35,9 @@ export default function Register(): ReactElement {
 
   const onSubmit = form.handleSubmit(({ confirmPassword: _confirmPassword, ...payload }) => {
     registerUser.mutate(payload, {
-      onSuccess: () => {
-        // The token is stored in onSuccess of useRegister; land on the dashboard.
-        router.push('/dashboard');
+      onSuccess: ({ emailSent }) => {
+        // Keep the issued token for resend/banner actions while guiding the owner to their inbox.
+        router.push(emailSent ? '/auth/check-email' : '/auth/check-email?sent=0');
       },
     });
   });
@@ -53,7 +54,11 @@ export default function Register(): ReactElement {
       isSubmitting={form.formState.isSubmitting || registerUser.isPending}
       onSubmit={onSubmit}
       register={form.register}
-      submitError={registerUser.isError ? 'Unable to create account.' : undefined}
+      submitError={
+        registerUser.isError
+          ? getApiErrorMessage(registerUser.error, 'Unable to create account.')
+          : undefined
+      }
     />
   );
 }

@@ -49,6 +49,15 @@ services:
       # `postgres` = the service name on the compose network.
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rms?schema=public
       JWT_SECRET: ${JWT_SECRET}
+      RATE_LIMIT_HASH_SECRET: ${RATE_LIMIT_HASH_SECRET}
+      EMAIL_PROVIDER_API_KEY: ${EMAIL_PROVIDER_API_KEY}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-sabarjits@evolvan.com}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Restaurant Management System}
+      EMAIL_TEMPLATE_VERIFY_EMAIL_ID: ${EMAIL_TEMPLATE_VERIFY_EMAIL_ID}
+      EMAIL_TEMPLATE_RESET_PASSWORD_ID: ${EMAIL_TEMPLATE_RESET_PASSWORD_ID}
+      EMAIL_TEMPLATE_STAFF_INVITE_ID: ${EMAIL_TEMPLATE_STAFF_INVITE_ID}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3001}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       PUSHER_APP_ID: ${PUSHER_APP_ID}
       PUSHER_KEY: ${PUSHER_KEY}
       PUSHER_SECRET: ${PUSHER_SECRET}
