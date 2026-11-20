@@ -62,6 +62,8 @@ export class ProfileService {
       phone: profile.phone,
       role: profile.role.name,
       emailVerifiedAt: profile.emailVerifiedAt?.toISOString() ?? null,
+      onboarding: profile.restaurant.onboardingCompletedAt ? 'COMPLETED' : 'PENDING',
+      mustChangePassword: profile.mustChangePassword,
     });
   }
 

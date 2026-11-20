@@ -6,10 +6,31 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { type ErrorResponse, orderAlreadyOpenErrorSchema } from '@rms/api-contract';
+import {
+  apiErrorCodeSchema,
+  type ErrorResponse,
+  onboardingDraftConflictErrorSchema,
+  onboardingIncompleteErrorSchema,
+  onboardingStageErrorSchema,
+  orderAlreadyOpenErrorSchema,
+} from '@rms/api-contract';
 import type { Request, Response } from 'express';
 
 export type MappedDbError = { status: HttpStatus; message: string };
+
+/**
+ * Validated extensions that may add data to the standard envelope. Each requires its own extra
+ * field (or literal code), so at most one matches a given error.
+ */
+const ERROR_EXTENSIONS = [
+  orderAlreadyOpenErrorSchema,
+  onboardingIncompleteErrorSchema,
+  onboardingStageErrorSchema,
+  onboardingDraftConflictErrorSchema,
+] as const;
+
+/** Extra properties an exception body may carry for one of `ERROR_EXTENSIONS`. */
+const EXTENSION_FIELDS = ['existingOrder', 'restaurantName', 'stage', 'draft'] as const;
 
 /**
  * Maps Prisma errors to client-facing responses without importing the client
@@ -84,7 +105,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let message: string | string[] = dbError?.message ?? 'Internal server error';
     let error: string | undefined = dbError ? HttpStatus[dbError.status] : undefined;
-    let existingOrder: unknown;
+    let code: ErrorResponse['code'];
+    const extensionData: Record<string, unknown> = {};
 
     if (isEmailDeliveryError) {
       message = 'Email delivery is temporarily unavailable. Please try again.';
@@ -96,14 +118,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof res === 'string') {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
-        const body = res as {
+        const body = res as Record<string, unknown> & {
           message?: string | string[];
           error?: string;
-          existingOrder?: unknown;
         };
         message = body.message ?? exception.message;
         error = body.error;
-        existingOrder = body.existingOrder;
+        code = apiErrorCodeSchema.safeParse(body.code).data;
+        for (const field of EXTENSION_FIELDS) {
+          if (body[field] !== undefined) extensionData[field] = body[field];
+        }
       }
     } else if (dbError) {
       this.logger.warn(
@@ -120,12 +144,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode: status,
       message,
       error,
+      ...(code && { code }),
       timestamp: new Date().toISOString(),
       path: request.url,
     };
 
-    // Only the validated order-conflict extension may add data to the standard envelope.
-    const orderConflict = orderAlreadyOpenErrorSchema.safeParse({ ...payload, existingOrder });
-    response.status(status).json(orderConflict.success ? orderConflict.data : payload);
+    // Only a validated extension may add data to the standard envelope.
+    if (Object.keys(extensionData).length > 0) {
+      for (const extension of ERROR_EXTENSIONS) {
+        const parsed = extension.safeParse({ ...payload, ...extensionData });
+        if (parsed.success) {
+          response.status(status).json(parsed.data);
+          return;
+        }
+      }
+    }
+    response.status(status).json(payload);
   }
 }

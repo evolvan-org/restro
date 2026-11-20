@@ -1,15 +1,19 @@
 import {
   type CanActivate,
   type ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { isRole } from '@rms/permissions';
+import { Reflector } from '@nestjs/core';
+import { API_ERROR_CODES } from '@rms/api-contract';
+import { isRole, Permission, roleHasPermission } from '@rms/permissions';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
-import { ActorRepository } from './actor.repository';
+import { type ActorRecord, ActorRepository } from './actor.repository';
+import { ALLOW_DURING_SETUP_KEY } from './allow-during-setup.decorator';
 import type { AuthenticatedRequest } from './authenticated-request';
 
 const jwtClaimsSchema = z.object({
@@ -22,6 +26,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly config: ConfigService,
     private readonly actors: ActorRepository,
+    private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,6 +49,7 @@ export class JwtAuthGuard implements CanActivate {
     ) {
       throw invalidToken();
     }
+    this.assertSetUp(context, user, user.role.name);
 
     request.auth = { userId: claims.userId, authVersion: claims.authVersion };
     request.actor = {
@@ -53,6 +59,41 @@ export class JwtAuthGuard implements CanActivate {
       emailVerifiedAt: user.emailVerifiedAt,
     };
     return true;
+  }
+
+  /**
+   * Until the restaurant's setup is finished only its owner may hold a working token, and only for
+   * setup routes: anything created elsewhere could collide with what finishing setup writes. An
+   * account still on its one-time password may only change it.
+   */
+  private assertSetUp(
+    context: ExecutionContext,
+    user: ActorRecord,
+    role: Parameters<typeof roleHasPermission>[0],
+  ): void {
+    const setupPending = user.restaurant.onboardingCompletedAt === null;
+    if (setupPending && !roleHasPermission(role, Permission.ONBOARDING_MANAGE)) {
+      throw invalidToken();
+    }
+    if (!setupPending && !user.mustChangePassword) return;
+
+    const allowed = this.reflector.getAllAndOverride<boolean | undefined>(ALLOW_DURING_SETUP_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (allowed) return;
+
+    throw setupPending
+      ? new ForbiddenException({
+          message: 'Finish setting up your restaurant first.',
+          error: 'Forbidden',
+          code: API_ERROR_CODES.ONBOARDING_REQUIRED,
+        })
+      : new ForbiddenException({
+          message: 'Change your one-time password to continue.',
+          error: 'Forbidden',
+          code: API_ERROR_CODES.PASSWORD_CHANGE_REQUIRED,
+        });
   }
 
   private verifyClaims(token: string): z.infer<typeof jwtClaimsSchema> {

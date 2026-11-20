@@ -5,6 +5,7 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -23,6 +24,7 @@ import {
   loginRequestSchema,
   type LoginResponse,
   loginResponseSchema,
+  onboardingIncompleteErrorSchema,
   type RegisterRequest,
   registerRequestSchema,
   type RegisterResponse,
@@ -37,6 +39,7 @@ import {
 } from '@rms/api-contract';
 import type { Request } from 'express';
 
+import { AllowDuringSetup } from '../common/auth/allow-during-setup.decorator';
 import { CurrentUserId } from '../common/auth/current-user-id.decorator';
 import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -70,6 +73,10 @@ export class AuthController {
   @ApiOkResponse({ schema: zodOpenApiSchema(loginResponseSchema) })
   @ApiBadRequestResponse(apiError('Missing or malformed email or password'))
   @ApiUnauthorizedResponse(apiError('Wrong credentials or account is not active'))
+  @ApiForbiddenResponse({
+    description: "The restaurant's setup is unfinished and only its owner can log in yet",
+    schema: zodOpenApiSchema(onboardingIncompleteErrorSchema),
+  })
   login(
     @Body(new ZodValidationPipe(loginRequestSchema)) body: LoginRequest,
   ): Promise<LoginResponse> {
@@ -90,6 +97,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @AllowDuringSetup()
   @ApiOperation({ summary: 'Resend verification email to the authenticated user' })
   @ApiOkResponse({ schema: zodOpenApiSchema(resendVerificationResponseSchema) })
   @ApiUnauthorizedResponse(apiError('Authentication failed or account is not active'))

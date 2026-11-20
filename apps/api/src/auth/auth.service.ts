@@ -1,8 +1,9 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   type AcceptInviteRequest,
   type AcceptInviteResponse,
+  API_ERROR_CODES,
   type ForgotPasswordRequest,
   type ForgotPasswordResponse,
   type LoginRequest,
@@ -15,6 +16,7 @@ import {
   type VerifyEmailRequest,
   type VerifyEmailResponse,
 } from '@rms/api-contract';
+import { isRole, Permission, roleHasPermission } from '@rms/permissions';
 import { compare, hash } from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -69,6 +71,7 @@ export class AuthService {
         ? 'User registered successfully. Check your inbox to verify your email.'
         : "User registered successfully, but we couldn't send the verification email. Use Resend to try again.",
       accessToken: this.signAccessToken({ userId, restaurantId, roleId, authVersion: 0 }),
+      onboarding: 'PENDING',
       emailSent,
     };
   }
@@ -78,10 +81,26 @@ export class AuthService {
     if (!user?.passwordHash || user.status !== 'ACTIVE') throw invalidCredentials();
     if (!(await compare(input.password, user.passwordHash))) throw invalidCredentials();
 
+    const setupPending = user.restaurant.onboardingCompletedAt === null;
+    // Checked after the password so the restaurant name is only revealed to its own staff.
+    if (
+      setupPending &&
+      !(isRole(user.role.name) && roleHasPermission(user.role.name, Permission.ONBOARDING_MANAGE))
+    ) {
+      throw new ForbiddenException({
+        message: `${user.restaurant.name} isn't ready yet. You can log in once setup is finished.`,
+        error: 'Forbidden',
+        code: API_ERROR_CODES.ONBOARDING_INCOMPLETE,
+        restaurantName: user.restaurant.name,
+      });
+    }
+
     return {
       success: true,
       message: 'Login successful',
       accessToken: this.signAccessToken(user),
+      onboarding: setupPending ? 'PENDING' : 'COMPLETED',
+      mustChangePassword: user.mustChangePassword,
     };
   }
 

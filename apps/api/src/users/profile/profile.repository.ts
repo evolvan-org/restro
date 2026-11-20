@@ -10,6 +10,8 @@ const profileSelect = {
   phone: true,
   status: true,
   emailVerifiedAt: true,
+  mustChangePassword: true,
+  restaurant: { select: { onboardingCompletedAt: true } },
   role: {
     select: {
       name: true,
@@ -51,11 +53,14 @@ export class ProfileRepository {
     });
   }
 
-  /** Also bumps authVersion so every existing session, including a stolen one, stops working. */
+  /**
+   * Also bumps authVersion so every existing session, including a stolen one, stops working, and
+   * retires a one-time password.
+   */
   async updatePasswordById(userId: string, passwordHash: string): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash, authVersion: { increment: 1 } },
+      data: { passwordHash, authVersion: { increment: 1 }, mustChangePassword: false },
     });
   }
 }
