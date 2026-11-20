@@ -66,9 +66,9 @@ export const recipeRowSchema = z
   })
   .strict();
 
+/** May be empty only for an item marked "No recipe needed" (`recipeRequired: false`). */
 export const recipeSchema = z
   .array(recipeRowSchema)
-  .min(1, 'A recipe needs at least one ingredient')
   .refine(
     (rows) => new Set(rows.map((row) => row.stockItemId)).size === rows.length,
     'An ingredient can only appear once in a recipe',
@@ -92,6 +92,8 @@ export const menuItemSchema = z
     itemType: servingTypeSchema,
     isAvailable: z.boolean(),
     isActive: z.boolean(),
+    /** False marks "No recipe needed": the item is never listed as missing a recipe. */
+    recipeRequired: z.boolean(),
     recipe: z.array(recipeItemSchema),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -156,9 +158,15 @@ export const createMenuItemRequestSchema = z
     price: priceSchema,
     itemType: servingTypeSchema,
     isAvailable: z.boolean().optional().default(true),
+    recipeRequired: z.boolean().optional().default(true),
     recipe: recipeSchema,
   })
-  .strict();
+  .strict()
+  .refine((value) => !value.recipeRequired || value.recipe.length > 0, {
+    message: 'A recipe needs at least one ingredient',
+    path: ['recipe'],
+  })
+  .describe('`recipe` may be empty only when `recipeRequired` is false');
 
 /** Partial update; `recipe`, when present, fully replaces the stored recipe. */
 export const updateMenuItemRequestSchema = z
@@ -170,12 +178,18 @@ export const updateMenuItemRequestSchema = z
     itemType: servingTypeSchema.optional(),
     isAvailable: z.boolean().optional(),
     isActive: z.boolean().optional(),
+    recipeRequired: z.boolean().optional(),
     recipe: recipeSchema.optional(),
   })
   .strict()
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: 'At least one field is required',
-  });
+  })
+  .refine((value) => value.recipe?.length !== 0 || value.recipeRequired === false, {
+    message: 'A recipe needs at least one ingredient',
+    path: ['recipe'],
+  })
+  .describe('An empty `recipe` is accepted only together with `recipeRequired: false`');
 
 export type RecipeRow = z.infer<typeof recipeRowSchema>;
 export type RecipeItem = z.infer<typeof recipeItemSchema>;

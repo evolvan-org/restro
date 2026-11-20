@@ -77,11 +77,16 @@ export default function MenuItemFormSidePane({
           price: Number(item.price),
           itemType: item.itemType,
           isAvailable: item.isAvailable,
-          recipe: item.recipe.map((row) => ({
-            stockItemId: row.stockItem.id,
-            quantity: row.quantity,
-            unit: row.unit,
-          })),
+          recipeRequired: item.recipeRequired,
+          // Items imported during setup have no recipe yet; start one so the owner can add it.
+          recipe:
+            item.recipe.length || !item.recipeRequired
+              ? item.recipe.map((row) => ({
+                  stockItemId: row.stockItem.id,
+                  quantity: row.quantity,
+                  unit: row.unit,
+                }))
+              : [{ ...EMPTY_ROW }],
         }
       : {
           categoryId: '',
@@ -89,6 +94,7 @@ export default function MenuItemFormSidePane({
           description: '',
           itemType: 'FOOD',
           isAvailable: true,
+          recipeRequired: true,
           recipe: [{ ...EMPTY_ROW }],
         },
   });
@@ -128,6 +134,7 @@ export default function MenuItemFormSidePane({
     label: stock.name,
   }));
   const pickedIds = new Set(form.watch('recipe').map((row) => row.stockItemId));
+  const recipeRequired = form.watch('recipeRequired');
   const recipeError = errors.recipe?.root?.message ?? errors.recipe?.message;
 
   return (
@@ -135,7 +142,8 @@ export default function MenuItemFormSidePane({
       <SheetHeader>
         <SheetTitle>{item ? 'Edit menu item' : 'Add menu item'}</SheetTitle>
         <SheetDescription>
-          Every item needs a recipe built from your ingredient list. Saving does not change stock.
+          A recipe built from your ingredient list lets stock go down as the item sells. Saving does
+          not change stock.
         </SheetDescription>
       </SheetHeader>
 
@@ -225,7 +233,34 @@ export default function MenuItemFormSidePane({
             Available for ordering
           </label>
 
-          <fieldset className="space-y-3">
+          <Controller
+            control={form.control}
+            name="recipeRequired"
+            render={({ field }) => (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={!field.value}
+                  onChange={(event) => {
+                    const notNeeded = event.target.checked;
+                    field.onChange(!notNeeded);
+                    // "No recipe needed" means nothing is deducted, so the recipe goes with it.
+                    recipe.replace(notNeeded ? [] : [{ ...EMPTY_ROW }]);
+                  }}
+                />
+                <span>
+                  No recipe needed
+                  <span className="block text-muted-foreground">
+                    For items sold as bought, like bottled drinks. Stock isn&apos;t tracked for
+                    them.
+                  </span>
+                </span>
+              </label>
+            )}
+          />
+
+          <fieldset className="space-y-3" hidden={!recipeRequired}>
             <div className="flex items-center justify-between">
               <legend className="text-sm font-medium">Recipe</legend>
               <Button
