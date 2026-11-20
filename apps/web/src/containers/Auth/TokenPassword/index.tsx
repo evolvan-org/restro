@@ -5,6 +5,7 @@ import {
   acceptInviteRequestSchema,
   resetPasswordRequestSchema,
   userPasswordSchema,
+  verifyEmailRequestSchema,
 } from '@rms/api-contract';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { PasswordInput } from '@/components/ui/password-input';
+import { isRejectedLinkError } from '@/lib/api-error';
 import { useAcceptInvite, useResetPassword } from '@/services/api/requests/auth';
 
 const formSchema = z
@@ -30,20 +32,26 @@ export default function TokenPassword({ mode }: { mode: 'reset' | 'invite' }) {
   const params = useSearchParams();
   const router = useRouter();
   const token = useState(() => params.get('token'))[0];
+  // Every auth link shares one token format; a truncated link is caught here, not mid-submit.
+  const isWellFormed = token !== null && verifyEmailRequestSchema.safeParse({ token }).success;
   const reset = useResetPassword();
   const accept = useAcceptInvite();
   const mutation = mode === 'reset' ? reset : accept;
+  const linkRejected = mutation.isError && isRejectedLinkError(mutation.error);
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: { password: '', confirmPassword: '' },
   });
 
+  // Keep the token in the URL until it is spent or rejected, so a refresh can retry after an outage.
   useEffect(() => {
-    router.replace(mode === 'reset' ? '/auth/reset-password' : '/auth/accept-invite');
-  }, [mode, router]);
+    if (!isWellFormed || mutation.isSuccess || linkRejected) {
+      router.replace(mode === 'reset' ? '/auth/reset-password' : '/auth/accept-invite');
+    }
+  }, [isWellFormed, linkRejected, mode, mutation.isSuccess, router]);
 
   const submit = form.handleSubmit(({ password }) => {
-    if (!token) return;
+    if (!token || !isWellFormed) return;
     if (mode === 'reset') {
       reset.mutate(resetPasswordRequestSchema.parse({ token, newPassword: password }));
     } else {
@@ -69,7 +77,7 @@ export default function TokenPassword({ mode }: { mode: 'reset' | 'invite' }) {
               Sign in
             </Link>
           </div>
-        ) : !token ? (
+        ) : !isWellFormed ? (
           <p role="alert" className="text-sm text-destructive">
             This link is missing or invalid.
           </p>
@@ -87,7 +95,11 @@ export default function TokenPassword({ mode }: { mode: 'reset' | 'invite' }) {
                 <FieldError>{form.formState.errors.confirmPassword?.message}</FieldError>
               </Field>
               {mutation.isError && (
-                <FieldError>This link is invalid, expired, or has already been used.</FieldError>
+                <FieldError>
+                  {linkRejected
+                    ? 'This link is invalid, expired, or has already been used.'
+                    : "We couldn't reach the server. Your link is still valid; please try again."}
+                </FieldError>
               )}
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending

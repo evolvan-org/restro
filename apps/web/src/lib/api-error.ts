@@ -13,3 +13,11 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
 
   return Array.isArray(parsed.data.message) ? parsed.data.message.join(' ') : parsed.data.message;
 }
+
+/**
+ * True when the API rejected an auth link (400). Anything else (network failure, 5xx) is transient
+ * and should offer a retry with the same token instead of declaring the link dead.
+ */
+export function isRejectedLinkError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 400;
+}
