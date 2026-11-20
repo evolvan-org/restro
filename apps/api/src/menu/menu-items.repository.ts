@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { CategoryType, RecipeRow, ServingType } from '@rms/api-contract';
+import {
+  type CategoryType,
+  inventorySupplyMeasures,
+  type RecipeRow,
+  type ServingType,
+} from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import {
@@ -50,6 +55,7 @@ export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {
 };
 
 export class InactiveRecipeIngredientError extends Error {}
+export class IncompatibleRecipeUnitError extends Error {}
 
 @Injectable()
 export class MenuItemsRepository {
@@ -205,8 +211,17 @@ export class MenuItemsRepository {
   ): Promise<void> {
     await lockRestaurantInventory(tx, restaurantId);
     const ids = [...new Set(recipe.map(({ stockItemId }) => stockItemId))];
-    const activeIds = await this.stockItems.findActiveIds(restaurantId, ids, tx);
-    if (activeIds.length !== ids.length) throw new InactiveRecipeIngredientError();
+    const active = await this.stockItems.findActiveBaseUnits(restaurantId, ids, tx);
+    if (active.length !== ids.length) throw new InactiveRecipeIngredientError();
+
+    // Unconfigured ingredients (no base unit yet) accept any unit; saving a base unit later is
+    // rejected if it clashes with existing recipes (InventoryService.saveItem).
+    const baseUnits = new Map(active.map(({ id, baseUnit }) => [id, baseUnit]));
+    const mismatched = recipe.some(({ stockItemId, unit }) => {
+      const baseUnit = baseUnits.get(stockItemId);
+      return baseUnit != null && inventorySupplyMeasures[unit].baseUnit !== baseUnit;
+    });
+    if (mismatched) throw new IncompatibleRecipeUnitError();
   }
 
   /** Sets the explicit target; repeated requests leave the item and its timestamp unchanged. */

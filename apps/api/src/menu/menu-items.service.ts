@@ -20,6 +20,7 @@ import { buildPageMeta } from '@rms/shared';
 import type { Actor } from '../common/auth/authenticated-request';
 import {
   InactiveRecipeIngredientError,
+  IncompatibleRecipeUnitError,
   type MenuItemRecord,
   MenuItemsRepository,
 } from './menu-items.repository';
@@ -162,6 +163,11 @@ export class MenuItemsService {
 function translateRecipeError(error: unknown): never {
   if (error instanceof InactiveRecipeIngredientError) {
     throw new BadRequestException('Recipe contains an ingredient that is not in the stock list');
+  }
+  if (error instanceof IncompatibleRecipeUnitError) {
+    throw new BadRequestException(
+      "A recipe unit doesn't measure the same quantity as its ingredient's base unit",
+    );
   }
   throw error;
 }
