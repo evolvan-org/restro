@@ -62,6 +62,8 @@ export const createStaffResponseSchema = z
   .object({
     account: staffAccountSchema,
     message: z.string(),
+    /** False when the account was created but the invitation email could not be sent. */
+    emailSent: z.boolean(),
   })
   .strict();
 

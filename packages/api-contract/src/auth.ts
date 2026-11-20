@@ -24,6 +24,8 @@ export const registerResponseSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   accessToken: z.string(),
+  /** False when the account was created but the verification email could not be sent. */
+  emailSent: z.boolean(),
 });
 
 const actionTokenSchema = z.string().trim().min(32, 'Invalid token');

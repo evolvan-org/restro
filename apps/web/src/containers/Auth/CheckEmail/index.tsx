@@ -2,6 +2,7 @@
 
 import { MailCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -11,6 +12,8 @@ import { useResendVerification } from '@/services/api/requests/auth';
 export default function CheckEmail() {
   const resend = useResendVerification();
   const [message, setMessage] = useState<string>();
+  // Registration succeeded but the provider rejected the first verification email.
+  const firstSendFailed = useSearchParams().get('sent') === '0';
 
   return (
     <Card>
@@ -18,7 +21,9 @@ export default function CheckEmail() {
         <MailCheck className="mx-auto size-10" aria-hidden />
         <CardTitle>Check your inbox</CardTitle>
         <CardDescription>
-          We sent a verification link to your email address. The link expires after 24 hours.
+          {firstSendFailed && !message
+            ? "Your account is ready, but we couldn't send the verification email. Use the button below to send it again."
+            : 'We sent a verification link to your email address. The link expires after 24 hours.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

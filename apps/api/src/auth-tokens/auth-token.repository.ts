@@ -22,35 +22,42 @@ export type AuthTokenRecord = Prisma.UserTokenGetPayload<{ select: typeof tokenS
 export class AuthTokenRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async issue(input: {
+  issue(input: {
     restaurantId: string;
     userId: string;
     type: UserTokenType;
     tokenHash: string;
     expiresAt: Date;
     now: Date;
-  }): Promise<{ id: string }> {
-    return this.withSerializableRetry(() =>
-      this.prisma.$transaction(
-        async (tx) => {
-          await tx.userToken.updateMany({
-            where: { userId: input.userId, type: input.type, usedAt: null },
-            data: { usedAt: input.now },
-          });
-          return tx.userToken.create({
-            data: {
-              restaurantId: input.restaurantId,
-              userId: input.userId,
-              type: input.type,
-              tokenHash: input.tokenHash,
-              expiresAt: input.expiresAt,
-            },
-            select: { id: true },
-          });
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      ),
-    );
+  }): Promise<{ id: string; createdAt: Date }> {
+    return this.prisma.userToken.create({
+      data: {
+        restaurantId: input.restaurantId,
+        userId: input.userId,
+        type: input.type,
+        tokenHash: input.tokenHash,
+        expiresAt: input.expiresAt,
+        createdAt: input.now,
+      },
+      select: { id: true, createdAt: true },
+    });
+  }
+
+  /**
+   * Retires unused tokens of the same type issued before `issuedAt`. Only strictly older tokens are
+   * retired, so two concurrent issues can never revoke each other: the newest link always survives.
+   */
+  async revokeOlder(
+    userId: string,
+    type: UserTokenType,
+    keepId: string,
+    issuedAt: Date,
+    now: Date,
+  ): Promise<void> {
+    await this.prisma.userToken.updateMany({
+      where: { userId, type, usedAt: null, id: { not: keepId }, createdAt: { lt: issuedAt } },
+      data: { usedAt: now },
+    });
   }
 
   findByHash(tokenHash: string): Promise<AuthTokenRecord | null> {
@@ -108,17 +115,6 @@ export class AuthTokenRepository {
       if (!(await apply(tx))) throw new InvalidTokenTargetError();
       return true;
     });
-  }
-
-  private async withSerializableRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
-        return operation();
-      }
-      throw error;
-    }
   }
 }
 

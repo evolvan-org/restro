@@ -85,7 +85,8 @@ export default function StaffFormSidePane({
       } else if (values.email !== undefined) {
         // The create schema requires an email, so the resolver only gets here with one.
         const created = await createStaff({ ...values, email: values.email });
-        toast.success(created.message);
+        if (created.emailSent) toast.success(created.message);
+        else toast.warning(created.message);
         hideSidePane();
       }
     } catch {

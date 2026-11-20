@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -26,9 +27,10 @@ import {
 } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
-import { AuthTokenService, type IssuedAuthToken } from '../../auth-tokens/auth-token.service';
+import { AuthTokenService } from '../../auth-tokens/auth-token.service';
 import type { Actor } from '../../common/auth/authenticated-request';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
+import { deliverBestEffort } from '../../email/email-delivery';
 import { EmailService } from '../../email/email.service';
 import {
   type RoleRecord,
@@ -40,8 +42,12 @@ import {
 
 const EMAIL_IN_USE_MESSAGE = 'Email is already registered';
 
+type InvitationContext = { restaurantName: string; inviterName: string };
+
 @Injectable()
 export class StaffService {
+  private readonly logger = new Logger(StaffService.name);
+
   constructor(
     private readonly repository: StaffRepository,
     private readonly tokens: AuthTokenService,
@@ -73,12 +79,25 @@ export class StaffService {
   async create(actor: Actor, input: CreateStaffRequest): Promise<CreateStaffResponse> {
     const role = await this.assertRoleAssignable(actor, input.roleId);
     await this.assertEmailAvailable(input.email);
+    // Resolved before the account is created so a 403 can't leave a half-created invitation.
+    const context = await this.invitationContext(actor);
     const created = await this.mapEmailConflict(() =>
       this.repository.create({ restaurantId: actor.restaurantId, ...toStaffDetails(input) }),
     );
-    const token = await this.tokens.issue(actor.restaurantId, created.id, 'STAFF_INVITE');
-    await this.sendInvitation(actor, created, role.name, token);
-    return { account: toStaffAccount(created), message: 'Staff invitation sent' };
+    // The INVITED account is committed, so a provider outage must not fail the request (a retry
+    // would only hit "Email is already registered"); the manager can resend the invitation.
+    const emailSent = await deliverBestEffort(
+      this.logger,
+      { flow: 'staff-invite', userId: created.id },
+      () => this.sendInvitation(actor.restaurantId, created, role.name, context),
+    );
+    return {
+      account: toStaffAccount(created),
+      message: emailSent
+        ? 'Staff invitation sent'
+        : "Staff account created, but the invitation email couldn't be sent. Use Resend invitation to try again.",
+      emailSent,
+    };
   }
 
   async update(actor: Actor, userId: string, input: UpdateStaffRequest): Promise<StaffAccount> {
@@ -123,8 +142,12 @@ export class StaffService {
     }
     await this.rateLimit.consume('RESEND_STAFF_INVITE_MINUTE', userId, 1, 60_000);
     await this.rateLimit.consume('RESEND_STAFF_INVITE_HOUR', userId, 5, 60 * 60_000);
-    const token = await this.tokens.issue(actor.restaurantId, staff.id, 'STAFF_INVITE');
-    await this.sendInvitation(actor, staff, staff.role.name, token);
+    await this.sendInvitation(
+      actor.restaurantId,
+      staff,
+      staff.role.name,
+      await this.invitationContext(actor),
+    );
     return { message: 'Staff invitation resent' };
   }
 
@@ -134,41 +157,48 @@ export class StaffService {
       throw new BadRequestException('A password reset cannot be sent for this account');
     }
     await this.rateLimit.consume('STAFF_PASSWORD_RESET_HOUR', userId, 5, 60 * 60_000);
-    const token = await this.tokens.issue(actor.restaurantId, staff.id, 'PASSWORD_RESET');
-    await this.email.send({
-      to: { email: staff.email, name: staff.name },
-      template: 'RESET_PASSWORD',
-      variables: {
-        name: staff.name,
-        resetUrl: this.publicUrl('/auth/reset-password', token.rawToken),
-        expiresInMinutes: 60,
-      },
-      idempotencyKey: token.id,
-    });
+    await this.tokens.issueAndDeliver(actor.restaurantId, staff.id, 'PASSWORD_RESET', (token) =>
+      this.email.send({
+        to: { email: staff.email, name: staff.name },
+        template: 'RESET_PASSWORD',
+        variables: {
+          name: staff.name,
+          resetUrl: this.publicUrl('/auth/reset-password', token.rawToken),
+          expiresInMinutes: 60,
+        },
+        idempotencyKey: token.id,
+      }),
+    );
     return { message: 'Password reset email sent' };
   }
 
-  private async sendInvitation(
-    actor: Actor,
-    staff: StaffRecord,
-    roleName: string,
-    token: IssuedAuthToken,
-  ): Promise<void> {
+  private async invitationContext(actor: Actor): Promise<InvitationContext> {
     const context = await this.repository.findInvitationContext(actor.restaurantId, actor.userId);
     if (!context) throw new ForbiddenException('Inviting user is no longer active');
-    await this.email.send({
-      to: { email: staff.email, name: staff.name },
-      template: 'STAFF_INVITE',
-      variables: {
-        staffName: staff.name,
-        restaurantName: context.restaurantName,
-        inviterName: context.inviterName,
-        roleName,
-        acceptUrl: this.publicUrl('/auth/accept-invite', token.rawToken),
-        expiresInDays: 7,
-      },
-      idempotencyKey: token.id,
-    });
+    return context;
+  }
+
+  private sendInvitation(
+    restaurantId: string,
+    staff: StaffRecord,
+    roleName: string,
+    context: InvitationContext,
+  ): Promise<void> {
+    return this.tokens.issueAndDeliver(restaurantId, staff.id, 'STAFF_INVITE', (token) =>
+      this.email.send({
+        to: { email: staff.email, name: staff.name },
+        template: 'STAFF_INVITE',
+        variables: {
+          staffName: staff.name,
+          restaurantName: context.restaurantName,
+          inviterName: context.inviterName,
+          roleName,
+          acceptUrl: this.publicUrl('/auth/accept-invite', token.rawToken),
+          expiresInDays: 7,
+        },
+        idempotencyKey: token.id,
+      }),
+    );
   }
 
   private publicUrl(path: string, token: string): string {

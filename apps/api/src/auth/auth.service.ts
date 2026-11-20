@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   type AcceptInviteRequest,
@@ -18,11 +18,12 @@ import {
 import { compare, hash } from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-import { AuthTokenService, type IssuedAuthToken } from '../auth-tokens/auth-token.service';
+import { AuthTokenService } from '../auth-tokens/auth-token.service';
 import { BCRYPT_ROUNDS } from '../common/auth/password';
+import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { RateLimitService } from '../common/rate-limit/rate-limit.service';
+import { deliverBestEffort } from '../email/email-delivery';
 import { EmailService } from '../email/email.service';
-import { EmailDeliveryError } from '../email/email.types';
 import { ProvisioningService } from '../provisioning/provisioning.service';
 import { AuthRepository, type AuthUserRecord } from './auth.repository';
 
@@ -31,6 +32,8 @@ const FORGOT_PASSWORD_MESSAGE =
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly repository: AuthRepository,
     private readonly config: ConfigService,
@@ -42,23 +45,34 @@ export class AuthService {
 
   async register(input: RegisterRequest): Promise<RegisterResponse> {
     const { userId, restaurantId, roleId } = await this.provisioning.provisionOwner(input);
-    const token = await this.tokens.issue(restaurantId, userId, 'EMAIL_VERIFICATION');
-    await this.email.send({
-      to: { email: input.email, name: input.name },
-      template: 'VERIFY_EMAIL',
-      variables: {
-        name: input.name,
-        restaurantName: input.restaurantName,
-        verifyUrl: this.publicUrl('/auth/verify-email', token.rawToken),
-        expiresInHours: 24,
-      },
-      idempotencyKey: token.id,
-    });
+    // The account is committed at this point, so a provider outage must not turn registration into
+    // an error: a retry would only hit "Email is already registered". The user can resend later.
+    const emailSent = await deliverBestEffort(
+      this.logger,
+      { flow: 'register', userId },
+      () =>
+        this.tokens.issueAndDeliver(restaurantId, userId, 'EMAIL_VERIFICATION', (token) =>
+          this.email.send({
+            to: { email: input.email, name: input.name },
+            template: 'VERIFY_EMAIL',
+            variables: {
+              name: input.name,
+              restaurantName: input.restaurantName,
+              verifyUrl: this.publicUrl('/auth/verify-email', token.rawToken),
+              expiresInHours: 24,
+            },
+            idempotencyKey: token.id,
+          }),
+        ),
+    );
 
     return {
       success: true,
-      message: 'User registered successfully. Check your inbox to verify your email.',
+      message: emailSent
+        ? 'User registered successfully. Check your inbox to verify your email.'
+        : "User registered successfully, but we couldn't send the verification email. Use Resend to try again.",
       accessToken: this.signAccessToken({ userId, restaurantId, roleId, authVersion: 0 }),
+      emailSent,
     };
   }
 
@@ -88,18 +102,19 @@ export class AuthService {
 
     await this.rateLimit.consume('RESEND_VERIFICATION_MINUTE', userId, 1, 60_000);
     await this.rateLimit.consume('RESEND_VERIFICATION_HOUR', userId, 5, 60 * 60_000);
-    const token = await this.tokens.issue(user.restaurantId, user.id, 'EMAIL_VERIFICATION');
-    await this.email.send({
-      to: { email: user.email, name: user.name },
-      template: 'VERIFY_EMAIL',
-      variables: {
-        name: user.name,
-        restaurantName: user.restaurant.name,
-        verifyUrl: this.publicUrl('/auth/verify-email', token.rawToken),
-        expiresInHours: 24,
-      },
-      idempotencyKey: token.id,
-    });
+    await this.tokens.issueAndDeliver(user.restaurantId, user.id, 'EMAIL_VERIFICATION', (token) =>
+      this.email.send({
+        to: { email: user.email, name: user.name },
+        template: 'VERIFY_EMAIL',
+        variables: {
+          name: user.name,
+          restaurantName: user.restaurant.name,
+          verifyUrl: this.publicUrl('/auth/verify-email', token.rawToken),
+          expiresInHours: 24,
+        },
+        idempotencyKey: token.id,
+      }),
+    );
     return { message: 'Verification email sent' };
   }
 
@@ -112,13 +127,15 @@ export class AuthService {
 
     const user = await this.repository.findByEmail(input.email);
     if (user?.status === 'ACTIVE' && user.passwordHash) {
-      const token = await this.tokens.issue(user.restaurantId, user.id, 'PASSWORD_RESET');
-      try {
-        await this.sendPasswordReset(user, token);
-      } catch (error) {
-        if (!(error instanceof EmailDeliveryError)) throw error;
-        // Never reveal an account or provider state through this public endpoint.
-      }
+      // Deliberately not awaited: issuing the token and calling the provider takes far longer than
+      // the unknown-email path, and that timing difference would reveal which emails have accounts.
+      void this.sendPasswordReset(user).catch((error: unknown) => {
+        this.logger.error('Password reset email not delivered', {
+          flow: 'forgot-password',
+          userId: user.id,
+          ...errorDiagnostics(error),
+        });
+      });
     }
     return { message: FORGOT_PASSWORD_MESSAGE };
   }
@@ -133,18 +150,19 @@ export class AuthService {
     return { message: 'Invitation accepted. You can now sign in.' };
   }
 
-  async sendPasswordReset(user: AuthUserRecord, token?: IssuedAuthToken): Promise<void> {
-    const issued = token ?? (await this.tokens.issue(user.restaurantId, user.id, 'PASSWORD_RESET'));
-    await this.email.send({
-      to: { email: user.email, name: user.name },
-      template: 'RESET_PASSWORD',
-      variables: {
-        name: user.name,
-        resetUrl: this.publicUrl('/auth/reset-password', issued.rawToken),
-        expiresInMinutes: 60,
-      },
-      idempotencyKey: issued.id,
-    });
+  private sendPasswordReset(user: AuthUserRecord): Promise<void> {
+    return this.tokens.issueAndDeliver(user.restaurantId, user.id, 'PASSWORD_RESET', (token) =>
+      this.email.send({
+        to: { email: user.email, name: user.name },
+        template: 'RESET_PASSWORD',
+        variables: {
+          name: user.name,
+          resetUrl: this.publicUrl('/auth/reset-password', token.rawToken),
+          expiresInMinutes: 60,
+        },
+        idempotencyKey: token.id,
+      }),
+    );
   }
 
   private publicUrl(path: string, token: string): string {

@@ -12,13 +12,32 @@ const EXPIRY_MS: Record<UserTokenType, number> = {
   STAFF_INVITE: 7 * 24 * 60 * 60 * 1_000,
 };
 
-export type IssuedAuthToken = { rawToken: string; id: string; expiresAt: Date };
+export type IssuedAuthToken = { rawToken: string; id: string; expiresAt: Date; issuedAt: Date };
 
 @Injectable()
 export class AuthTokenService {
   constructor(private readonly repository: AuthTokenRepository) {}
 
-  async issue(restaurantId: string, userId: string, type: UserTokenType): Promise<IssuedAuthToken> {
+  /**
+   * Issues a token and hands it to `deliver`. Older unused tokens of the same type are retired only
+   * after delivery succeeds, so a failed send never leaves the user without a working link.
+   */
+  async issueAndDeliver(
+    restaurantId: string,
+    userId: string,
+    type: UserTokenType,
+    deliver: (token: IssuedAuthToken) => Promise<void>,
+  ): Promise<void> {
+    const token = await this.issue(restaurantId, userId, type);
+    await deliver(token);
+    await this.repository.revokeOlder(userId, type, token.id, token.issuedAt, new Date());
+  }
+
+  private async issue(
+    restaurantId: string,
+    userId: string,
+    type: UserTokenType,
+  ): Promise<IssuedAuthToken> {
     const now = new Date();
     const rawToken = randomBytes(TOKEN_BYTES).toString('base64url');
     const expiresAt = new Date(now.getTime() + EXPIRY_MS[type]);
@@ -30,7 +49,7 @@ export class AuthTokenService {
       expiresAt,
       now,
     });
-    return { rawToken, id: created.id, expiresAt };
+    return { rawToken, id: created.id, expiresAt, issuedAt: created.createdAt };
   }
 
   async verifyEmail(rawToken: string): Promise<void> {
