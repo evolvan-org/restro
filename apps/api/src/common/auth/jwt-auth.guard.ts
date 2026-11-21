@@ -8,13 +8,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { API_ERROR_CODES } from '@rms/api-contract';
-import { isRole, Permission, roleHasPermission } from '@rms/permissions';
+import { Permission } from '@rms/permissions';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
 import { type ActorRecord, ActorRepository } from './actor.repository';
 import { ALLOW_DURING_SETUP_KEY } from './allow-during-setup.decorator';
 import type { AuthenticatedRequest } from './authenticated-request';
+import { effectivePermissions, roleCan } from './role-access';
 
 const jwtClaimsSchema = z.object({
   userId: z.string().uuid(),
@@ -41,21 +42,18 @@ export class JwtAuthGuard implements CanActivate {
     // Outside the token try/catch on purpose: a database failure must surface as a 5xx through the
     // global filter, not as a 401 that makes the web client log every user out.
     const user = await this.actors.findById(claims.userId);
-    if (
-      !user ||
-      user.status !== 'ACTIVE' ||
-      user.authVersion !== claims.authVersion ||
-      !isRole(user.role.name)
-    ) {
+    if (!user || user.status !== 'ACTIVE' || user.authVersion !== claims.authVersion) {
       throw invalidToken();
     }
-    this.assertSetUp(context, user, user.role.name);
+    this.assertSetUp(context, user);
 
     request.auth = { userId: claims.userId, authVersion: claims.authVersion };
     request.actor = {
       userId: claims.userId,
       restaurantId: user.restaurantId,
       role: user.role.name,
+      isOwner: user.role.isOwner,
+      permissions: effectivePermissions(user.role),
       emailVerifiedAt: user.emailVerifiedAt,
     };
     return true;
@@ -66,13 +64,9 @@ export class JwtAuthGuard implements CanActivate {
    * setup routes: anything created elsewhere could collide with what finishing setup writes. An
    * account still on its one-time password may only change it.
    */
-  private assertSetUp(
-    context: ExecutionContext,
-    user: ActorRecord,
-    role: Parameters<typeof roleHasPermission>[0],
-  ): void {
+  private assertSetUp(context: ExecutionContext, user: ActorRecord): void {
     const setupPending = user.restaurant.onboardingCompletedAt === null;
-    if (setupPending && !roleHasPermission(role, Permission.ONBOARDING_MANAGE)) {
+    if (setupPending && !roleCan(user.role, Permission.ONBOARDING_MANAGE)) {
       throw invalidToken();
     }
     if (!setupPending && !user.mustChangePassword) return;

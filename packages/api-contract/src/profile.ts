@@ -17,6 +17,8 @@ export const profileResponseSchema = z
     email: z.string().email(),
     phone: z.string().nullable(),
     role: z.string().min(1),
+    /** Effective permission keys: from the role's grants, or every key for the Owner. */
+    permissions: z.array(z.string()),
     emailVerifiedAt: z.string().datetime().nullable(),
     onboarding: onboardingStateSchema,
     mustChangePassword: z.boolean(),

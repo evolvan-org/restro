@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../database/prisma.service';
+import { roleAccessSelect } from './role-access';
 
 const actorSelect = {
   restaurantId: true,
@@ -10,11 +11,7 @@ const actorSelect = {
   emailVerifiedAt: true,
   mustChangePassword: true,
   restaurant: { select: { onboardingCompletedAt: true } },
-  role: {
-    select: {
-      name: true,
-    },
-  },
+  role: { select: roleAccessSelect },
 } satisfies Prisma.UserSelect;
 
 export type ActorRecord = Prisma.UserGetPayload<{ select: typeof actorSelect }>;

@@ -18,9 +18,10 @@ import type {
   UpdateBillRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
-import { Permission, roleHasPermission } from '@rms/permissions';
+import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
+import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { billingSubtotal, calculateBill, financialYear, roundMoney } from './billing-calc';
 import { toBill, toPayment } from './bills.mapper';
@@ -86,7 +87,7 @@ export class BillsService {
   }
 
   update(actor: Actor, billId: string, input: UpdateBillRequest): Promise<Bill> {
-    if (input.discount && !roleHasPermission(actor.role, Permission.BILL_DISCOUNT))
+    if (input.discount && !actorCan(actor, Permission.BILL_DISCOUNT))
       throw new ForbiddenException('Missing bill discount permission');
     return this.repository.withLockedOrder(actor.restaurantId, { billId }, async (context) => {
       const bill = this.requireOpen(context.bill);

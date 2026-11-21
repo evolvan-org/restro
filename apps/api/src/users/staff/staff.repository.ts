@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, type UserStatus } from '@rms/db';
-import { Role } from '@rms/permissions';
 
 import { PrismaService } from '../../common/database/prisma.service';
 
@@ -15,6 +14,8 @@ const staffSelect = {
     select: {
       id: true,
       name: true,
+      isOwner: true,
+      permissions: { select: { permissionKey: true } },
     },
   },
 } satisfies Prisma.UserSelect;
@@ -22,6 +23,8 @@ const staffSelect = {
 const roleSelect = {
   id: true,
   name: true,
+  isOwner: true,
+  permissions: { select: { permissionKey: true } },
 } satisfies Prisma.RoleSelect;
 
 export type StaffRecord = Prisma.UserGetPayload<{ select: typeof staffSelect }>;
@@ -53,7 +56,7 @@ export class StaffEmailConflictError extends Error {
 
 /** Staff are the restaurant's users, excluding the account owner. */
 function staffWhere(restaurantId: string): Prisma.UserWhereInput {
-  return { restaurantId, role: { name: { not: Role.OWNER } } };
+  return { restaurantId, role: { isOwner: false } };
 }
 
 function isUniqueViolation(error: unknown): boolean {

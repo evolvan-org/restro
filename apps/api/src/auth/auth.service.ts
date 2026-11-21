@@ -16,12 +16,13 @@ import {
   type VerifyEmailRequest,
   type VerifyEmailResponse,
 } from '@rms/api-contract';
-import { isRole, Permission, roleHasPermission } from '@rms/permissions';
+import { Permission } from '@rms/permissions';
 import { compare, hash } from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 import { AuthTokenService } from '../auth-tokens/auth-token.service';
 import { BCRYPT_ROUNDS } from '../common/auth/password';
+import { roleCan } from '../common/auth/role-access';
 import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { RateLimitService } from '../common/rate-limit/rate-limit.service';
 import { EmailService } from '../email/email.service';
@@ -83,10 +84,7 @@ export class AuthService {
 
     const setupPending = user.restaurant.onboardingCompletedAt === null;
     // Checked after the password so the restaurant name is only revealed to its own staff.
-    if (
-      setupPending &&
-      !(isRole(user.role.name) && roleHasPermission(user.role.name, Permission.ONBOARDING_MANAGE))
-    ) {
+    if (setupPending && !roleCan(user.role, Permission.ONBOARDING_MANAGE)) {
       throw new ForbiddenException({
         message: `${user.restaurant.name} isn't ready yet. You can log in once setup is finished.`,
         error: 'Forbidden',

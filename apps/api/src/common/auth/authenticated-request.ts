@@ -1,4 +1,4 @@
-import type { Role } from '@rms/permissions';
+import type { Permission } from '@rms/permissions';
 import type { Request } from 'express';
 
 export type AuthenticatedRequest = Request & {
@@ -9,11 +9,14 @@ export type AuthenticatedRequest = Request & {
   actor?: Actor;
 };
 
-/** The caller as loaded by `PermissionsGuard`: active, with a known system role. */
+/** The caller as loaded by `JwtAuthGuard`: active, with the role's access resolved from the database. */
 export type Actor = {
   userId: string;
   restaurantId: string;
-  role: Role;
+  role: string;
+  isOwner: boolean;
+  /** Granted keys from `role_permissions`; Owners hold none and bypass via `isOwner`. */
+  permissions: readonly Permission[];
   emailVerifiedAt: Date | null;
 };
 

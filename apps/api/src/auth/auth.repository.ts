@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
 
+import { roleAccessSelect } from '../common/auth/role-access';
 import { PrismaService } from '../common/database/prisma.service';
 
 const authUserSelect = {
@@ -14,7 +15,7 @@ const authUserSelect = {
   emailVerifiedAt: true,
   authVersion: true,
   mustChangePassword: true,
-  role: { select: { name: true } },
+  role: { select: roleAccessSelect },
   restaurant: { select: { name: true, onboardingCompletedAt: true } },
 } satisfies Prisma.UserSelect;
 

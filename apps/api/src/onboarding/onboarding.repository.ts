@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
-import { Role } from '@rms/permissions';
 
 import { PrismaService } from '../common/database/prisma.service';
 
@@ -108,7 +107,7 @@ export class OnboardingRepository {
         this.prisma.restaurantTable.count({ where: { restaurantId, isActive: true } }),
         this.prisma.menuItem.count({ where: { restaurantId, isActive: true } }),
         this.prisma.stockItem.count({ where: { restaurantId, isActive: true } }),
-        this.prisma.user.count({ where: { restaurantId, role: { name: { not: Role.OWNER } } } }),
+        this.prisma.user.count({ where: { restaurantId, role: { isOwner: false } } }),
         this.prisma.menuItem.count({
           where: { restaurantId, isActive: true, recipeRequired: true, recipeItems: { none: {} } },
         }),

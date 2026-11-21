@@ -18,17 +18,13 @@ import {
   type UpdateStaffRequest,
   type UpdateStaffStatusRequest,
 } from '@rms/api-contract';
-import {
-  ELIGIBILITY_ONLY_PERMISSIONS,
-  isRole,
-  Role,
-  ROLE_PERMISSIONS,
-  roleHasAll,
-} from '@rms/permissions';
+import { ELIGIBILITY_ONLY_PERMISSIONS } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import { AuthTokenService } from '../../auth-tokens/auth-token.service';
+import { actorCanAll } from '../../common/auth/actor-permissions';
 import type { Actor } from '../../common/auth/authenticated-request';
+import { effectivePermissions, type RoleAccess } from '../../common/auth/role-access';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { EmailService } from '../../email/email.service';
 import { deliverBestEffort } from '../../email/email-delivery';
@@ -72,7 +68,7 @@ export class StaffService {
 
   async listAssignableRoles(actor: Actor): Promise<StaffRolesResponse> {
     return (await this.repository.findRoles(actor.restaurantId)).filter((role) =>
-      canAssignRole(actor, role.name),
+      canAssignRole(actor, role),
     );
   }
 
@@ -210,7 +206,7 @@ export class StaffService {
   private async findManageable(actor: Actor, userId: string): Promise<StaffRecord> {
     const staff = await this.repository.findById(actor.restaurantId, userId);
     if (!staff) throw new NotFoundException('Staff account not found');
-    if (!canAssignRole(actor, staff.role.name)) {
+    if (!canAssignRole(actor, staff.role)) {
       throw new ForbiddenException('You cannot manage an account with this role');
     }
     return staff;
@@ -218,7 +214,7 @@ export class StaffService {
 
   private async assertRoleAssignable(actor: Actor, roleId: string): Promise<RoleRecord> {
     const role = await this.repository.findRole(actor.restaurantId, roleId);
-    if (!role || !canAssignRole(actor, role.name)) {
+    if (!role || !canAssignRole(actor, role)) {
       throw new BadRequestException('The selected role cannot be assigned');
     }
     return role;
@@ -241,14 +237,12 @@ export class StaffService {
   }
 }
 
-function canAssignRole(actor: Actor, roleName: string): boolean {
-  return (
-    isRole(roleName) &&
-    roleName !== Role.OWNER &&
-    roleHasAll(
-      actor.role,
-      ROLE_PERMISSIONS[roleName].filter((p) => !ELIGIBILITY_ONLY_PERMISSIONS.includes(p)),
-    )
+/** Only an Owner may assign the Owner role; anyone else may only hand out permissions they hold. */
+function canAssignRole(actor: Actor, role: RoleAccess): boolean {
+  if (role.isOwner) return actor.isOwner;
+  return actorCanAll(
+    actor,
+    effectivePermissions(role).filter((p) => !ELIGIBILITY_ONLY_PERMISSIONS.includes(p)),
   );
 }
 

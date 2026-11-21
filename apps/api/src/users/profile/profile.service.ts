@@ -9,6 +9,7 @@ import {
 import { compare, hash } from 'bcrypt';
 
 import { BCRYPT_ROUNDS } from '../../common/auth/password';
+import { effectivePermissions } from '../../common/auth/role-access';
 import { type ProfileRecord, ProfileRepository } from './profile.repository';
 
 @Injectable()
@@ -61,6 +62,7 @@ export class ProfileService {
       email: profile.email,
       phone: profile.phone,
       role: profile.role.name,
+      permissions: effectivePermissions(profile.role),
       emailVerifiedAt: profile.emailVerifiedAt?.toISOString() ?? null,
       onboarding: profile.restaurant.onboardingCompletedAt ? 'COMPLETED' : 'PENDING',
       mustChangePassword: profile.mustChangePassword,

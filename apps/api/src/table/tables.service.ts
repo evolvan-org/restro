@@ -27,10 +27,12 @@ import {
   type UpdateTableRequest,
   type UpdateTableResponse,
 } from '@rms/api-contract';
-import { isRole, Permission, roleHasPermission } from '@rms/permissions';
+import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
+import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
+import { roleCan } from '../common/auth/role-access';
 import {
   type TableDetails,
   TableNumberConflictError,
@@ -73,7 +75,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   async listCaptains(actor: Actor): Promise<CaptainOptionsResponse> {
     const users = await this.tablesRepository.listActiveUsers(actor.restaurantId);
     return users
-      .filter((user) => isEligibleCaptainRole(user.role.name))
+      .filter((user) => roleCan(user.role, Permission.TABLE_BE_CAPTAIN))
       .map((user) => ({ id: user.id, name: user.name, role: user.role.name }));
   }
 
@@ -296,7 +298,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
 
   /** Setting, changing or clearing a captain needs `table:assign-captain`, beyond `restaurant:write`. */
   private assertMayAssignCaptain(actor: Actor): void {
-    if (!roleHasPermission(actor.role, Permission.TABLE_ASSIGN_CAPTAIN)) {
+    if (!actorCan(actor, Permission.TABLE_ASSIGN_CAPTAIN)) {
       throw new ForbiddenException('Missing permission to assign a captain');
     }
   }
@@ -313,7 +315,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     if (user.status !== 'ACTIVE') {
       throw new BadRequestException({ message: ['captainUserId: User is not active'] });
     }
-    if (!isEligibleCaptainRole(user.role.name)) {
+    if (!roleCan(user.role, Permission.TABLE_BE_CAPTAIN)) {
       throw new BadRequestException({
         message: ['captainUserId: User is not eligible to be a captain'],
       });
@@ -390,7 +392,7 @@ function toRestaurantTable(record: TableRecord, actor: Actor): RestaurantTable {
       : null;
   return {
     id: record.id,
-    billSummary: roleHasPermission(actor.role, Permission.BILL_READ) ? (bill ?? null) : null,
+    billSummary: actorCan(actor, Permission.BILL_READ) ? (bill ?? null) : null,
     tableNumber: record.tableNumber,
     capacity: record.capacity,
     isActive: record.isActive,
@@ -413,8 +415,4 @@ function toRestaurantTable(record: TableRecord, actor: Actor): RestaurantTable {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
-}
-
-function isEligibleCaptainRole(roleName: string): boolean {
-  return isRole(roleName) && roleHasPermission(roleName, Permission.TABLE_BE_CAPTAIN);
 }
