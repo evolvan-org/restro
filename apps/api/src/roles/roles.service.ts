@@ -12,6 +12,7 @@ import {
   type RoleDetail,
   type RoleListResponse,
   type RoleSummary,
+  type UpdateRolePermissionsRequest,
   type UpdateRoleRequest,
 } from '@rms/api-contract';
 import {
@@ -32,6 +33,7 @@ import {
 } from './roles.repository';
 
 const AUDIT_PAGE_SIZE = 100;
+const PANEL_USER_LIMIT = 50;
 
 @Injectable()
 export class RolesService {
@@ -39,7 +41,34 @@ export class RolesService {
 
   async list(actor: Actor): Promise<RoleListResponse> {
     const roles = await this.repository.list(actor.restaurantId);
-    return { items: roles.map(toSummary) };
+    return {
+      items: roles.map(toSummary),
+      grantable: grantableKeys(actor),
+      actorRoleId: actor.roleId,
+      actorRoleName: actor.role,
+      canWrite: actorCan(actor, Permission.ROLE_WRITE),
+    };
+  }
+
+  /** Saves permission edits for several roles all-or-nothing; every role is validated first. */
+  async updatePermissions(
+    actor: Actor,
+    input: UpdateRolePermissionsRequest,
+  ): Promise<RoleListResponse> {
+    const items = [];
+    for (const change of input.changes) {
+      const role = await this.findOrThrow(actor, change.roleId);
+      this.assertEditable(actor, role);
+      const permissions = diff(role, unique(change.permissions));
+      this.assertCanChange(actor, [...permissions.added, ...permissions.removed]);
+      if (permissions.added.length > 0 || permissions.removed.length > 0) {
+        items.push({ roleId: role.id, ...permissions });
+      }
+    }
+    if (items.length > 0) {
+      await this.repository.updateManyPermissions(actor.restaurantId, items, actor.userId);
+    }
+    return this.list(actor);
   }
 
   async get(actor: Actor, roleId: string): Promise<RoleDetail> {
@@ -173,15 +202,14 @@ export class RolesService {
     }
   }
 
-  private toDetail(actor: Actor, role: RoleRecord): RoleDetail {
+  private async toDetail(actor: Actor, role: RoleRecord): Promise<RoleDetail> {
     const canWrite = actorCan(actor, Permission.ROLE_WRITE);
+    const users = await this.repository.listUsers(actor.restaurantId, role.id, PANEL_USER_LIMIT);
     return {
       ...toSummary(role),
-      permissions: catalogKeys(role),
       editable: canWrite && !role.isOwner && role.id !== actor.roleId,
-      grantable: ALL_PERMISSIONS.filter(
-        (p) => ELIGIBILITY_ONLY_PERMISSIONS.includes(p) || actorCan(actor, p),
-      ),
+      grantable: grantableKeys(actor),
+      users,
     };
   }
 
@@ -203,7 +231,7 @@ function toSummary(role: RoleRecord): RoleSummary {
     isSystem: role.isSystem,
     isOwner: role.isOwner,
     userCount: role._count.users,
-    permissionCount: role.permissions.length,
+    permissions: catalogKeys(role),
   };
 }
 
@@ -235,6 +263,12 @@ function diff(role: RoleRecord, next: string[]) {
 function defaultPermissions(role: RoleRecord): string[] | undefined {
   if (!role.isSystem || role.isOwner) return undefined;
   return [...(ROLE_PERMISSIONS[role.name as Role] ?? [])];
+}
+
+function grantableKeys(actor: Actor): Permission[] {
+  return ALL_PERMISSIONS.filter(
+    (p) => ELIGIBILITY_ONLY_PERMISSIONS.includes(p) || actorCan(actor, p),
+  );
 }
 
 function roleInUse(userCount: number): ConflictException {

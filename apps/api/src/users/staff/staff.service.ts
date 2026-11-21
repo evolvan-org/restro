@@ -29,6 +29,7 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { EmailService } from '../../email/email.service';
 import { deliverBestEffort } from '../../email/email-delivery';
 import {
+  LastOwnerError,
   type RoleRecord,
   type StaffDetails,
   StaffEmailConflictError,
@@ -103,11 +104,13 @@ export class StaffService {
       await this.assertRoleAssignable(actor, input.roleId);
     }
 
-    const updated = await this.repository.update(actor.restaurantId, userId, {
-      name: input.name,
-      phone: input.phone || null,
-      roleId: input.roleId,
-    });
+    const updated = await this.mapLastOwner(() =>
+      this.repository.update(actor.restaurantId, userId, {
+        name: input.name,
+        phone: input.phone || null,
+        roleId: input.roleId,
+      }),
+    );
     if (!updated) throw new NotFoundException('Staff account not found');
     return toStaffAccount(updated);
   }
@@ -126,7 +129,9 @@ export class StaffService {
     }
     if (existing.status === input.status) return toStaffAccount(existing);
 
-    const updated = await this.repository.updateStatus(actor.restaurantId, userId, input.status);
+    const updated = await this.mapLastOwner(() =>
+      this.repository.updateStatus(actor.restaurantId, userId, input.status),
+    );
     if (!updated) throw new NotFoundException('Staff account not found');
     return toStaffAccount(updated);
   }
@@ -223,6 +228,21 @@ export class StaffService {
   private async assertEmailAvailable(email: string): Promise<void> {
     if (await this.repository.isEmailTaken(email))
       throw new ConflictException(EMAIL_IN_USE_MESSAGE);
+  }
+
+  private async mapLastOwner<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write();
+    } catch (error) {
+      if (error instanceof LastOwnerError) {
+        const action =
+          error.change === 'role' ? 'changing their role' : 'deactivating their account';
+        throw new ConflictException(
+          `${error.ownerName} is the only active Account Owner. Make another team member an Owner before ${action}. The restaurant must always have at least one active Owner.`,
+        );
+      }
+      throw error;
+    }
   }
 
   private async mapEmailConflict<T>(write: () => Promise<T>): Promise<T> {

@@ -28,22 +28,58 @@ export const roleSummarySchema = z
     /** The locked Account Owner role. */
     isOwner: z.boolean(),
     userCount: z.number().int().nonnegative(),
-    permissionCount: z.number().int().nonnegative(),
+    /** Granted keys. Empty for the Owner role, which bypasses permission checks. */
+    permissions: z.array(permissionKeySchema),
+  })
+  .strict();
+
+export const roleUserSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    email: z.string().email(),
+    status: z.enum(['INVITED', 'ACTIVE', 'INACTIVE', 'SUSPENDED']),
   })
   .strict();
 
 export const roleDetailSchema = roleSummarySchema
   .extend({
-    /** Granted keys. Empty for the Owner role, which bypasses permission checks. */
-    permissions: z.array(permissionKeySchema),
     /** Whether the caller may edit this role: `role:write`, not their own role, not the Owner. */
     editable: z.boolean(),
     /** Permission keys the caller may grant or revoke (the ones they hold themselves). */
     grantable: z.array(permissionKeySchema),
+    /** First people holding the role (capped), for the details panel. */
+    users: z.array(roleUserSchema),
   })
   .strict();
 
-export const roleListResponseSchema = z.object({ items: z.array(roleSummarySchema) }).strict();
+export const roleListResponseSchema = z
+  .object({
+    items: z.array(roleSummarySchema),
+    /** Permission keys the caller may grant or revoke (the ones they hold themselves). */
+    grantable: z.array(permissionKeySchema),
+    /** The caller's own role: it can't be edited by them. */
+    actorRoleId: z.string().uuid(),
+    /** The caller's role name, for explaining locked cells. */
+    actorRoleName: z.string(),
+    canWrite: z.boolean(),
+  })
+  .strict();
+
+/** Saves permission changes for several roles at once, atomically. */
+export const updateRolePermissionsRequestSchema = z
+  .object({
+    changes: z
+      .array(
+        z.object({ roleId: z.string().uuid(), permissions: z.array(permissionKeySchema) }).strict(),
+      )
+      .min(1)
+      .max(50),
+  })
+  .strict()
+  .refine((value) => new Set(value.changes.map((c) => c.roleId)).size === value.changes.length, {
+    message: 'Each role may appear once',
+  });
 
 export const createRoleRequestSchema = z
   .object({
@@ -85,6 +121,8 @@ export const roleAuditListResponseSchema = z
   .object({ items: z.array(roleAuditEntrySchema) })
   .strict();
 
+export type RoleUser = z.infer<typeof roleUserSchema>;
+export type UpdateRolePermissionsRequest = z.infer<typeof updateRolePermissionsRequestSchema>;
 export type RoleSummary = z.infer<typeof roleSummarySchema>;
 export type RoleDetail = z.infer<typeof roleDetailSchema>;
 export type RoleListResponse = z.infer<typeof roleListResponseSchema>;

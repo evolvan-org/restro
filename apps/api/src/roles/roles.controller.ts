@@ -36,6 +36,8 @@ import {
   roleDetailSchema,
   type RoleListResponse,
   roleListResponseSchema,
+  type UpdateRolePermissionsRequest,
+  updateRolePermissionsRequestSchema,
   type UpdateRoleRequest,
   updateRoleRequestSchema,
 } from '@rms/api-contract';
@@ -70,6 +72,23 @@ export class RolesController {
   @ApiOkResponse({ description: 'Roles', schema: zodOpenApiSchema(roleListResponseSchema) })
   list(@CurrentActor() actor: Actor): Promise<RoleListResponse> {
     return this.rolesService.list(actor);
+  }
+
+  @Patch('permissions')
+  @RequirePermissions(Permission.ROLE_WRITE)
+  @ApiOperation({
+    summary: 'Save permission changes for several roles',
+    description:
+      'Applies edits to many roles atomically; any rejected change rejects them all. Requires `role:write`.',
+  })
+  @ApiOkResponse({ description: 'All roles', schema: zodOpenApiSchema(roleListResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid changes'))
+  updatePermissions(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(updateRolePermissionsRequestSchema))
+    body: UpdateRolePermissionsRequest,
+  ): Promise<RoleListResponse> {
+    return this.rolesService.updatePermissions(actor, body);
   }
 
   @Get('audit')

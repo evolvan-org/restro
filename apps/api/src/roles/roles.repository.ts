@@ -138,6 +138,46 @@ export class RolesRepository {
     });
   }
 
+  /** Applies permission changes to several roles in one transaction, auditing each. */
+  updateManyPermissions(
+    restaurantId: string,
+    items: {
+      roleId: string;
+      next: readonly string[];
+      added: string[];
+      removed: string[];
+    }[],
+    actorUserId: string,
+  ): Promise<void> {
+    return this.prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        const role = await tx.role.findFirstOrThrow({
+          where: { id: item.roleId, restaurantId },
+          select: { id: true, name: true },
+        });
+        await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
+        await tx.rolePermission.createMany({
+          data: item.next.map((permissionKey) => ({ roleId: role.id, permissionKey })),
+        });
+        await this.writeAudit(tx, restaurantId, role, {
+          actorUserId,
+          action: 'UPDATED',
+          addedKeys: item.added,
+          removedKeys: item.removed,
+        });
+      }
+    });
+  }
+
+  listUsers(restaurantId: string, roleId: string, take: number) {
+    return this.prisma.user.findMany({
+      where: { restaurantId, roleId },
+      select: { id: true, name: true, email: true, status: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take,
+    });
+  }
+
   listAudit(restaurantId: string, take: number) {
     return this.prisma.roleAuditLog.findMany({
       where: { restaurantId },

@@ -36,6 +36,9 @@ function setup(found: RoleRecord | null) {
       .mockImplementation((_r, data) => Promise.resolve(role({ keys: data.permissions }))),
     update: jest.fn().mockResolvedValue(found),
     delete: jest.fn().mockResolvedValue(undefined),
+    list: jest.fn().mockResolvedValue([]),
+    listUsers: jest.fn().mockResolvedValue([]),
+    updateManyPermissions: jest.fn().mockResolvedValue(undefined),
   };
   return { repository, service: new RolesService(repository as unknown as RolesRepository) };
 }
@@ -110,5 +113,27 @@ describe('RolesService', () => {
     const { service, repository } = setup(role({ keys: [Permission.BILL_DISCOUNT] }));
     await expect(service.remove(manager, 'role-x', {})).rejects.toThrow('bill:discount');
     expect(repository.delete).not.toHaveBeenCalled();
+  });
+
+  it('saves several roles atomically and skips unchanged ones', async () => {
+    const { service, repository } = setup(role({ keys: [Permission.MENU_READ] }));
+    await service.updatePermissions(manager, {
+      changes: [{ roleId: 'role-x', permissions: [Permission.MENU_READ, Permission.MENU_WRITE] }],
+    });
+    expect(repository.updateManyPermissions).toHaveBeenCalledWith(
+      'r1',
+      [expect.objectContaining({ roleId: 'role-x', added: [Permission.MENU_WRITE], removed: [] })],
+      'u-manager',
+    );
+  });
+
+  it('rejects the whole batch when one change escalates', async () => {
+    const { service, repository } = setup(role());
+    await expect(
+      service.updatePermissions(manager, {
+        changes: [{ roleId: 'role-x', permissions: [Permission.BILL_CANCEL] }],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repository.updateManyPermissions).not.toHaveBeenCalled();
   });
 });

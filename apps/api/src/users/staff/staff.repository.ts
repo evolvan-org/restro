@@ -54,9 +54,20 @@ export class StaffEmailConflictError extends Error {
   }
 }
 
-/** Staff are the restaurant's users, excluding the account owner. */
+/** Staff are all of the restaurant's users, Account Owners included (their changes are guarded). */
 function staffWhere(restaurantId: string): Prisma.UserWhereInput {
-  return { restaurantId, role: { isOwner: false } };
+  return { restaurantId };
+}
+
+/** A change that would leave the restaurant without an active Account Owner. */
+export class LastOwnerError extends Error {
+  constructor(
+    readonly ownerName: string,
+    readonly change: 'role' | 'status',
+  ) {
+    super(`${ownerName} is the only active Account Owner`);
+    this.name = LastOwnerError.name;
+  }
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -146,11 +157,46 @@ export class StaffRepository {
     data: StaffUpdateDetails,
   ): Promise<StaffRecord | null> {
     // Tenant-scoped write: never touches a user outside this restaurant.
-    const { count } = await this.prisma.user.updateMany({
-      where: { id: userId, ...staffWhere(restaurantId) },
-      data,
-    });
+    const count = await this.guardedUpdate(restaurantId, userId, data);
     return count === 0 ? null : this.findById(restaurantId, userId);
+  }
+
+  /**
+   * Updates the user inside a transaction that first locks the restaurant's active Owners, so two
+   * concurrent demotions cannot both pass the "at least one active Owner" check.
+   */
+  private async guardedUpdate(
+    restaurantId: string,
+    userId: string,
+    data: { roleId?: string; status?: UserStatus } & Prisma.UserUpdateManyMutationInput,
+  ): Promise<number> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.restaurant_id = ${restaurantId}::uuid AND r.is_owner AND u.status = 'ACTIVE'
+        FOR UPDATE OF u`;
+      const target = await tx.user.findFirst({
+        where: { id: userId, restaurantId },
+        select: { name: true, status: true, role: { select: { isOwner: true } } },
+      });
+      if (target?.role.isOwner && target.status === 'ACTIVE') {
+        const staysOwner = data.roleId
+          ? (await tx.role.findFirst({ where: { id: data.roleId, restaurantId } }))?.isOwner
+          : true;
+        const staysActive = data.status ? data.status === 'ACTIVE' : true;
+        if (!staysOwner || !staysActive) {
+          const owners = await tx.user.count({
+            where: { restaurantId, status: 'ACTIVE', role: { isOwner: true } },
+          });
+          if (owners <= 1) throw new LastOwnerError(target.name, staysOwner ? 'status' : 'role');
+        }
+      }
+      const { count } = await tx.user.updateMany({
+        where: { id: userId, restaurantId },
+        data,
+      });
+      return count;
+    });
   }
 
   async updateStatus(
@@ -158,10 +204,7 @@ export class StaffRepository {
     userId: string,
     status: UserStatus,
   ): Promise<StaffRecord | null> {
-    const { count } = await this.prisma.user.updateMany({
-      where: { id: userId, ...staffWhere(restaurantId) },
-      data: { status },
-    });
+    const count = await this.guardedUpdate(restaurantId, userId, { status });
     return count === 0 ? null : this.findById(restaurantId, userId);
   }
 

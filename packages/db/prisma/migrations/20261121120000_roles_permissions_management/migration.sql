@@ -111,3 +111,11 @@ INSERT INTO "role_permissions" ("role_id", "permission_key")
     ('BAR_STAFF', 'kot:update-status')
   ) AS d(role_name, permission) ON d.role_name = r."name"
 ON CONFLICT DO NOTHING;
+
+-- 5. Default role descriptions (only where none was set).
+UPDATE "roles" SET "description" = 'Has full access to everything. Cannot be changed.' WHERE "name" = 'OWNER' AND "is_system" AND "description" IS NULL;
+UPDATE "roles" SET "description" = 'Runs the restaurant day to day: menu, team, billing and reports.' WHERE "name" = 'MANAGER' AND "is_system" AND "description" IS NULL;
+UPDATE "roles" SET "description" = 'Waiter: takes orders, generates bills and records payments.' WHERE "name" = 'CAPTAIN' AND "is_system" AND "description" IS NULL;
+UPDATE "roles" SET "description" = 'Front desk: reservations, seating, billing and payments.' WHERE "name" = 'RECEPTION' AND "is_system" AND "description" IS NULL;
+UPDATE "roles" SET "description" = 'Kitchen: sees orders and updates kitchen tickets.' WHERE "name" = 'KITCHEN_STAFF' AND "is_system" AND "description" IS NULL;
+UPDATE "roles" SET "description" = 'Bar: sees orders and updates bar tickets.' WHERE "name" = 'BAR_STAFF' AND "is_system" AND "description" IS NULL;

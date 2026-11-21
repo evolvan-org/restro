@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BILL_CANCELLATION_REASONS, Prisma, SYSTEM_TABLE_STATUSES } from '@rms/db';
-import { ALL_ROLES, Role, ROLE_PERMISSIONS } from '@rms/permissions';
+import { ALL_ROLES, Role, ROLE_DESCRIPTIONS, ROLE_PERMISSIONS } from '@rms/permissions';
 
 import { PrismaService } from '../common/database/prisma.service';
 
@@ -59,6 +59,7 @@ export class ProvisioningRepository {
           data: {
             restaurantId: restaurant.id,
             name: role,
+            description: ROLE_DESCRIPTIONS[role],
             isSystem: true,
             isOwner: role === Role.OWNER,
           },
