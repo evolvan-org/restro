@@ -44,8 +44,6 @@ export function useNotifications(): UseQueryResult<NotificationListResponse> {
         params: { page: 1, pageSize: 20 },
         signal,
         errorDisplay: 'inline',
-        // Restored sessions can mount before useSetupAxios installs its effect-based interceptor.
-        headers: { Authorization: `Bearer ${token}` },
       });
       return notificationListResponseSchema.parse(response.data);
     },
@@ -62,7 +60,6 @@ export function useNotificationRealtime(): UseQueryResult<NotificationRealtimeCo
       const response = await api.get('/notifications/realtime', {
         signal,
         errorDisplay: 'inline',
-        headers: { Authorization: `Bearer ${token}` },
       });
       return notificationRealtimeConfigSchema.parse(response.data);
     },
