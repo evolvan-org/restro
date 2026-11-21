@@ -8,6 +8,7 @@ import {
   type UpdateStaffRequest,
   updateStaffRequestSchema,
 } from '@rms/api-contract';
+import axios from 'axios';
 import { type ReactElement, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/c
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { formatRoleLabel } from '@/lib/utils';
 import { useProfile } from '@/services/api/requests/profile';
 import { useCreateStaff, useStaffRoles, useUpdateStaff } from '@/services/api/requests/staff';
@@ -89,8 +91,15 @@ export default function StaffFormSidePane({
         else toast.warning(created.message);
         hideSidePane();
       }
-    } catch {
-      // The mutation hook reports the error through useShowApiError; keep the form open.
+    } catch (error) {
+      // The mutation hook reports the error through useShowApiError; keep the form open. A 409 on
+      // edit is the last-Account-Owner guard, which belongs next to the role it is about.
+      if (isEdit && axios.isAxiosError(error) && error.response?.status === 409) {
+        form.setError('roleId', {
+          type: 'server',
+          message: getApiErrorMessage(error, 'This change would leave no active Account Owner.'),
+        });
+      }
     }
   });
 

@@ -211,6 +211,9 @@ export class StaffService {
   private async findManageable(actor: Actor, userId: string): Promise<StaffRecord> {
     const staff = await this.repository.findById(actor.restaurantId, userId);
     if (!staff) throw new NotFoundException('Staff account not found');
+    if (staff.role.isOwner && !actor.isOwner) {
+      throw new ForbiddenException('Only an Account Owner can manage another Account Owner');
+    }
     if (!canAssignRole(actor, staff.role)) {
       throw new ForbiddenException('You cannot manage an account with this role');
     }

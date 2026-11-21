@@ -56,4 +56,22 @@ describe('StaffService last-owner protection', () => {
       ConflictException,
     );
   });
+
+  it('stops a non-Owner from changing or deactivating an Account Owner', async () => {
+    const service = setup(new Error('must not be reached'));
+    const manager = {
+      userId: 'u-mgr',
+      restaurantId: 'r1',
+      roleId: 'role-mgr',
+      role: 'MANAGER',
+      isOwner: false,
+      permissions: ['user:write'],
+    } as unknown as Actor;
+    await expect(service.updateStatus(manager, 'u-other', { status: 'INACTIVE' })).rejects.toThrow(
+      'Only an Account Owner can manage another Account Owner',
+    );
+    await expect(
+      service.update(manager, 'u-other', { name: 'x', phone: '', roleId: 'role-mgr' }),
+    ).rejects.toThrow('Only an Account Owner');
+  });
 });

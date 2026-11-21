@@ -5,5 +5,4 @@
 export enum RolesQueryKey {
   Roles = 'roles',
   Role = 'role',
-  Audit = 'role-audit',
 }
