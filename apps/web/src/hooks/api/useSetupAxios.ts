@@ -1,5 +1,5 @@
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import store from '@/store';
@@ -27,8 +27,14 @@ const SERVER_ERROR_MESSAGE = 'Something went wrong. Please try again.';
  *
  * Interceptors are ejected on unmount so fast-refresh / remounts don't stack
  * duplicates on the singleton instance.
+ *
+ * Returns `true` once the interceptors are installed. Children's effects run
+ * before their parent's, so a query in the tree would otherwise fire before
+ * this effect and go out without a token (401 on a refresh of a protected
+ * page). The caller must hold back rendering children until this is `true`.
  */
-export default function useSetupAxios(instance: AxiosInstance) {
+export default function useSetupAxios(instance: AxiosInstance): boolean {
+  const [isReady, setIsReady] = useState(false);
   // `useLogout` returns a fresh closure each render; keep it in a ref so the
   // effect can register interceptors once (`[instance]`) yet always call the
   // latest logout.
@@ -76,9 +82,13 @@ export default function useSetupAxios(instance: AxiosInstance) {
       },
     );
 
+    setIsReady(true);
+
     return () => {
       instance.interceptors.request.eject(requestInterceptor);
       instance.interceptors.response.eject(responseInterceptor);
     };
   }, [instance]);
+
+  return isReady;
 }
