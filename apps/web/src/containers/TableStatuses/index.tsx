@@ -25,9 +25,9 @@ export default function TableStatuses({
 }: {
   embedded?: boolean;
 } = {}): ReactElement | null {
-  const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
+  const isAllowed = usePermissionGuard([Permission.SETTINGS_READ]);
   const { can } = usePermissions();
-  const canRead = can(Permission.RESTAURANT_READ);
+  const canRead = can(Permission.SETTINGS_READ);
   const canWrite = can(Permission.RESTAURANT_WRITE);
   const statuses = useTableStatuses(canRead);
   const showForm = useShowTableStatusFormSidePane();

@@ -60,7 +60,7 @@ export class BillCancellationReasonsController {
 
   @Get()
   @Header('Cache-Control', 'no-store')
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.SETTINGS_READ)
   @ApiOperation({ summary: 'List active and inactive bill cancellation reasons' })
   @ApiZodQuery(managedBillCancellationReasonListQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(managedBillCancellationReasonListResponseSchema) })

@@ -6,10 +6,11 @@ import {
   type Reservation,
 } from '@rms/api-contract';
 import { NotificationEntity, NotificationType } from '@rms/db';
-import { isRole, Permission, roleHasPermission } from '@rms/permissions';
+import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { roleCan } from '../common/auth/role-access';
 import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { NotificationPublisher } from './notification-publisher.service';
 import { toNotification } from './notifications.mapper';
@@ -124,9 +125,8 @@ export class NotificationsService {
       .filter(
         (user) =>
           (!recipientId || user.id === recipientId) &&
-          isRole(user.role.name) &&
-          roleHasPermission(user.role.name, permission) &&
-          (!eligibility || roleHasPermission(user.role.name, eligibility)),
+          roleCan(user.role, permission) &&
+          (!eligibility || roleCan(user.role, eligibility)),
       )
       .map((user) => user.id);
   }

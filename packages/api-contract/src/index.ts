@@ -10,6 +10,7 @@ export * from './dining-sections';
 export * from './status';
 export * from './auth';
 export * from './profile';
+export * from './roles';
 export * from './staff';
 export * from './tables';
 export * from './user-fields';

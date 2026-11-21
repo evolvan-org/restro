@@ -1,26 +1,27 @@
-import { isRole, type Permission, roleHasAny, roleHasPermission } from '@rms/permissions';
+import type { Permission } from '@rms/permissions';
 
 import { useProfile } from '@/services/api/requests/profile';
 
 type Permissions = {
-  /** Whether the signed-in user's role grants `permission`. `false` until the role has loaded. */
+  /** Whether the signed-in user's role grants `permission`. `false` until the profile has loaded. */
   can: (permission: Permission) => boolean;
-  /** Whether the role grants at least one of `permissions`. `false` until the role has loaded. */
+  /** Whether the role grants at least one of `permissions`. `false` until the profile has loaded. */
   canAny: (permissions: readonly Permission[]) => boolean;
   isLoading: boolean;
 };
 
 /**
- * UI gating only: mirrors the `@rms/permissions` policy for the signed-in user's role so pages
- * can hide what the API would reject. The API remains the source of enforcement.
+ * UI gating only: uses the permission list the API resolved for the signed-in user (from their
+ * role's grants, or every key for the Owner) so pages can hide what the API would reject. The API
+ * remains the source of enforcement.
  */
 export default function usePermissions(): Permissions {
   const { data: profile, isPending } = useProfile();
-  const role = profile?.role;
+  const granted = profile?.permissions;
 
   return {
-    can: (permission) => role !== undefined && isRole(role) && roleHasPermission(role, permission),
-    canAny: (permissions) => role !== undefined && isRole(role) && roleHasAny(role, permissions),
+    can: (permission) => granted?.includes(permission) ?? false,
+    canAny: (permissions) => permissions.some((p) => granted?.includes(p) ?? false),
     isLoading: isPending,
   };
 }

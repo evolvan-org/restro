@@ -6,17 +6,19 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { isRole, type Permission, roleHasAll } from '@rms/permissions';
+import type { Permission } from '@rms/permissions';
 
+import { actorCanAll } from './actor-permissions';
 import type { AuthorizedRequest } from './authenticated-request';
 import { REQUIRED_PERMISSIONS_KEY } from './require-permissions.decorator';
 
 /**
- * Authorizes the caller against `@RequirePermissions(...)` using the `@rms/permissions` policy.
+ * Authorizes the caller against `@RequirePermissions(...)` using the permissions resolved from
+ * `role_permissions` (or the Owner bypass).
  * Must run after `JwtAuthGuard`: `@UseGuards(JwtAuthGuard, PermissionsGuard)`.
  *
- * Loads the caller's current role and status on every request, so a deactivated account or a
- * role change takes effect immediately, and attaches the result as `request.actor`.
+ * The actor is loaded on every request by `JwtAuthGuard`, so a deactivated account or a role
+ * change takes effect on the next request.
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -35,7 +37,7 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException('Authentication is required');
     }
 
-    if (!isRole(actor.role) || !roleHasAll(actor.role, required)) {
+    if (!actorCanAll(actor, required)) {
       throw new ForbiddenException('You do not have permission to perform this action');
     }
     return true;

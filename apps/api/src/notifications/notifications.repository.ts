@@ -3,6 +3,7 @@ import type { NotificationListQuery } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { type RoleAccess, roleAccessSelect } from '../common/auth/role-access';
 import { PrismaService } from '../common/database/prisma.service';
 
 const notificationSelect = {
@@ -89,10 +90,10 @@ export class NotificationsRepository {
     });
   }
 
-  findActiveUsers(restaurantId: string): Promise<{ id: string; role: { name: string } }[]> {
+  findActiveUsers(restaurantId: string): Promise<{ id: string; role: RoleAccess }[]> {
     return this.prisma.user.findMany({
       where: { restaurantId, status: 'ACTIVE' },
-      select: { id: true, role: { select: { name: true } } },
+      select: { id: true, role: { select: roleAccessSelect } },
     });
   }
 

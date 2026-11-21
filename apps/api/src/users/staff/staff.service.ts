@@ -18,21 +18,18 @@ import {
   type UpdateStaffRequest,
   type UpdateStaffStatusRequest,
 } from '@rms/api-contract';
-import {
-  ELIGIBILITY_ONLY_PERMISSIONS,
-  isRole,
-  Role,
-  ROLE_PERMISSIONS,
-  roleHasAll,
-} from '@rms/permissions';
+import { ELIGIBILITY_ONLY_PERMISSIONS } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import { AuthTokenService } from '../../auth-tokens/auth-token.service';
+import { actorCanAll } from '../../common/auth/actor-permissions';
 import type { Actor } from '../../common/auth/authenticated-request';
+import { effectivePermissions, type RoleAccess } from '../../common/auth/role-access';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { EmailService } from '../../email/email.service';
 import { deliverBestEffort } from '../../email/email-delivery';
 import {
+  LastOwnerError,
   type RoleRecord,
   type StaffDetails,
   StaffEmailConflictError,
@@ -72,7 +69,7 @@ export class StaffService {
 
   async listAssignableRoles(actor: Actor): Promise<StaffRolesResponse> {
     return (await this.repository.findRoles(actor.restaurantId)).filter((role) =>
-      canAssignRole(actor, role.name),
+      canAssignRole(actor, role),
     );
   }
 
@@ -107,11 +104,13 @@ export class StaffService {
       await this.assertRoleAssignable(actor, input.roleId);
     }
 
-    const updated = await this.repository.update(actor.restaurantId, userId, {
-      name: input.name,
-      phone: input.phone || null,
-      roleId: input.roleId,
-    });
+    const updated = await this.mapLastOwner(() =>
+      this.repository.update(actor.restaurantId, userId, {
+        name: input.name,
+        phone: input.phone || null,
+        roleId: input.roleId,
+      }),
+    );
     if (!updated) throw new NotFoundException('Staff account not found');
     return toStaffAccount(updated);
   }
@@ -130,7 +129,9 @@ export class StaffService {
     }
     if (existing.status === input.status) return toStaffAccount(existing);
 
-    const updated = await this.repository.updateStatus(actor.restaurantId, userId, input.status);
+    const updated = await this.mapLastOwner(() =>
+      this.repository.updateStatus(actor.restaurantId, userId, input.status),
+    );
     if (!updated) throw new NotFoundException('Staff account not found');
     return toStaffAccount(updated);
   }
@@ -210,7 +211,10 @@ export class StaffService {
   private async findManageable(actor: Actor, userId: string): Promise<StaffRecord> {
     const staff = await this.repository.findById(actor.restaurantId, userId);
     if (!staff) throw new NotFoundException('Staff account not found');
-    if (!canAssignRole(actor, staff.role.name)) {
+    if (staff.role.isOwner && !actor.isOwner) {
+      throw new ForbiddenException('Only an Account Owner can manage another Account Owner');
+    }
+    if (!canAssignRole(actor, staff.role)) {
       throw new ForbiddenException('You cannot manage an account with this role');
     }
     return staff;
@@ -218,7 +222,7 @@ export class StaffService {
 
   private async assertRoleAssignable(actor: Actor, roleId: string): Promise<RoleRecord> {
     const role = await this.repository.findRole(actor.restaurantId, roleId);
-    if (!role || !canAssignRole(actor, role.name)) {
+    if (!role || !canAssignRole(actor, role)) {
       throw new BadRequestException('The selected role cannot be assigned');
     }
     return role;
@@ -227,6 +231,21 @@ export class StaffService {
   private async assertEmailAvailable(email: string): Promise<void> {
     if (await this.repository.isEmailTaken(email))
       throw new ConflictException(EMAIL_IN_USE_MESSAGE);
+  }
+
+  private async mapLastOwner<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write();
+    } catch (error) {
+      if (error instanceof LastOwnerError) {
+        const action =
+          error.change === 'role' ? 'changing their role' : 'deactivating their account';
+        throw new ConflictException(
+          `${error.ownerName} is the only active Account Owner. Make another team member an Owner before ${action}. The restaurant must always have at least one active Owner.`,
+        );
+      }
+      throw error;
+    }
   }
 
   private async mapEmailConflict<T>(write: () => Promise<T>): Promise<T> {
@@ -241,14 +260,12 @@ export class StaffService {
   }
 }
 
-function canAssignRole(actor: Actor, roleName: string): boolean {
-  return (
-    isRole(roleName) &&
-    roleName !== Role.OWNER &&
-    roleHasAll(
-      actor.role,
-      ROLE_PERMISSIONS[roleName].filter((p) => !ELIGIBILITY_ONLY_PERMISSIONS.includes(p)),
-    )
+/** Only an Owner may assign the Owner role; anyone else may only hand out permissions they hold. */
+function canAssignRole(actor: Actor, role: RoleAccess): boolean {
+  if (role.isOwner) return actor.isOwner;
+  return actorCanAll(
+    actor,
+    effectivePermissions(role).filter((p) => !ELIGIBILITY_ONLY_PERMISSIONS.includes(p)),
   );
 }
 

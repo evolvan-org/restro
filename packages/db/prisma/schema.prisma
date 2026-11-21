@@ -43,6 +43,13 @@ enum RestaurantStatus {
   SUSPENDED
 }
 
+enum RoleAuditAction {
+  CREATED
+  UPDATED
+  RESET
+  DELETED
+}
+
 enum UserStatus {
   INVITED
   ACTIVE
@@ -156,6 +163,7 @@ model Restaurant {
   users                   User[]
   userTokens              UserToken[]
   roles                   Role[]
+  roleAuditLogs           RoleAuditLog[]
   diningSections          DiningSection[]
   tableStatuses           TableStatus[]
   tables                  RestaurantTable[]
@@ -232,6 +240,7 @@ model User {
   stockMovements          StockMovement[]
   inventoryPurchaseOrders InventoryPurchaseOrder[]
   inventoryReceipts       InventoryReceipt[]
+  roleAuditLogs           RoleAuditLog[]
 
   @@index([restaurantId])
   @@index([roleId])
@@ -301,11 +310,15 @@ model Notification {
 model Role {
   id           String   @id @default(uuid()) @db.Uuid
   restaurantId String   @map("restaurant_id") @db.Uuid
-  /// Seeded from @rms/permissions on signup: ADMIN, MANAGER, STAFF, CUSTOMER.
+  /// Seeded from @rms/permissions on signup: OWNER, MANAGER, CAPTAIN, RECEPTION, KITCHEN_STAFF,
+  /// BAR_STAFF. Custom roles are free-form names, unique per restaurant.
   name         String   @db.VarChar(100)
   description  String?  @db.VarChar(255)
   /// Seeded system roles — protect from delete/rename in app logic.
   isSystem     Boolean  @default(false) @map("is_system")
+  /// Account Owner bypass role: passes every permission check and carries no role_permissions rows.
+  /// At most one per restaurant (partial unique index in a raw migration).
+  isOwner      Boolean  @default(false) @map("is_owner")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -316,6 +329,26 @@ model Role {
   @@unique([restaurantId, name])
   @@index([restaurantId])
   @@map("roles")
+}
+
+/// Who changed which role and which permission keys were added or removed.
+model RoleAuditLog {
+  id           String          @id @default(uuid()) @db.Uuid
+  restaurantId String          @map("restaurant_id") @db.Uuid
+  /// Not a relation: the entry must outlive the role it describes.
+  roleId       String          @map("role_id") @db.Uuid
+  roleName     String          @map("role_name") @db.VarChar(100)
+  actorUserId  String?         @map("actor_user_id") @db.Uuid
+  action       RoleAuditAction
+  addedKeys    String[]        @map("added_keys")
+  removedKeys  String[]        @map("removed_keys")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  actor      User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, createdAt])
+  @@map("role_audit_logs")
 }
 
 model RolePermission {

@@ -5,10 +5,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactElement, ReactNode } from 'react';
 
+import usePermissions from '@/hooks/auth/usePermissions';
+
 import { SETTINGS_NAV_GROUPS } from '../../app/(protected)/restaurant/settings/settings-nav';
 
 export default function SettingsLayoutClient({ children }: { children: ReactNode }): ReactElement {
   const pathname = usePathname();
+  const { can } = usePermissions();
+  const groups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => can(item.permission)),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-6 py-8 sm:px-8">
@@ -26,7 +33,7 @@ export default function SettingsLayoutClient({ children }: { children: ReactNode
       <div className="flex flex-col gap-8 md:flex-row md:items-start md:gap-10">
         <aside className="w-full shrink-0 md:w-56" aria-label="Settings navigation">
           <nav className="flex flex-col gap-6">
-            {SETTINGS_NAV_GROUPS.map((group) => (
+            {groups.map((group) => (
               <div key={group.label} className="flex flex-col gap-1">
                 <div className="px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted-foreground select-none">
                   {group.label}

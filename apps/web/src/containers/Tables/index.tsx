@@ -34,9 +34,9 @@ export default function Tables({
 }: {
   embedded?: boolean;
 } = {}): ReactElement | null {
-  const isAllowed = usePermissionGuard([Permission.RESTAURANT_READ]);
+  const isAllowed = usePermissionGuard([Permission.SETTINGS_READ]);
   const { can } = usePermissions();
-  const canRead = can(Permission.RESTAURANT_READ);
+  const canRead = can(Permission.SETTINGS_READ);
   const canWrite = can(Permission.RESTAURANT_WRITE);
   const canChangeStatus = can(Permission.TABLE_UPDATE_STATUS);
   const canAssignCaptain = can(Permission.TABLE_ASSIGN_CAPTAIN);

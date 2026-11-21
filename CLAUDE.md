@@ -62,9 +62,13 @@ Turborepo + Yarn-workspaces monorepo. Two apps, four packages:
 
 Every request/response shape is a **Zod schema** here, with TS types **inferred** (`z.infer`) — schemas are the single source of truth so client and server can't drift. The API imports schemas for validation; `apps/web` imports the same schema and calls `.parse()` on responses (see `apps/web/src/lib/api.ts`). When adding an endpoint, define its schema here first, then consume it on both sides.
 
-### Permissions: `@rms/permissions` is the source of truth
+### Permissions: DB-driven, `@rms/permissions` is the catalog
 
-Roles (`ADMIN/MANAGER/STAFF/CUSTOMER`) and `resource:action` permission keys live in code, mapped in `policy.ts` (`ROLE_PERMISSIONS`). Authorization guards must consult `roleHasPermission(role, permission)` — never hard-code role checks in controllers. The DB stores permission keys as strings validated against this package (there is intentionally no `permissions` table); Prisma `Role` rows are per-restaurant and seeded from these definitions on signup.
+`@rms/permissions` holds the **catalog of valid `resource:action` keys** and the **seed defaults** (`ROLE_PERMISSIONS`, used on signup and by "Reset to default"). Authorization at runtime reads `roles` / `role_permissions` from the DB: `JwtAuthGuard` loads the actor's role, and `PermissionsGuard` checks `actorCan` (`apps/api/src/common/auth`). Never hard-code role names in controllers or call `ROLE_PERMISSIONS[...]` for authorization. The profile response carries the effective `permissions` list and `usePermissions` in the web uses it.
+
+- The Account Owner role has `roles.is_owner = true` and no permission rows; it bypasses every check (new permissions apply with no migration). Eligibility markers (`ELIGIBILITY_ONLY_PERMISSIONS`, e.g. `table:be-captain`) are always resolved from real rows. At most one `is_owner` role per restaurant (partial unique index).
+- Default roles: Manager, Captain, Reception, Kitchen Staff, Bar Staff (`is_system`: can't be renamed or deleted; can be reset). Custom roles are managed in Settings → Roles (`/roles` API, `role:read` / `role:write`), with anti-escalation (only grant/revoke what you hold; no editing the Owner role or your own role) and an audit log (`role_audit_logs`).
+- `floor:read` = floor board/tables; `settings:read` = Restaurant settings and its tabs.
 
 ### API layering (`apps/api`)
 

@@ -152,7 +152,7 @@ export async function seedServiceHistory(
 
   const byRole = (role: Role): string[] => users.filter((u) => u.role === role).map((u) => u.id);
   const captains = byRole('CAPTAIN');
-  const cashier = byRole('CASHIER')[0] ?? byRole('MANAGER')[0];
+  const cashier = byRole('RECEPTION')[0] ?? byRole('MANAGER')[0];
   const manager = byRole('MANAGER')[0];
   if (captains.length === 0 || !cashier || !manager) {
     throw new Error('Service history needs at least one captain, a cashier and a manager');

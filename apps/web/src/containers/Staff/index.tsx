@@ -3,7 +3,7 @@
 import type { StaffStatus, UserStatus } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
-import { KeyRound, MailPlus, Pencil, Plus, Search } from 'lucide-react';
+import { KeyRound, Lock, MailPlus, Pencil, Plus, Search } from 'lucide-react';
 import { type ReactElement, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
@@ -228,7 +228,12 @@ export default function Staff({
                     </TableCell>
                     <TableCell>{account.email}</TableCell>
                     <TableCell>{account.phone ?? '—'}</TableCell>
-                    <TableCell>{formatRoleLabel(account.role.name)}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5">
+                        {account.role.name === 'OWNER' && <Lock className="size-3.5" aria-hidden />}
+                        {formatRoleLabel(account.role.name)}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={badge.variant}>{badge.label}</Badge>
                     </TableCell>

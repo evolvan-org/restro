@@ -65,7 +65,7 @@ export default function RestaurantSettings({
   const settings = useRestaurantSettings();
   const updateSettings = useUpdateRestaurantSettings();
   const { can } = usePermissions();
-  const canRead = can(Permission.RESTAURANT_READ);
+  const canRead = can(Permission.SETTINGS_READ);
   const canEdit = can(Permission.RESTAURANT_WRITE);
 
   const form = useForm<UpdateRestaurantSettingsRequest>({

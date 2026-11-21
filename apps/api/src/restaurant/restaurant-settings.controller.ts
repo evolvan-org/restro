@@ -37,10 +37,10 @@ export class RestaurantSettingsController {
   constructor(private readonly restaurantSettingsService: RestaurantSettingsService) {}
 
   @Get()
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.SETTINGS_READ)
   @ApiOperation({
     summary: 'View restaurant settings',
-    description: "Returns the caller's own restaurant settings. Requires `restaurant:read`.",
+    description: "Returns the caller's own restaurant settings. Requires `settings:read`.",
   })
   @ApiOkResponse({
     description: 'The restaurant settings',

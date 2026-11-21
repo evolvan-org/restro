@@ -41,7 +41,7 @@ function formatAgo(ms: number): string {
 
 export default function FloorBoard(): ReactElement | null {
   const { can, isLoading: permissionsLoading } = usePermissions();
-  const canRead = can(Permission.RESTAURANT_READ);
+  const canRead = can(Permission.FLOOR_READ);
   const canReadReservations = can(Permission.RESERVATION_READ);
   const permissions: TilePermissions = {
     canReserve: can(Permission.RESERVATION_WRITE),
@@ -100,7 +100,7 @@ export default function FloorBoard(): ReactElement | null {
 
   if (permissionsLoading) return null;
   // Embedded in the dashboard (visible to every `dashboard:read` role), so show an in-pane notice
-  // instead of redirecting users who lack `restaurant:read`.
+  // instead of redirecting users who lack `floor:read`.
   if (!canRead) {
     return (
       <p className="px-6 py-10 text-center text-sm text-muted-foreground xl:px-8">

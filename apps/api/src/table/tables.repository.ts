@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, UserStatus } from '@rms/db';
 
+import { roleAccessSelect } from '../common/auth/role-access';
 import { PrismaService } from '../common/database/prisma.service';
 import {
   reconcileRestaurantTableStatuses,
@@ -17,7 +18,7 @@ const restaurantTableSelect = (restaurantId: string, completedOrderIds: string[]
     createdAt: true,
     updatedAt: true,
     captainUserId: true,
-    captain: { select: { id: true, name: true, role: { select: { name: true } } } },
+    captain: { select: { id: true, name: true, role: { select: roleAccessSelect } } },
     reservations: {
       where: { status: { in: ['BOOKED', 'SEATED'] } },
       select: {
@@ -83,7 +84,7 @@ const captainCandidateSelect = {
   restaurantId: true,
   name: true,
   status: true,
-  role: { select: { name: true } },
+  role: { select: roleAccessSelect },
 } satisfies Prisma.UserSelect;
 
 export type CaptainCandidate = Prisma.UserGetPayload<{ select: typeof captainCandidateSelect }>;

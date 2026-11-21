@@ -59,7 +59,7 @@ export class DiningSectionsController {
   constructor(private readonly service: DiningSectionsService) {}
 
   @Get()
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.SETTINGS_READ)
   @ApiOperation({ summary: 'List dining sections in configured order' })
   @ApiZodQuery(diningSectionListQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(diningSectionListResponseSchema) })

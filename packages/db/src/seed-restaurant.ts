@@ -48,7 +48,7 @@ const STAFF: readonly { role: RoleName; name: string; email: string }[] = [
   { role: Role.CAPTAIN, name: 'Rohan Captain', email: 'captain2@gmail.com' },
   { role: Role.KITCHEN_STAFF, name: 'Kiran Kitchen', email: 'kitchen@gmail.com' },
   { role: Role.BAR_STAFF, name: 'Bela Bar', email: 'bar@gmail.com' },
-  { role: Role.CASHIER, name: 'Chetan Cashier', email: 'cashier@gmail.com' },
+  { role: Role.RECEPTION, name: 'Rina Reception', email: 'reception@gmail.com' },
 ];
 
 /** Long enough for the bulk history inserts; the default 5s interactive timeout is not. */
