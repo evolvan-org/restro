@@ -37,7 +37,7 @@ function Chip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'inline-flex h-11 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors xl:h-9 xl:px-3 xl:text-[13px]',
+        'inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium transition-colors xl:h-9 xl:px-3 xl:text-[13px]',
         active
           ? 'border-neutral-900 bg-neutral-900 text-neutral-50 dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900'
           : 'border-border bg-background hover:bg-muted',
@@ -62,7 +62,7 @@ function Chip({
 export default function StatusFilterChips(props: StatusFilterChipsProps): ReactElement {
   const hasFilter = props.activeCode !== '';
   return (
-    <div className="flex flex-wrap items-center gap-2 px-6 py-3 xl:px-8">
+    <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-6 py-3 xl:flex-wrap xl:overflow-visible xl:px-8">
       <Chip
         active={!hasFilter}
         label="All tables"
@@ -83,12 +83,12 @@ export default function StatusFilterChips(props: StatusFilterChipsProps): ReactE
         <button
           type="button"
           onClick={props.onClear}
-          className="hidden text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground xl:inline"
+          className="hidden shrink-0 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground xl:inline"
         >
           Clear filter
         </button>
       )}
-      <span className="ml-auto text-sm text-muted-foreground tabular-nums">
+      <span className="ml-auto shrink-0 whitespace-nowrap pl-2 text-sm text-muted-foreground tabular-nums">
         Covers {props.coversLabel}
       </span>
     </div>
