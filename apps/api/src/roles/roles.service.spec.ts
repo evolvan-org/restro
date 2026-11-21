@@ -105,4 +105,10 @@ describe('RolesService', () => {
       'Only an Owner can assign the Owner role',
     );
   });
+
+  it('refuses to delete a role holding permissions the actor does not hold', async () => {
+    const { service, repository } = setup(role({ keys: [Permission.BILL_DISCOUNT] }));
+    await expect(service.remove(manager, 'role-x', {})).rejects.toThrow('bill:discount');
+    expect(repository.delete).not.toHaveBeenCalled();
+  });
 });

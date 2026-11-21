@@ -109,6 +109,8 @@ export class RolesService {
     const role = await this.findOrThrow(actor, roleId);
     this.assertEditable(actor, role);
     if (role.isSystem) throw new ForbiddenException('Default roles cannot be deleted');
+    // Deleting revokes every permission the role holds from its users, so it is a revoke too.
+    this.assertCanChange(actor, grantedKeys(role));
 
     let reassignTo: string | null = null;
     if (role._count.users > 0) {
