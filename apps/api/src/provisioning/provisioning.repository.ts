@@ -60,11 +60,13 @@ export class ProvisioningRepository {
             restaurantId: restaurant.id,
             name: role,
             isSystem: true,
+            isOwner: role === Role.OWNER,
           },
           select: { id: true },
         });
 
-        const permissions = ROLE_PERMISSIONS[role];
+        // The Owner role bypasses permission checks via its flag and carries no rows.
+        const permissions = role === Role.OWNER ? [] : ROLE_PERMISSIONS[role];
         if (permissions.length > 0) {
           await tx.rolePermission.createMany({
             data: permissions.map((permissionKey): Prisma.RolePermissionCreateManyInput => ({
