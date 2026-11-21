@@ -191,7 +191,7 @@ function SidebarFooter({
   const { data: profile } = useProfile();
   const { can } = usePermissions();
 
-  const canManageRestaurant = can(Permission.RESTAURANT_READ);
+  const canManageRestaurant = can(Permission.SETTINGS_READ);
   const isSettingsActive = isActiveRoute(pathname, '/restaurant/settings');
   const roleLabel = profile?.role ? formatRoleLabel(profile.role) : '';
   const initials = getInitials(profile?.name);

@@ -3,9 +3,9 @@ export const Role = {
   OWNER: 'OWNER',
   MANAGER: 'MANAGER',
   CAPTAIN: 'CAPTAIN',
+  RECEPTION: 'RECEPTION',
   KITCHEN_STAFF: 'KITCHEN_STAFF',
   BAR_STAFF: 'BAR_STAFF',
-  CASHIER: 'CASHIER',
 } as const;
 
 export type Role = (typeof Role)[keyof typeof Role];

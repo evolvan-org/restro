@@ -57,11 +57,11 @@ export class TableStatusesController {
   constructor(private readonly tableStatusesService: TableStatusesService) {}
 
   @Get()
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.SETTINGS_READ)
   @ApiOperation({
     summary: 'List table statuses',
     description:
-      "Lists active and inactive statuses for the caller's restaurant. Requires `restaurant:read`.",
+      "Lists active and inactive statuses for the caller's restaurant. Requires `settings:read`.",
   })
   @ApiZodQuery(tableStatusListQuerySchema)
   @ApiOkResponse({

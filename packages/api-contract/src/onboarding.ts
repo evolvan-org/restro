@@ -92,7 +92,7 @@ export const MENU_CSV_REQUIRED_COLUMNS = ['category', 'type', 'name', 'price'] a
 export const ONBOARDING_TEAM_ROLES = [
   'MANAGER',
   'CAPTAIN',
-  'CASHIER',
+  'RECEPTION',
   'KITCHEN_STAFF',
   'BAR_STAFF',
 ] as const;

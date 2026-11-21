@@ -19,11 +19,18 @@ export const Permission = {
   USER_WRITE: 'user:write',
   USER_DELETE: 'user:delete',
 
+  // Role management (Settings → Roles)
+  ROLE_READ: 'role:read',
+  ROLE_WRITE: 'role:write',
+
   // Guided restaurant setup after signup (owner only)
   ONBOARDING_MANAGE: 'onboarding:manage',
 
   // Restaurant configuration
-  RESTAURANT_READ: 'restaurant:read',
+  /** See the floor: floor board, tables, sections and table statuses. */
+  FLOOR_READ: 'floor:read',
+  /** Open Restaurant settings and its tabs. */
+  SETTINGS_READ: 'settings:read',
   RESTAURANT_WRITE: 'restaurant:write',
   TABLE_UPDATE_STATUS: 'table:update-status',
   /** Authority to set or clear a table's captain. */

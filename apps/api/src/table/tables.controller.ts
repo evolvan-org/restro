@@ -83,7 +83,7 @@ export class TablesController {
 
   @Get('tables/board')
   @Header('Cache-Control', 'no-store')
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.FLOOR_READ)
   @ApiOperation({ summary: "Get every active table on the caller's floor board" })
   @ApiZodQuery(tableBoardQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(tableBoardResponseSchema) })
@@ -96,11 +96,11 @@ export class TablesController {
   }
 
   @Get('tables')
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.FLOOR_READ)
   @ApiOperation({
     summary: 'List restaurant tables',
     description:
-      'Tables in the restaurant, searchable by table number and filterable by section, status and active state. Requires `restaurant:read`.',
+      'Tables in the restaurant, searchable by table number and filterable by section, status and active state. Requires `floor:read`.',
   })
   @ApiZodQuery(tableListQuerySchema)
   @ApiOkResponse({
@@ -116,11 +116,11 @@ export class TablesController {
   }
 
   @Get('tables/options')
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.FLOOR_READ)
   @ApiOperation({
     summary: 'List table form options',
     description:
-      'Active dining sections and table statuses for the restaurant. Requires `restaurant:read`.',
+      'Active dining sections and table statuses for the restaurant. Requires `floor:read`.',
   })
   @ApiOkResponse({
     description: 'Table form options',
@@ -146,11 +146,11 @@ export class TablesController {
   }
 
   @Get('table-statuses')
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.FLOOR_READ)
   @ApiOperation({
     summary: 'List selectable table statuses',
     description:
-      "Lists all active default and custom statuses for the caller's restaurant in display order. Requires `restaurant:read`.",
+      "Lists all active default and custom statuses for the caller's restaurant in display order. Requires `floor:read`.",
   })
   @ApiOkResponse({
     description: 'Active default and custom table statuses',
@@ -161,10 +161,10 @@ export class TablesController {
   }
 
   @Get('table/:id')
-  @RequirePermissions(Permission.RESTAURANT_READ)
+  @RequirePermissions(Permission.FLOOR_READ)
   @ApiOperation({
     summary: 'Get a restaurant table',
-    description: 'Returns a single table in the restaurant. Requires `restaurant:read`.',
+    description: 'Returns a single table in the restaurant. Requires `floor:read`.',
   })
   @ApiOkResponse({
     description: 'The requested table',

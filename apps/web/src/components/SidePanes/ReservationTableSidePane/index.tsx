@@ -35,7 +35,7 @@ export default function ReservationTableSidePane({
   const { mutateAsync: assignTable, isPending, isSuccess, data } = useAssignReservationTable();
   const { can } = usePermissions();
   const canAssign = can(Permission.RESERVATION_ASSIGN_TABLE);
-  const tables = useAssignableTables(canAssign && can(Permission.RESTAURANT_READ));
+  const tables = useAssignableTables(canAssign && can(Permission.FLOOR_READ));
   const hideSidePane = useHideSidePane();
   const form = useForm<ReservationTableFormValues>({
     resolver: zodResolver(getReservationTableFormSchema()),

@@ -6,7 +6,7 @@ import type { Actor } from '../common/auth/authenticated-request';
 import { type BillsRepository, PaymentConflictError } from './bills.repository';
 import { BillsService } from './bills.service';
 
-const actor = { userId: 'u1', restaurantId: 'r1', role: 'CASHIER' } as unknown as Actor;
+const actor = { userId: 'u1', restaurantId: 'r1', role: 'RECEPTION' } as unknown as Actor;
 const D = (v: string): Prisma.Decimal => new Prisma.Decimal(v);
 
 function setup(
