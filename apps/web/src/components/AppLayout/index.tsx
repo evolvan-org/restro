@@ -15,11 +15,11 @@ import SidePane from './SidePane';
  * them via `useShowModal` / `useShowSidePane` without mounting them locally.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
-  useSetupAxios(api);
+  const isAxiosReady = useSetupAxios(api);
 
   return (
     <Fragment>
-      {children}
+      {isAxiosReady && children}
       <SidePane />
       <ModalDialog />
       <Toaster position="top-right" richColors closeButton />
