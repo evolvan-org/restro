@@ -6,6 +6,7 @@ import { roleAccessSelect } from './role-access';
 
 const actorSelect = {
   restaurantId: true,
+  roleId: true,
   status: true,
   authVersion: true,
   emailVerifiedAt: true,

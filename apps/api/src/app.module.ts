@@ -12,6 +12,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { RestaurantModule } from './restaurant/restaurant.module';
+import { RolesModule } from './roles/roles.module';
 import { StatusModule } from './status/status.module';
 import { StockModule } from './stock/stock.module';
 import { TableModule } from './table/table.module';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
     DashboardModule,
     ReportsModule,
     UsersModule,
+    RolesModule,
     RestaurantModule,
     TableModule,
     MenuModule,

@@ -13,6 +13,7 @@ export type AuthenticatedRequest = Request & {
 export type Actor = {
   userId: string;
   restaurantId: string;
+  roleId: string;
   role: string;
   isOwner: boolean;
   /** Granted keys from `role_permissions`; Owners hold none and bypass via `isOwner`. */

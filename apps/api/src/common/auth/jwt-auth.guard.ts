@@ -51,6 +51,7 @@ export class JwtAuthGuard implements CanActivate {
     request.actor = {
       userId: claims.userId,
       restaurantId: user.restaurantId,
+      roleId: user.roleId,
       role: user.role.name,
       isOwner: user.role.isOwner,
       permissions: effectivePermissions(user.role),
