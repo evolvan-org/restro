@@ -7,7 +7,6 @@ import { Archive, Loader2, Pencil, Plus, Search, ToggleLeft, ToggleRight } from 
 import { type ReactElement, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
-import MenuItemClassificationEditor from '@/components/MenuItemClassificationEditor';
 import MenuItemPriceEditor from '@/components/MenuItemPriceEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -210,7 +209,6 @@ export default function MenuItems(): ReactElement | null {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Classification</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Status</TableHead>
                 {canWrite && <TableHead className="text-right">Actions</TableHead>}
@@ -235,16 +233,6 @@ export default function MenuItems(): ReactElement | null {
                         <span className="ml-2 text-xs text-muted-foreground">
                           {getServingTypeLabel(category.categoryType)}
                         </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {canWrite && item.isActive ? (
-                        <MenuItemClassificationEditor
-                          item={item}
-                          categoryType={category?.categoryType}
-                        />
-                      ) : (
-                        <Badge variant="outline">{getServingTypeLabel(item.itemType)}</Badge>
                       )}
                     </TableCell>
                     <TableCell>
@@ -313,7 +301,7 @@ export default function MenuItems(): ReactElement | null {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canWrite ? 6 : 5}
+                    colSpan={canWrite ? 5 : 4}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {items.isPending
