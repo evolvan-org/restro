@@ -80,7 +80,7 @@ function SidebarNav({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <nav aria-label="Primary" className="flex flex-1 flex-col overflow-y-auto px-3 py-2">
+    <nav aria-label="Primary" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
       {visibleGroups.map((group, groupIdx) => {
         const groupKey = group.label ?? `group-${groupIdx}`;
         return (
@@ -197,7 +197,7 @@ function SidebarFooter({
   const initials = getInitials(profile?.name);
 
   return (
-    <div className="flex flex-col gap-1.5 border-t border-sidebar-border p-3">
+    <div className="flex shrink-0 flex-col gap-1.5 border-t border-sidebar-border p-3">
       <StationDisplayLinks collapsed={collapsed} />
       {canManageRestaurant && (
         <Link
@@ -287,13 +287,13 @@ export default function AppSidebar({
       <aside
         data-collapsed={collapsed}
         className={cn(
-          'hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex',
+          'sticky top-0 hidden h-dvh shrink-0 flex-col self-start border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex',
           collapsed ? 'md:w-16' : 'md:w-64',
         )}
       >
         <div
           className={cn(
-            'flex h-14 items-center px-4',
+            'flex h-14 shrink-0 items-center px-4',
             collapsed ? 'justify-center px-0' : 'justify-between',
           )}
         >
@@ -341,7 +341,7 @@ export default function AppSidebar({
           side="left"
           className="flex w-72 flex-col gap-0 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
         >
-          <SheetHeader className="h-14 justify-center px-4 pr-12">
+          <SheetHeader className="h-14 shrink-0 justify-center px-4 pr-12">
             <SheetTitle>
               <SidebarBrand onNavigate={() => onMobileOpenChange(false)} />
             </SheetTitle>
