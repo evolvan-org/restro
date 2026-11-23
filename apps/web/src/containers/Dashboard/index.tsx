@@ -39,7 +39,7 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
   const isLive = view === 'live';
 
   return (
-    <div className="flex min-h-[calc(100svh-3.5rem)] flex-col bg-muted/35 lg:h-[max(38rem,calc(100svh-3.5rem))] lg:overflow-hidden">
+    <div className="flex min-h-[calc(100svh-3.5rem)] flex-col bg-muted/35">
       <header className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 pt-5 pb-4 sm:px-6 sm:pt-6 xl:px-8">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-[32px]">Dashboard</h1>
@@ -64,7 +64,7 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
         role="tabpanel"
         id={segmentedPanelId(VIEW_ID_BASE, 'live')}
         aria-labelledby={segmentedTabId(VIEW_ID_BASE, 'live')}
-        className="min-h-0 flex-1 border-t bg-background"
+        className="flex-1 border-t bg-background"
         hidden={!isLive}
       >
         {isViewRestored && isLive && <FloorBoard />}
@@ -73,7 +73,7 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
         role="tabpanel"
         id={segmentedPanelId(VIEW_ID_BASE, 'reporting')}
         aria-labelledby={segmentedTabId(VIEW_ID_BASE, 'reporting')}
-        className="min-h-0 flex-1 px-4 pt-2 pb-6 sm:px-6 lg:overflow-y-auto xl:px-8"
+        className="flex-1 px-4 pt-2 pb-6 sm:px-6 xl:px-8"
         hidden={isLive}
       >
         {isViewRestored && canReport && !isLive && (
