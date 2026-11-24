@@ -75,8 +75,9 @@ jobs:
   # Boots the PRODUCTION stack (docker-compose.prod.yml: same ports, image tags,
   # required secrets and build args as prod) so a failure here is a failure prod
   # would have hit.
+  # Keep `name` stable: branch protection matches required checks by this name.
   docker-smoke:
-    name: Docker smoke (build + boot production stack)
+    name: Docker smoke (build + boot stack)
     runs-on: ubuntu-latest
     needs: verify
     env:
