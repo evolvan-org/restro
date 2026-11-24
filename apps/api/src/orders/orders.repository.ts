@@ -63,6 +63,10 @@ const kotSelect = {
 
 const kotQueueSelect = {
   ...kotSelect,
+  source: true,
+  guestNotifiedAt: true,
+  approvedByUser: { select: { name: true } },
+  qrRound: { select: { sessionId: true, tableId: true } },
   order: {
     select: {
       table: {
@@ -410,7 +414,13 @@ export class OrdersRepository {
         setStatus: async (status) => {
           await tx.kot.update({
             where: { id, restaurantId },
-            data: { status, completedAt: status === 'COMPLETED' ? new Date() : null },
+            data: {
+              status,
+              completedAt: status === 'COMPLETED' ? new Date() : null,
+              // A QR ticket's Ready goes straight to the guest's tracker; stamp it for the
+              // "Guest notified · h:mm pm" confirmation on the ticket.
+              ...(status === 'READY' && ticket?.source === 'QR' && { guestNotifiedAt: new Date() }),
+            },
           });
           await tx.kotItem.updateMany({
             where: { kotId: id, kot: { restaurantId } },
