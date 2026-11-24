@@ -38,6 +38,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.BILL_GENERATE,
     Permission.PAYMENT_READ,
     Permission.PAYMENT_WRITE,
+    Permission.QR_ORDER_READ,
+    Permission.QR_ORDER_APPROVE,
   ],
   [Role.RECEPTION]: [
     Permission.DASHBOARD_READ,
