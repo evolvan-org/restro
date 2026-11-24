@@ -29,3 +29,4 @@ export * from './bill-summary';
 export * from './dashboard';
 export * from './reports';
 export * from './onboarding';
+export * from './qr-ordering';
