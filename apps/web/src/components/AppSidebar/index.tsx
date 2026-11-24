@@ -17,6 +17,25 @@ import { useProfile } from '@/services/api/requests/profile';
 import { NAV_GROUPS, type NavItem } from './navigation';
 
 const COLLAPSED_STORAGE_KEY = 'rms-sidebar-collapsed';
+/** Phones and tablets (below the `xl` desktop breakpoint) start with the sidebar collapsed. */
+const COMPACT_SIDEBAR_QUERY = '(max-width: 1279px)';
+
+function readStoredCollapsed(): boolean | null {
+  try {
+    const stored = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    return stored === null ? null : stored === 'true';
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredCollapsed(value: boolean): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(value));
+  } catch {
+    // Storage can be unavailable (private mode); the toggle still works for this session.
+  }
+}
 
 /** Computes initials from a display name, e.g. "Bharat V." -> "BV". */
 function getInitials(name?: string): string {
@@ -253,8 +272,9 @@ function SidebarFooter({
 }
 
 /**
- * Persistent left navigation for the app shell. A collapsible icon rail on desktop (the collapsed
- * state is remembered), and a slide-in drawer on mobile driven by the header's menu button.
+ * Persistent left navigation for the app shell. A collapsible icon rail from tablet up (collapsed by
+ * default below `xl`; the desktop choice is remembered), and a slide-in drawer on phones driven by
+ * the header's menu button.
  */
 export default function AppSidebar({
   mobileOpen,
@@ -263,21 +283,31 @@ export default function AppSidebar({
   mobileOpen: boolean;
   onMobileOpenChange: (open: boolean) => void;
 }): ReactElement {
-  // Start expanded so the server and first client render agree; restore the stored preference after
-  // mount to avoid a hydration mismatch.
+  // Start expanded so the server and first client render agree; settle the real state after mount to
+  // avoid a hydration mismatch.
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
-    if (stored !== null) {
-      setCollapsed(stored === 'true');
-    }
+    const compact = window.matchMedia(COMPACT_SIDEBAR_QUERY);
+    const apply = (): void => {
+      // Phones and tablets always open with the rail collapsed (the user can still expand it);
+      // desktop restores the remembered preference.
+      if (compact.matches) {
+        setCollapsed(true);
+        return;
+      }
+      setCollapsed(readStoredCollapsed() ?? false);
+    };
+    apply();
+    compact.addEventListener('change', apply);
+    return () => compact.removeEventListener('change', apply);
   }, []);
 
   const toggleCollapsed = (): void => {
     setCollapsed((prev) => {
       const next = !prev;
-      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(next));
+      // Only a desktop choice is remembered, so a tablet expand never leaks into the default.
+      if (!window.matchMedia(COMPACT_SIDEBAR_QUERY).matches) writeStoredCollapsed(next);
       return next;
     });
   };
