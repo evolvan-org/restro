@@ -1,6 +1,5 @@
 'use client';
 
-import type { RestaurantTable } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import { type ReactElement, useEffect, useMemo, useState } from 'react';
@@ -10,6 +9,7 @@ import { buildStatusColorMap } from '@/components/FloorTile';
 import { getTableAttention } from '@/components/FloorTile/attention';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useReservations } from '@/services/api/requests/reservations';
 import { useTableBoard, useTableOptions } from '@/services/api/requests/tables';
@@ -26,12 +26,14 @@ import {
 import FloorHeader from './FloorHeader';
 import FloorSection, { type TilePermissions } from './FloorSection';
 import { type FloorBoardFilters, getFloorBoardFilterDefaults } from './mapper';
+import { searchTables } from './search';
 import SectionTabs from './SectionTabs';
 import StatusFilterChips from './StatusFilterChips';
 
 const TIMER_TICK_MS = 60_000;
 const UP_NEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
 const STALE_AFTER_MS = 60_000;
+const SEARCH_DEBOUNCE_MS = 250;
 
 function formatAgo(ms: number): string {
   if (ms < 10_000) return 'updated just now';
@@ -59,6 +61,7 @@ export default function FloorBoard(): ReactElement | null {
   const sectionId = useWatch({ control, name: 'sectionId' });
   const statusCode = useWatch({ control, name: 'statusCode' });
   const search = useWatch({ control, name: 'search' });
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [railOpen, setRailOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -133,10 +136,7 @@ export default function FloorBoard(): ReactElement | null {
     }))
     .filter((s) => s.count > 0);
 
-  const matchesSearch = (table: RestaurantTable): boolean =>
-    !search.trim() || table.tableNumber.toLowerCase().includes(search.trim().toLowerCase());
-
-  const searched = rows.filter(matchesSearch);
+  const searched = searchTables(rows, debouncedSearch);
   const afterSection = sectionId ? searched.filter((t) => t.section.id === sectionId) : searched;
   const afterStatus = statusCode
     ? afterSection.filter((t) => t.currentStatus.code === statusCode)
@@ -169,11 +169,17 @@ export default function FloorBoard(): ReactElement | null {
     reset(getFloorBoardFilterDefaults());
   };
 
+  const clearSearch = (): void => {
+    setValue('search', '');
+  };
+
+  const activeQuery = debouncedSearch.trim();
+
   const noMatchMessage = [
     statusName && `${statusName}`,
     'tables',
     sectionName && `in ${sectionName}`,
-    search.trim() && `matching “${search.trim()}”`,
+    activeQuery && `matching “${activeQuery}”`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -203,7 +209,16 @@ export default function FloorBoard(): ReactElement | null {
     if (tables.isPending) return <FloorLoading />;
     if (rows.length === 0) return <FloorEmpty />;
     if (visibleCount === 0) {
-      return <FloorNoMatch message={`No ${noMatchMessage} right now.`} onClear={clearFilters} />;
+      return activeQuery ? (
+        <FloorNoMatch
+          title={`No tables match “${activeQuery}”`}
+          message={sectionId || statusCode ? `No ${noMatchMessage} right now.` : undefined}
+          clearLabel="Clear search"
+          onClear={clearSearch}
+        />
+      ) : (
+        <FloorNoMatch message={`No ${noMatchMessage} right now.`} onClear={clearFilters} />
+      );
     }
     return (
       <div className="space-y-6">
@@ -232,6 +247,11 @@ export default function FloorBoard(): ReactElement | null {
         <p className="hidden text-sm text-muted-foreground xl:block">
           Showing {visibleCount} of {rows.length} tables
         </p>
+        {activeQuery && (
+          <p className="text-sm text-muted-foreground xl:hidden" aria-live="polite">
+            {visibleCount} {visibleCount === 1 ? 'table' : 'tables'}
+          </p>
+        )}
       </div>
     );
   };
@@ -244,6 +264,8 @@ export default function FloorBoard(): ReactElement | null {
             updatedLabel={formatAgo(age)}
             isReconnecting={isReconnecting}
             searchField={register('search')}
+            hasSearch={Boolean(search)}
+            onClearSearch={clearSearch}
             onSeatWalkIn={onSeatWalkIn}
             canReserve={permissions.canReserve}
             attentionCount={attention.length}

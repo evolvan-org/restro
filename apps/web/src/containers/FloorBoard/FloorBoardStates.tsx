@@ -86,20 +86,24 @@ export function FloorEmpty(): ReactElement {
 }
 
 export function FloorNoMatch({
+  title = 'No tables match',
   message,
+  clearLabel = 'Clear filters',
   onClear,
 }: {
-  message: string;
+  title?: string;
+  message?: string | undefined;
+  clearLabel?: string;
   onClear: () => void;
 }): ReactElement {
   return (
     <StateShell
       icon={<Search className="size-6" aria-hidden />}
-      title="No tables match"
+      title={title}
       description={message}
     >
       <Button variant="outline" onClick={onClear}>
-        Clear filters
+        {clearLabel}
       </Button>
     </StateShell>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { Plus, Search, TriangleAlert } from 'lucide-react';
+import { Plus, Search, TriangleAlert, X } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 
@@ -12,6 +12,8 @@ type FloorHeaderProps = {
   updatedLabel: string;
   isReconnecting: boolean;
   searchField: UseFormRegisterReturn<'search'>;
+  hasSearch: boolean;
+  onClearSearch: () => void;
   onSeatWalkIn: () => void;
   canReserve: boolean;
   attentionCount: number;
@@ -54,13 +56,26 @@ export default function FloorHeader(props: FloorHeaderProps): ReactElement {
         <Input
           type="search"
           {...props.searchField}
-          placeholder="Find table"
-          aria-label="Find table"
-          className="h-11 pl-9 xl:h-9"
+          placeholder="Search table, seats or section"
+          aria-label="Search tables by number, seating capacity or section"
+          className="h-11 pl-9 pr-9 xl:h-9 [&::-webkit-search-cancel-button]:appearance-none"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && props.hasSearch) {
+              event.preventDefault();
+              props.onClearSearch();
+            }
+          }}
         />
-        <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border bg-muted px-1.5 text-[11px] text-muted-foreground xl:block">
-          /
-        </kbd>
+        {props.hasSearch && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={props.onClearSearch}
+            className="absolute right-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:text-foreground xl:size-7"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
 
       {props.canReserve && (
