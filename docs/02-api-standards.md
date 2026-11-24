@@ -84,6 +84,37 @@ Some errors also carry a machine-readable `code` (`API_ERROR_CODES` in `@rms/api
 | POST   | `/onboarding/complete`                 | `onboarding:manage` | Creates everything in one transaction or nothing; creates team accounts as invited users and emails each an invitation once committed (held if the owner's email is unverified); returns counts and invitation status. Failures carry `stage`; a repeat returns `409` |
 | GET    | `/onboarding/checklist`                | `menu:write`        | What is still worth setting up, and how many active items have no recipe, for the dashboard                                                                                                                                                                           |
 
+### QR table ordering (REST-88)
+
+Public guest endpoints live under `/qr/:token` with **no staff auth**: the tenant and table come from
+the unguessable table token alone (unknown, malformed or rotated tokens all return the same `404`).
+Session endpoints also need the `X-Guest-Secret` header returned by `POST /qr/:token/join` (name and
+phone are required). Writes are rate limited; prices and totals are always recomputed on the server;
+`POST /qr/:token/rounds` is idempotent per `idempotencyKey`. Guests can ask the captain to collect a
+share but can never mark it paid.
+
+| Method          | Path                                                                   | Auth / permission                                       | Description                                                                                         |
+| --------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| GET             | `/qr/:token`                                                           | Public                                                  | Branding, table, current captain, ordering state (`OPEN`, `NO_CAPTAIN`, `CLOSED`, `TABLE_INACTIVE`) |
+| GET             | `/qr/:token/menu`                                                      | Public                                                  | Active menu (sold-out items flagged)                                                                |
+| POST            | `/qr/:token/join`                                                      | Public                                                  | Join the table visit; returns the device secret                                                     |
+| GET             | `/qr/:token/session`                                                   | Guest secret                                            | Shared cart, rounds with live status, bill and shares                                               |
+| POST/PATCH      | `/qr/:token/cart/items[/:lineId]`                                      | Guest secret                                            | Edit the shared cart                                                                                |
+| POST            | `/qr/:token/rounds`                                                    | Guest secret                                            | Send the cart to the table's captain                                                                |
+| POST            | `/qr/:token/rounds/:id/restore`                                        | Guest secret                                            | Put a rejected round back in the cart                                                               |
+| POST            | `/qr/:token/call-server`, `/bill-request`, `/split`, `/shares/:id/pay` | Guest secret                                            | Call server, request bill, split, ask to pay                                                        |
+| GET             | `/qr-orders?scope=mine\|all`                                           | `qr-order:read`                                         | Captain queue                                                                                       |
+| GET             | `/qr-orders/rounds/:id`                                                | `qr-order:read`                                         | Round review                                                                                        |
+| POST            | `/qr-orders/rounds/:id/approve` · `/reject` · `/on-my-way`             | `qr-order:approve` (owner captain) or `qr-order:manage` | Act on a round                                                                                      |
+| GET             | `/qr-orders/sessions/:id/bill`                                         | `qr-order:read`                                         | Bill with per-share status                                                                          |
+| POST            | `/qr-orders/shares/:id/payment`, `/qr-orders/sessions/:id/collect`     | `qr-order:approve` + `payment:write`                    | Staff-confirmed payment; settles the bill when covered                                              |
+| GET             | `/qr-orders/captains`, `/qr-orders/alerts`                             | `qr-order:manage`                                       | Captains with load; manager alerts                                                                  |
+| POST            | `/qr-orders/tables/:id/captain`, `/qr-orders/alerts/:id/dismiss`       | `qr-order:manage`                                       | Assign/reassign captain; dismiss alert                                                              |
+| GET             | `/qr-orders/floor`, `/qr-orders/summary`, `/qr-orders/upi-qr`          | `floor:read` / `qr-order:read`                          | Floor markers, nav badge, UPI QR image                                                              |
+| GET/PUT         | `/qr-orders/settings`, `PUT/DELETE /qr-orders/settings/upi-qr`         | `settings:read` / `qr-settings:write`                   | QR settings and UPI QR upload                                                                       |
+| GET             | `/qr-orders/cards`, `POST /qr-orders/tables/:id/rotate-token`          | `qr-settings:write`                                     | Table cards; regenerate a card's token                                                              |
+| GET/POST/DELETE | `/push/config`, `/push/subscriptions`                                  | Bearer                                                  | Web Push registration                                                                               |
+
 Request and response examples, field rules and the error messages of every endpoint are in the [API Reference](04-api-reference.md).
 
 While a restaurant's setup is pending, only its owner can log in (others get `403 ONBOARDING_INCOMPLETE`, no token) and the owner's token works only on routes marked `@AllowDuringSetup()` (`/auth/*`, `/onboarding/*`, `/users/profile`); everything else returns `403 ONBOARDING_REQUIRED`. Accounts created with a one-time password get `403 PASSWORD_CHANGE_REQUIRED` everywhere except the change-password route until they change it.
