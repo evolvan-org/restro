@@ -1,10 +1,14 @@
 # -----------------------------------------------------------------------------
 # RMS production stack: postgres + api + web.
 #
-# Host ports differ from local (docker-compose.yml):
-#   api      -> 8000  (container 3000)
-#   postgres -> 5434  (container 5432)
-#   web      -> 3001  (container 3001)
+# Host ports differ from local (docker-compose.yml). Defaults below; override
+# per server in .env when a port is already taken by another app:
+#   api      -> ${API_HOST_PORT:-8000}       (container 3000)
+#   postgres -> ${POSTGRES_HOST_PORT:-5434}  (container 5432)
+#   web      -> ${WEB_HOST_PORT:-3001}       (container 3001)
+# Only the host side changes; containers and healthchecks keep their ports.
+# If you change API_HOST_PORT or WEB_HOST_PORT, update NEXT_PUBLIC_API_URL,
+# APP_PUBLIC_URL and WEB_ORIGIN to match.
 #
 # Selected via COMPOSE_FILE in the root .env (Compose reads it automatically):
 #   COMPOSE_FILE=docker-compose.prod.yml
@@ -31,7 +35,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-rms}
     ports:
-      - '5434:5432'
+      - '${POSTGRES_HOST_PORT:-5434}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -74,7 +78,7 @@ services:
       # CORS: the origin browsers load the web app from.
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
     ports:
-      - '8000:3000'
+      - '${API_HOST_PORT:-8000}:3000'
     healthcheck:
       # Probes run inside the container, so they use the container port 3000.
       test:
@@ -103,7 +107,7 @@ services:
       NODE_ENV: production
       WEB_PORT: 3001
     ports:
-      - '3001:3001'
+      - '${WEB_HOST_PORT:-3001}:3001'
     healthcheck:
       test:
         [
