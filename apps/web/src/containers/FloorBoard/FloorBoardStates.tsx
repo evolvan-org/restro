@@ -97,7 +97,11 @@ export function FloorNoMatch({
   onClear: () => void;
 }): ReactElement {
   return (
-    <StateShell icon={<Search className="size-6" aria-hidden />} title={title} description={message}>
+    <StateShell
+      icon={<Search className="size-6" aria-hidden />}
+      title={title}
+      description={message}
+    >
       <Button variant="outline" onClick={onClear}>
         {clearLabel}
       </Button>
