@@ -98,9 +98,15 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     return toRestaurantTable(updated, actor);
   }
 
+  /**
+   * Captain-eligible callers (`table:be-captain`, resolved from real grants) only ever receive the
+   * tables they are assigned to, so the captain dashboard is scoped on the server. Everyone else
+   * gets the full floor.
+   */
   async board(actor: Actor): Promise<TableBoardResponse> {
     await this.tablesRepository.reconcileStatuses(actor.restaurantId);
-    const items = await this.tablesRepository.findActiveBoard(actor.restaurantId);
+    const captainUserId = actorCan(actor, Permission.TABLE_BE_CAPTAIN) ? actor.userId : undefined;
+    const items = await this.tablesRepository.findActiveBoard(actor.restaurantId, captainUserId);
     return { data: items.map((record) => toRestaurantTable(record, actor)) };
   }
 
