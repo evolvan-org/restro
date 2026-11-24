@@ -7,7 +7,7 @@ import type { ReactElement } from 'react';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 
-function StateShell({
+export function StateShell({
   icon,
   tone = 'neutral',
   title,

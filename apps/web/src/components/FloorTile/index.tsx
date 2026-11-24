@@ -116,6 +116,8 @@ type FloorTileProps = {
   canTransitionStatus: boolean;
   statuses: readonly { id: string; code: string; name: string }[];
   onWalkInClick: (table: RestaurantTable) => void;
+  /** Optional size overrides (merged last); omitted by the floor board, which keeps its sizes. */
+  className?: string;
 };
 
 export default function FloorTile(props: FloorTileProps): ReactElement {
@@ -202,6 +204,7 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     colorClasses.border,
     hasReadyTickets && styles.ready,
     attention && !hasReadyTickets && 'ring-2 ring-amber-500',
+    props.className,
   );
 
   const popoverBody = (

@@ -1,6 +1,7 @@
 'use client';
 
 import type { RestaurantTable } from '@rms/api-contract';
+import { cn } from 'cn';
 import type { ReactElement } from 'react';
 
 import FloorTile, { DEFAULT_STATUS_COLOR, type StatusColorClasses } from '@/components/FloorTile';
@@ -26,6 +27,9 @@ type FloorSectionProps = {
   statuses: readonly { id: string; code: string; name: string }[];
   permissions: TilePermissions;
   onWalkInClick: (table: RestaurantTable) => void;
+  /** Optional layout overrides for the tile container and tiles; the floor board omits them. */
+  gridClassName?: string;
+  tileClassName?: string;
 };
 
 export default function FloorSection(props: FloorSectionProps): ReactElement | null {
@@ -50,7 +54,7 @@ export default function FloorSection(props: FloorSectionProps): ReactElement | n
         </h2>
         <span className="text-xs text-muted-foreground">{summary}</span>
       </div>
-      <div className="flex flex-wrap gap-2.5 xl:gap-3">
+      <div className={cn('flex flex-wrap gap-2.5 xl:gap-3', props.gridClassName)}>
         {visible.map((table) => (
           <FloorTile
             key={table.id}
@@ -59,6 +63,7 @@ export default function FloorSection(props: FloorSectionProps): ReactElement | n
             nowMs={props.nowMs}
             statuses={props.statuses}
             onWalkInClick={props.onWalkInClick}
+            className={props.tileClassName}
             {...props.permissions}
           />
         ))}
