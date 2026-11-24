@@ -7,6 +7,8 @@ import {
 import {
   ACTIVE_KOT_STATUSES,
   ACTIVE_RESERVATION_STATUSES,
+  type CaptainOrderListQuery,
+  type CaptainOrderListResponse,
   type CompleteOrderResponse,
   type CreateOrderRequest,
   type FireOrderResponse,
@@ -24,7 +26,13 @@ import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { NotificationsService } from '../notifications/notifications.service';
-import { sentQuantity, toKot, toKotQueueItem, toOrder } from './orders.mapper';
+import {
+  sentQuantity,
+  toCaptainOrderSummary,
+  toKot,
+  toKotQueueItem,
+  toOrder,
+} from './orders.mapper';
 import { type KotRecord, OrdersRepository } from './orders.repository';
 
 @Injectable()
@@ -125,6 +133,25 @@ export class OrdersService {
       await this.notifications.ticketReady(actor.restaurantId, record.id);
     }
     return toKotQueueItem(record);
+  }
+
+  /** Scoped on the server to tables the caller captains; never trusts a client-side filter. */
+  async captainOrders(
+    actor: Actor,
+    query: CaptainOrderListQuery,
+  ): Promise<CaptainOrderListResponse> {
+    const result = await this.repository.findCaptainOrders(
+      actor.restaurantId,
+      actor.userId,
+      query.view,
+    );
+    if (!result) throw new NotFoundException('Restaurant not found');
+    return {
+      data: result.items.map(toCaptainOrderSummary),
+      openCount: result.openCount,
+      closedCount: result.closedCount,
+      currency: result.currency,
+    };
   }
 
   async current(actor: Actor, tableId: string): Promise<Order> {

@@ -1,7 +1,12 @@
-import type { Kot, KotQueueItem, Order } from '@rms/api-contract';
+import type { CaptainOrderSummary, Kot, KotQueueItem, Order } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
-import type { KotQueueRecord, KotRecord, OrderRecord } from './orders.repository';
+import type {
+  CaptainOrderRecord,
+  KotQueueRecord,
+  KotRecord,
+  OrderRecord,
+} from './orders.repository';
 
 export function toOrder(record: OrderRecord): Order {
   const { kots, ...order } = record;
@@ -65,4 +70,33 @@ export function orderItemTotal(
   item: Pick<OrderRecord['items'][number], 'quantity' | 'unitPrice'>,
 ): Prisma.Decimal {
   return item.unitPrice.mul(item.quantity);
+}
+
+/** A compact order card for the captain dashboard; a paid bill's total wins over the line sum. */
+export function toCaptainOrderSummary(record: CaptainOrderRecord): CaptainOrderSummary {
+  const active = record.items.filter((item) => item.status === 'ACTIVE');
+  const kotCounts = { pending: 0, preparing: 0, ready: 0, completed: 0 };
+  for (const kot of record.kots) {
+    if (kot.status === 'PENDING') kotCounts.pending += 1;
+    else if (kot.status === 'PREPARING') kotCounts.preparing += 1;
+    else if (kot.status === 'READY') kotCounts.ready += 1;
+    else kotCounts.completed += 1;
+  }
+  const lineTotal = active
+    .reduce((total, item) => total.plus(orderItemTotal(item)), new Prisma.Decimal(0))
+    .toFixed(2);
+  const paidTotal = record.bill?.status === 'PAID' ? record.bill.totalAmount.toFixed(2) : null;
+
+  return {
+    id: record.id,
+    table: record.table,
+    status: record.status,
+    bill: record.bill ? { billNumber: record.bill.billNumber, status: record.bill.status } : null,
+    itemCount: active.reduce((count, item) => count + item.quantity, 0),
+    itemNames: [...new Set(active.map((item) => item.menuItem.name))],
+    kotCounts,
+    openedAt: record.openedAt.toISOString(),
+    completedAt: record.completedAt?.toISOString() ?? null,
+    total: paidTotal ?? lineTotal,
+  };
 }

@@ -27,6 +27,10 @@ import {
 import {
   type AddOrderItemRequest,
   addOrderItemRequestSchema,
+  type CaptainOrderListQuery,
+  captainOrderListQuerySchema,
+  type CaptainOrderListResponse,
+  captainOrderListResponseSchema,
   type CompleteOrderResponse,
   completeOrderResponseSchema,
   type CreateOrderRequest,
@@ -109,6 +113,25 @@ export class OrdersController {
     @Body(new ZodValidationPipe(createOrderRequestSchema)) input: CreateOrderRequest,
   ): Promise<Order> {
     return this.service.create(actor, input);
+  }
+
+  @Get('mine')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_READ, Permission.TABLE_BE_CAPTAIN)
+  @ApiOperation({
+    summary: 'List orders on the tables the caller is the assigned captain of',
+    description:
+      'Open (OPEN/SUBMITTED) or closed (COMPLETED today, restaurant-local) orders, limited on the server to tables whose captain is the caller. Requires `order:read` and the `table:be-captain` eligibility marker.',
+  })
+  @ApiZodQuery(captainOrderListQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(captainOrderListResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid view'))
+  @ApiNotFoundResponse(apiError('The restaurant no longer exists'))
+  mine(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(captainOrderListQuerySchema)) query: CaptainOrderListQuery,
+  ): Promise<CaptainOrderListResponse> {
+    return this.service.captainOrders(actor, query);
   }
 
   @Get('current')

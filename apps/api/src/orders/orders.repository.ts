@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
+import type { CaptainOrderView, KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -75,7 +75,33 @@ const kotQueueSelect = {
   },
 } satisfies Prisma.KotSelect;
 
+const captainOrderSelect = {
+  id: true,
+  status: true,
+  openedAt: true,
+  completedAt: true,
+  table: { select: { id: true, tableNumber: true } },
+  bill: { select: { billNumber: true, status: true, totalAmount: true } },
+  kots: { select: { status: true } },
+  items: {
+    select: {
+      quantity: true,
+      unitPrice: true,
+      status: true,
+      menuItem: { select: { name: true } },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  },
+} satisfies Prisma.OrderSelect;
+
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
+export type CaptainOrderRecord = Prisma.OrderGetPayload<{ select: typeof captainOrderSelect }>;
+export type CaptainOrdersResult = {
+  items: CaptainOrderRecord[];
+  openCount: number;
+  closedCount: number;
+  currency: string;
+};
 export type KotRecord = Prisma.KotGetPayload<{ select: typeof kotSelect }>;
 export type KotQueueRecord = Prisma.KotGetPayload<{ select: typeof kotQueueSelect }>;
 
@@ -289,6 +315,59 @@ export class OrdersRepository {
       select: orderSelect,
       orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
     });
+  }
+
+  /**
+   * Orders on the tables `captainUserId` is currently the assigned captain of. Open = OPEN/SUBMITTED;
+   * closed = COMPLETED within the restaurant-local day. Both counts come from the same snapshot.
+   */
+  async findCaptainOrders(
+    restaurantId: string,
+    captainUserId: string,
+    view: CaptainOrderView,
+  ): Promise<CaptainOrdersResult | null> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const [context] = await tx.$queryRaw<{ currency: string; dayStart: Date; dayEnd: Date }[]>`
+          SELECT
+            r.currency,
+            date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE r.timezone)
+              AT TIME ZONE r.timezone AS "dayStart",
+            (date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE r.timezone) + INTERVAL '1 day')
+              AT TIME ZONE r.timezone AS "dayEnd"
+          FROM restaurants r
+          WHERE r.id = ${restaurantId}::uuid
+        `;
+        if (!context) return null;
+
+        const mine = { restaurantId, table: { restaurantId, captainUserId } };
+        const openWhere: Prisma.OrderWhereInput = {
+          ...mine,
+          status: { in: ['OPEN', 'SUBMITTED'] },
+        };
+        const closedWhere: Prisma.OrderWhereInput = {
+          ...mine,
+          status: 'COMPLETED',
+          completedAt: { gte: context.dayStart, lt: context.dayEnd },
+        };
+
+        const [items, openCount, closedCount] = await Promise.all([
+          tx.order.findMany({
+            where: view === 'open' ? openWhere : closedWhere,
+            select: captainOrderSelect,
+            orderBy:
+              view === 'open'
+                ? [{ openedAt: 'asc' }, { id: 'asc' }]
+                : [{ completedAt: 'desc' }, { id: 'desc' }],
+          }),
+          tx.order.count({ where: openWhere }),
+          tx.order.count({ where: closedWhere }),
+        ]);
+
+        return { items, openCount, closedCount, currency: context.currency };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   findActiveKotBoard(
