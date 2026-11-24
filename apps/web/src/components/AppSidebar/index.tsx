@@ -13,6 +13,7 @@ import usePermissions from '@/hooks/auth/usePermissions';
 import { formatRoleLabel } from '@/lib/utils';
 import { useSetupChecklist } from '@/services/api/requests/onboarding';
 import { useProfile } from '@/services/api/requests/profile';
+import { useQrSummary } from '@/services/api/requests/qr-orders';
 
 import { NAV_GROUPS, type NavItem } from './navigation';
 
@@ -89,6 +90,7 @@ function SidebarNav({
   const { can } = usePermissions();
   const missingRecipes =
     useSetupChecklist(can(Permission.MENU_WRITE)).data?.missingRecipeCount ?? 0;
+  const qrWaiting = useQrSummary(can(Permission.QR_ORDER_READ)).data?.myWaitingCount ?? 0;
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
@@ -115,7 +117,12 @@ function SidebarNav({
             ) : null}
             <div className="flex flex-col gap-1">
               {group.items.map(({ label, icon: Icon, href, activePaths, badge }) => {
-                const count = badge === 'missing-recipes' ? missingRecipes : 0;
+                const count =
+                  badge === 'missing-recipes'
+                    ? missingRecipes
+                    : badge === 'qr-waiting'
+                      ? qrWaiting
+                      : 0;
                 const active =
                   isActiveRoute(pathname, href) ||
                   Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
@@ -134,8 +141,33 @@ function SidebarNav({
                         : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     )}
                   >
-                    <Icon className="size-5 shrink-0" aria-hidden />
-                    <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+                    <span className="relative shrink-0">
+                      <Icon className="size-5" aria-hidden />
+                      {badge === 'qr-waiting' && count > 0 && collapsed && (
+                        <span
+                          className="absolute -top-1.5 -right-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white"
+                          style={{ background: 'var(--qs-es)' }}
+                          aria-hidden
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </span>
+                    <span className={cn('truncate', collapsed && 'sr-only')}>
+                      {label}
+                      {badge === 'qr-waiting' && count > 0 && (
+                        <span className="sr-only">, {count} waiting</span>
+                      )}
+                    </span>
+                    {badge === 'qr-waiting' && count > 0 && !collapsed && (
+                      <span
+                        className="ml-auto flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-2 text-[11px] font-semibold text-white"
+                        style={{ background: 'var(--qs-es)' }}
+                        aria-hidden
+                      >
+                        {count}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
