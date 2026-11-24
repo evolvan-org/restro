@@ -84,7 +84,11 @@ export class TablesController {
   @Get('tables/board')
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.FLOOR_READ)
-  @ApiOperation({ summary: "Get every active table on the caller's floor board" })
+  @ApiOperation({
+    summary: "Get every active table on the caller's floor board",
+    description:
+      'Callers holding the `table:be-captain` eligibility marker receive only the tables they are the assigned captain of.',
+  })
   @ApiZodQuery(tableBoardQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(tableBoardResponseSchema) })
   @ApiBadRequestResponse(apiError('The board does not accept filters or pagination'))

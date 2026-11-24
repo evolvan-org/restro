@@ -1,6 +1,9 @@
 import {
   type AddOrderItemRequest,
   addOrderItemRequestSchema,
+  type CaptainOrderListResponse,
+  captainOrderListResponseSchema,
+  type CaptainOrderView,
   type CompleteOrderResponse,
   completeOrderResponseSchema,
   type CreateOrderRequest,
@@ -36,6 +39,7 @@ import axios from 'axios';
 
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
+import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 
 import { OrderQueryKey } from '../types/OrderQueryKey';
 import { TableQueryKey } from '../types/TableQueryKey';
@@ -283,4 +287,25 @@ export function useUpdateOrderItemInstructions(): UseMutationResult<
   return useOrderItemEdit('instructions', (input: UpdateOrderItemInstructionsRequest) =>
     updateOrderItemInstructionsRequestSchema.parse(input),
   );
+}
+
+/** Orders on the caller's own tables (scoped by the API); polls with the floor board. */
+export function useCaptainOrders(
+  view: CaptainOrderView,
+  enabled: boolean,
+): UseQueryResult<CaptainOrderListResponse> {
+  return useQuery({
+    queryKey: [OrderQueryKey.Captain, view],
+    queryFn: async ({ signal }): Promise<CaptainOrderListResponse> => {
+      const response = await api.get('/orders/mine', {
+        params: { view },
+        signal,
+        errorDisplay: 'inline',
+      });
+      return captainOrderListResponseSchema.parse(response.data);
+    },
+    enabled,
+    staleTime: 0,
+    refetchInterval: BOARD_REFRESH_MS,
+  });
 }

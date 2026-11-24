@@ -220,3 +220,57 @@ export type UpdateKotStatusResponse = z.infer<typeof updateKotStatusResponseSche
 // The board uses the same transition contract as the status API.
 export const transitionKotStatusRequestSchema = updateKotStatusRequestSchema;
 export type TransitionKotStatusRequest = UpdateKotStatusRequest;
+
+/**
+ * Captain dashboard: orders on the tables the caller is the assigned captain of. `open` is every
+ * OPEN/SUBMITTED order; `closed` is today's (restaurant-local) COMPLETED orders.
+ */
+export const captainOrderViewSchema = z.enum(['open', 'closed']);
+
+export const captainOrderListQuerySchema = z
+  .object({ view: captainOrderViewSchema.default('open') })
+  .strict();
+
+export const captainOrderSummarySchema = z
+  .object({
+    id: z.string().uuid(),
+    table: z.object({ id: z.string().uuid(), tableNumber: z.string() }).strict(),
+    status: orderStatusSchema,
+    bill: z
+      .object({
+        billNumber: z.string(),
+        status: z.enum(['OPEN', 'PAID', 'CANCELLED']),
+      })
+      .strict()
+      .nullable(),
+    itemCount: z.number().int().nonnegative().describe('Units across ACTIVE lines'),
+    itemNames: z.array(z.string()).describe('Distinct ACTIVE item names, in the order added'),
+    kotCounts: z
+      .object({
+        pending: z.number().int().nonnegative(),
+        preparing: z.number().int().nonnegative(),
+        ready: z.number().int().nonnegative(),
+        completed: z.number().int().nonnegative(),
+      })
+      .strict(),
+    openedAt: z.string().datetime(),
+    completedAt: z.string().datetime().nullable(),
+    total: z
+      .string()
+      .describe('Paid bill total when settled, otherwise the sum of ACTIVE lines (2 decimals)'),
+  })
+  .strict();
+
+export const captainOrderListResponseSchema = z
+  .object({
+    data: z.array(captainOrderSummarySchema),
+    openCount: z.number().int().nonnegative(),
+    closedCount: z.number().int().nonnegative(),
+    currency: z.string().min(1),
+  })
+  .strict();
+
+export type CaptainOrderView = z.infer<typeof captainOrderViewSchema>;
+export type CaptainOrderListQuery = z.infer<typeof captainOrderListQuerySchema>;
+export type CaptainOrderSummary = z.infer<typeof captainOrderSummarySchema>;
+export type CaptainOrderListResponse = z.infer<typeof captainOrderListResponseSchema>;

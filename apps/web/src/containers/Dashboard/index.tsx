@@ -14,6 +14,7 @@ import usePermissions from '@/hooks/auth/usePermissions';
 import usePersistedState from '@/hooks/usePersistedState';
 import { useProfile } from '@/services/api/requests/profile';
 
+import CaptainDashboard from '../CaptainDashboard';
 import FloorBoard from '../FloorBoard';
 import ReportingPane from './ReportingPane';
 import Reports from './Reports';
@@ -90,8 +91,13 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
 export default function Dashboard(): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.DASHBOARD_READ]);
   const { data: profile } = useProfile();
+  const { can } = usePermissions();
 
   if (!isAllowed || !profile) return null;
+
+  // Captains (the `table:be-captain` eligibility marker, never granted by the Owner bypass) get
+  // their own scoped view; every other role keeps the dashboard below unchanged.
+  if (can(Permission.TABLE_BE_CAPTAIN)) return <CaptainDashboard />;
 
   return (
     <DashboardContent key={profile.email} storageKey={`${VIEW_STORAGE_KEY}:${profile.email}`} />

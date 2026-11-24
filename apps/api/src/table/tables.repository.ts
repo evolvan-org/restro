@@ -154,10 +154,11 @@ export class TablesRepository {
     }
   }
 
-  async findActiveBoard(restaurantId: string): Promise<TableRecord[]> {
+  /** Every active table, or only those `captainUserId` captains when given. */
+  async findActiveBoard(restaurantId: string, captainUserId?: string): Promise<TableRecord[]> {
     const completedOrderIds = await this.latestCompletedOrderIds(restaurantId);
     return this.prisma.restaurantTable.findMany({
-      where: { restaurantId, isActive: true },
+      where: { restaurantId, isActive: true, ...(captainUserId && { captainUserId }) },
       select: restaurantTableSelect(restaurantId, completedOrderIds),
       orderBy: [{ tableNumber: 'asc' }, { id: 'asc' }],
     });
