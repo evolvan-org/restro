@@ -10,6 +10,19 @@ Local containerized stack: **postgres + api + web**.
 | `Dockerfile`            | Multi-target build (`api`, `web`) for the Yarn/Turborepo monorepo |
 | `entrypoint-api.sh`     | Runs `prisma migrate deploy` against Postgres, then boots the API |
 
+## Local vs production
+
+`docker compose` picks the stack from `COMPOSE_FILE` in the root `.env`:
+
+| `COMPOSE_FILE`            | Stack      | api  | postgres | web  |
+| ------------------------- | ---------- | ---- | -------- | ---- |
+| `docker-compose.yml`      | local      | 3000 | 5433     | 3001 |
+| `docker-compose.prod.yml` | production | 8000 | 5434     | 3001 |
+
+Unset defaults to `docker-compose.yml`. Production also requires
+`POSTGRES_PASSWORD`, `JWT_SECRET` and `RATE_LIMIT_HASH_SECRET`, and
+`NEXT_PUBLIC_API_URL` set to the browser-facing API URL before building.
+
 ## Usage
 
 ```bash
