@@ -8,6 +8,7 @@ import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
+import useQrRealtime from '@/hooks/useQrRealtime';
 import { useKotQueue } from '@/services/api/requests/kots';
 
 import type { StationConfig } from './config';
@@ -24,6 +25,8 @@ export default function StationDisplay({
   const allowed = usePermissionGuard([Permission.KOT_READ]);
   const { can } = usePermissions();
   const queue = useKotQueue(station.destination, allowed);
+  // Approved QR rounds arrive within seconds instead of on the next poll.
+  useQrRealtime(allowed);
   const [theme, toggleTheme] = useStationTheme(station.destination);
   const [fullscreen, toggleFullscreen] = useFullscreen();
   const [filter, setFilter] = useState<StatusFilter>('ALL');
