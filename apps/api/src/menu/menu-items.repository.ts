@@ -24,6 +24,7 @@ const menuItemSelect = {
   isAvailable: true,
   isActive: true,
   recipeRequired: true,
+  isVeg: true,
   createdAt: true,
   updatedAt: true,
   recipeItems: {
@@ -49,6 +50,7 @@ export type NewMenuItem = {
   itemType: CategoryType;
   isAvailable: boolean;
   recipeRequired: boolean;
+  isVeg?: boolean | null;
 };
 
 export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {

@@ -78,6 +78,7 @@ export default function MenuItemFormSidePane({
           itemType: item.itemType,
           isAvailable: item.isAvailable,
           recipeRequired: item.recipeRequired,
+          isVeg: item.isVeg,
           // Items imported during setup have no recipe yet; start one so the owner can add it.
           recipe:
             item.recipe.length || !item.recipeRequired
@@ -95,6 +96,7 @@ export default function MenuItemFormSidePane({
           itemType: 'FOOD',
           isAvailable: true,
           recipeRequired: true,
+          isVeg: null,
           recipe: [{ ...EMPTY_ROW }],
         },
   });
@@ -232,6 +234,36 @@ export default function MenuItemFormSidePane({
             <input type="checkbox" {...form.register('isAvailable')} />
             Available for ordering
           </label>
+
+          <Controller
+            control={form.control}
+            name="isVeg"
+            render={({ field }) => (
+              <Field>
+                <FieldLabel htmlFor="item-veg">Veg / non-veg</FieldLabel>
+                <NativeSelect
+                  id="item-veg"
+                  value={field.value === true ? 'veg' : field.value === false ? 'non-veg' : ''}
+                  onChange={(event) =>
+                    field.onChange(
+                      event.target.value === 'veg'
+                        ? true
+                        : event.target.value === 'non-veg'
+                          ? false
+                          : null,
+                    )
+                  }
+                >
+                  <option value="">Not marked</option>
+                  <option value="veg">Veg</option>
+                  <option value="non-veg">Non-veg</option>
+                </NativeSelect>
+                <span className="text-xs text-muted-foreground">
+                  Shown as the green / red marker on the guest QR menu.
+                </span>
+              </Field>
+            )}
+          />
 
           <Controller
             control={form.control}
