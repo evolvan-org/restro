@@ -14,16 +14,16 @@ function matchTier(table: SearchableTable, q: string, numericQuery: number | nul
   const tableNumber = table.tableNumber.toLowerCase();
   if (tableNumber === q) return TIER_EXACT_NUMBER;
   if (tableNumber.includes(q)) return TIER_PARTIAL_NUMBER;
-  // Capacity: "at least N" seats, so the best fit (smallest) can be listed first.
-  if (numericQuery !== null && table.capacity >= numericQuery) return TIER_CAPACITY;
+  // Capacity: tables that seat exactly N guests.
+  if (numericQuery !== null && table.capacity === numericQuery) return TIER_CAPACITY;
   if (table.section.name.toLowerCase().includes(q)) return TIER_SECTION;
   return NO_MATCH;
 }
 
 /**
- * Free-text floor search over active tables: table number, seating capacity (at least N) and
+ * Free-text floor search over active tables: table number, seating capacity (exactly N) and
  * dining section name. Case-insensitive, trims the query, and returns an empty-query input as-is.
- * Ordering: exact number, partial number, capacity (ascending), section; ties keep input order.
+ * Ordering: exact number, partial number, capacity, section; ties keep input order.
  */
 export function searchTables<T extends SearchableTable>(tables: readonly T[], query: string): T[] {
   const q = query.trim().toLowerCase();
@@ -34,11 +34,6 @@ export function searchTables<T extends SearchableTable>(tables: readonly T[], qu
     .filter((table) => table.isActive)
     .map((table, index) => ({ table, index, tier: matchTier(table, q, numericQuery) }))
     .filter((entry) => entry.tier !== NO_MATCH)
-    .sort(
-      (a, b) =>
-        a.tier - b.tier ||
-        (a.tier === TIER_CAPACITY ? a.table.capacity - b.table.capacity : 0) ||
-        a.index - b.index,
-    )
+    .sort((a, b) => a.tier - b.tier || a.index - b.index)
     .map((entry) => entry.table);
 }
