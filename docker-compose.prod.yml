@@ -1,0 +1,119 @@
+# -----------------------------------------------------------------------------
+# RMS production stack: postgres + api + web.
+#
+# Host ports differ from local (docker-compose.yml):
+#   api      -> 8000  (container 3000)
+#   postgres -> 5434  (container 5432)
+#   web      -> 3001  (container 3001)
+#
+# Selected via COMPOSE_FILE in the root .env (Compose reads it automatically):
+#   COMPOSE_FILE=docker-compose.prod.yml
+# then the usual commands target this file:
+#   docker compose up -d --build
+#   docker compose down                                   # stop (keeps the db volume)
+#
+# Uses its own project name, image tags and volume, so it never collides with
+# the local stack on the same machine.
+#
+# NEXT_PUBLIC_API_URL is baked into the web bundle at BUILD time: set it to the
+# URL browsers use to reach the API (e.g. https://api.example.com or
+# http://<server-ip>:8000) before building, and rebuild the web image if it changes.
+# -----------------------------------------------------------------------------
+
+name: rms-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-rms}
+    ports:
+      - '5434:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: rms-api:prod
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      # `postgres` = the service name on the compose network (container port).
+      # URL-encode the password if it contains characters like @ : / ? #
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rms}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      RATE_LIMIT_HASH_SECRET: ${RATE_LIMIT_HASH_SECRET:?RATE_LIMIT_HASH_SECRET is required}
+      EMAIL_PROVIDER_API_KEY: ${EMAIL_PROVIDER_API_KEY}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-sabarjits@evolvan.com}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Restaurant Management System}
+      EMAIL_TEMPLATE_VERIFY_EMAIL_ID: ${EMAIL_TEMPLATE_VERIFY_EMAIL_ID}
+      EMAIL_TEMPLATE_RESET_PASSWORD_ID: ${EMAIL_TEMPLATE_RESET_PASSWORD_ID}
+      EMAIL_TEMPLATE_STAFF_INVITE_ID: ${EMAIL_TEMPLATE_STAFF_INVITE_ID}
+      # Public URL of the web app (used in emailed links).
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3001}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      PUSHER_APP_ID: ${PUSHER_APP_ID}
+      PUSHER_KEY: ${PUSHER_KEY}
+      PUSHER_SECRET: ${PUSHER_SECRET}
+      PUSHER_CLUSTER: ${PUSHER_CLUSTER}
+      # CORS: the origin browsers load the web app from.
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
+    ports:
+      - '8000:3000'
+    healthcheck:
+      # Probes run inside the container, so they use the container port 3000.
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3000/status'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  web:
+    image: rms-web:prod
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      WEB_PORT: 3001
+    ports:
+      - '3001:3001'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3001/'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  pgdata:
