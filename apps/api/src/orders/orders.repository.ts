@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { CaptainOrderView, KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import { createKotTickets } from '../common/database/kot-tickets';
 import { PrismaService } from '../common/database/prisma.service';
 import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
 
@@ -258,36 +259,14 @@ export class OrdersRepository {
               },
               orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             }),
-          createKots: async (createdByUserId, groups) => {
-            // Serialize the restaurant-wide human-readable sequence without adding a
-            // duplicate counter table. The existing unique constraint remains the backstop.
-            await tx.$queryRaw`SELECT id FROM restaurants WHERE id = ${restaurantId}::uuid FOR UPDATE`;
-            const rows = await tx.$queryRaw<{ currentNumber: bigint }[]>`
-              SELECT COALESCE(MAX(SUBSTRING(kot_number FROM 5)::bigint), 0) AS "currentNumber"
-              FROM kots
-              WHERE restaurant_id = ${restaurantId}::uuid
-                AND kot_number ~ '^KOT-[0-9]+$'
-            `;
-            const firstNumber = Number(rows[0]?.currentNumber ?? 0n) + 1;
-            return Promise.all(
-              groups.map((group, index) =>
-                tx.kot.create({
-                  data: {
-                    restaurantId,
-                    orderId,
-                    createdByUserId,
-                    kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
-                    destination: group.destination,
-                    status: 'PENDING',
-                    items: {
-                      create: group.items.map((item) => ({ ...item, status: 'PENDING' })),
-                    },
-                  },
-                  select: kotSelect,
-                }),
-              ),
-            );
-          },
+          createKots: (createdByUserId, groups) =>
+            createKotTickets(tx, {
+              restaurantId,
+              orderId,
+              createdByUserId,
+              groups,
+              select: kotSelect,
+            }),
           submit: async () => {
             await tx.order.update({
               where: { id: orderId, restaurantId },
