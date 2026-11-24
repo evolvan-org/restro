@@ -56,5 +56,10 @@ CMD ["node", "apps/api/dist/main.js"]
 FROM base AS web
 ENV NODE_ENV=production
 COPY --from=build /app ./
+WORKDIR /app/apps/web
 EXPOSE 3001
-CMD ["yarn", "workspace", "@rms/web", "start"]
+# Run Next directly instead of `yarn workspace ... start`: the Yarn binary is
+# only downloaded by corepack in the `deps` stage, so calling `yarn` here makes
+# corepack fetch it from repo.yarnpkg.com at container start, which fails
+# whenever the container has no outbound DNS/network.
+CMD ["node", "/app/node_modules/next/dist/bin/next", "start", "-p", "3001"]

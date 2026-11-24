@@ -72,11 +72,22 @@ jobs:
             detect --source=/repo --config=/repo/.gitleaks.toml --redact --verbose
 
   # Slow tier: full container boot, gated behind the static checks.
+  # Boots the PRODUCTION stack (docker-compose.prod.yml: same ports, image tags,
+  # required secrets and build args as prod) so a failure here is a failure prod
+  # would have hit.
+  # Keep `name` stable: branch protection matches required checks by this name.
   docker-smoke:
     name: Docker smoke (build + boot stack)
     runs-on: ubuntu-latest
     needs: verify
     env:
+      # Every `docker compose` command in this job targets the production stack,
+      # exactly as `COMPOSE_FILE` in the server's .env does.
+      COMPOSE_FILE: docker-compose.prod.yml
+      # Must match the web image's build arg below: the browser-facing API URL.
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Required by the production stack; throwaway CI-only credential.
+      POSTGRES_PASSWORD: ci-smoke-postgres-password
       # Boot-only throwaway; env validation requires it but it grants nothing.
       JWT_SECRET: ci-smoke-test-secret-not-used-for-anything
       PUSHER_APP_ID: ci-placeholder
@@ -92,6 +103,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # The local stack is no longer booted here; at least keep it parseable.
+      - name: Validate both compose files
+        run: |
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.prod.yml config -q
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -103,7 +120,7 @@ jobs:
           context: .
           file: docker/Dockerfile
           target: api
-          tags: rms-api:local
+          tags: rms-api:prod
           load: true
           cache-from: type=gha,scope=api
           cache-to: type=gha,scope=api,mode=max
@@ -114,15 +131,36 @@ jobs:
           context: .
           file: docker/Dockerfile
           target: web
-          tags: rms-web:local
+          tags: rms-web:prod
           build-args: |
-            NEXT_PUBLIC_API_URL=http://localhost:3000
+            NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
           load: true
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
+      # A runtime image must not need the internet to start (e.g. corepack
+      # downloading Yarn on boot). Run web with no network at all.
+      - name: Web starts with no network access
+        run: |
+          docker run -d --network none --name web-offline rms-web:prod
+          for i in $(seq 1 30); do
+            if docker exec web-offline node -e "fetch('http://localhost:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              echo "web served 200 offline"; docker rm -f web-offline; exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' web-offline)" != "true" ]; then break; fi
+            sleep 2
+          done
+          echo "web failed to start without network:"; docker logs web-offline; exit 1
+
       - name: Boot the stack and wait for healthy
         run: docker compose up -d --no-build --wait
+
+      # Container healthchecks probe from inside; also hit the host-published
+      # production ports the way real clients do.
+      - name: Probe production ports from the host
+        run: |
+          curl -fsS --retry 5 --retry-all-errors http://localhost:8000/status
+          curl -fsS --retry 5 --retry-all-errors -o /dev/null http://localhost:3001/
 
       - name: Dump logs on failure
         if: failure()
