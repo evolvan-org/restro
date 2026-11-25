@@ -1,10 +1,15 @@
 'use client';
 
-import type { QrMenuItem, QrMenuResponse, QrSessionResponse } from '@rms/api-contract';
-import { Lock, Phone, Plus, RefreshCw, Search } from 'lucide-react';
+import type {
+  QrGuestRound,
+  QrMenuItem,
+  QrMenuResponse,
+  QrSessionResponse,
+} from '@rms/api-contract';
+import { ChevronRight, Lock, Phone, Plus, RefreshCw, Search } from 'lucide-react';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 
-import { VegMark } from '@/components/QrStatus';
+import { QrStatusPill, VegMark } from '@/components/QrStatus';
 import { formatRupees } from '@/lib/qr';
 
 import { type Brand, BrandHeader, DishTile, Stepper } from './parts';
@@ -29,6 +34,7 @@ export default function MenuView({
   tryingAgain,
   stillBlocked,
   banner,
+  onTrackOrder,
 }: {
   brand: Brand;
   tableNumber: string;
@@ -44,6 +50,8 @@ export default function MenuView({
   tryingAgain?: boolean;
   stillBlocked?: boolean;
   banner?: ReactElement | null;
+  /** Opens the tracker; shown as the "Your order" strip once a round has been sent. */
+  onTrackOrder?: () => void;
 }): ReactElement {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(menu.categories[0]?.id ?? '');
@@ -113,6 +121,15 @@ export default function MenuView({
           )
         }
       />
+
+      {mode === 'order' && onTrackOrder && session && session.rounds.length > 0 && (
+        <OrderStrip
+          round={session.rounds[session.rounds.length - 1] as QrGuestRound}
+          rounds={session.rounds.length}
+          billRequested={session.billRequestedAt !== null}
+          onClick={onTrackOrder}
+        />
+      )}
 
       {mode === 'blocked' && (
         <>
@@ -345,6 +362,59 @@ export default function MenuView({
           <span style={{ fontSize: 17 }}>{formatRupees(session?.cart.totals.subtotal ?? '0')}</span>
         </button>
       )}
+    </div>
+  );
+}
+
+const STRIP_TEXT: Record<QrGuestRound['status'], (captain: string) => string> = {
+  awaiting: (captain) => `Waiting for ${captain} to confirm`,
+  escalated: (captain) => `Waiting for ${captain} to confirm`,
+  approved: () => 'Sent to the kitchen',
+  preparing: () => 'Being prepared',
+  ready: () => 'Your food is on its way',
+  served: () => 'Served',
+  rejected: (captain) => `${captain} couldn’t send this order`,
+};
+
+/** Way back to the tracker from the menu: the latest round's live status. */
+function OrderStrip({
+  round,
+  rounds,
+  billRequested,
+  onClick,
+}: {
+  round: QrGuestRound;
+  rounds: number;
+  billRequested: boolean;
+  onClick: () => void;
+}): ReactElement {
+  const captain = round.captainName ?? 'your server';
+  return (
+    <div style={{ padding: '0 16px 12px' }}>
+      <button
+        type="button"
+        className="gc row"
+        onClick={onClick}
+        aria-label={`Your order, round ${round.number}: ${STRIP_TEXT[round.status](captain)}. Open order status`}
+        style={{ width: '100%', gap: 12, minHeight: 60, padding: '10px 14px', textAlign: 'left' }}
+      >
+        <QrStatusPill status={round.status === 'escalated' ? 'awaiting' : round.status} />
+        <span className="col" style={{ flex: 1, minWidth: 0 }}>
+          <b style={{ fontSize: 15 }}>Your order{rounds > 1 ? ` · Round ${round.number}` : ''}</b>
+          <span
+            className="gm"
+            style={{
+              fontSize: 13,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {billRequested ? 'Bill requested' : STRIP_TEXT[round.status](captain)}
+          </span>
+        </span>
+        <ChevronRight size={20} style={{ color: 'var(--brand)', flex: 'none' }} aria-hidden />
+      </button>
     </div>
   );
 }

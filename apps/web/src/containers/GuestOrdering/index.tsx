@@ -418,6 +418,7 @@ function OrderingApp({
         }
         onSetQuantity={(lineId, quantity) => update.mutate({ lineId, quantity })}
         onViewOrder={() => go('cart')}
+        onTrackOrder={() => go('order')}
       />
     );
   }
