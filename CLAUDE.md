@@ -92,6 +92,7 @@ Sprint 0 bootstrap. The only wired end-to-end path is `GET /status` → web stat
 - TypeScript strict everywhere (`strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`); prefer explicit return types on exported functions.
 - Validate all external input at the boundary with Zod; surface errors through the global filter (no silent failures).
 - Prettier: single quotes, semicolons, trailing commas, 100 col width.
-- Branches use the Jira key: `feature/RMS-123-short-description`. `yarn lint && yarn typecheck && yarn test` must pass before a PR; squash-merge into `main`.
+- Branches use the Jira key: `feature/RMS-123-short-description`. `yarn lint && yarn typecheck && yarn test` must pass before a PR.
+- **Branch flow:** `development` is the default branch. Branch from it and squash-merge PRs into `development`. `main` is production: it only takes release PRs from `development` (enforced by the required `Release source` check) merged with a **merge commit** (not squash, so the branches don't diverge), and every push to `main` deploys to the VPS (`.github/workflows/deploy.yml`).
 
 Deeper detail lives in `docs/01-development-guide.md`, `docs/02-api-standards.md`, `docs/03-technical-standards-architecture.md`.

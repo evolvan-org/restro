@@ -1,0 +1,64 @@
+name: Deploy
+
+# Deploys main to the production VPS. Runs on a self-hosted runner installed on
+# the VPS itself (label `vps-prod`), which connects out to GitHub, so the server
+# needs no inbound SSH. See docker/README.md → "Continuous deployment".
+#
+# main only receives changes through release PRs from `development`, enforced by
+# the required `Release source` check (release-source.yml) on main.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deploys at once, and never cancel one halfway through.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    # Only this workflow may target the VPS runner; PR workflows stay on GitHub-hosted runners.
+    runs-on: [self-hosted, vps-prod]
+    # "Run workflow" lets you pick any branch; only ever deploy main.
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    timeout-minutes: 30
+    env:
+      APP_DIR: /opt/restro
+    steps:
+      - name: Update code
+        # Authenticates with this job's short-lived GITHUB_TOKEN (read-only, expires when the
+        # job ends), so the server stores no GitHub credential. Passed through GIT_CONFIG_*
+        # env vars rather than argv so it never shows up in `ps`.
+        # .env is gitignored, so the reset leaves the production config untouched.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -C "$APP_DIR" fetch --prune origin main
+          git -C "$APP_DIR" reset --hard "$GITHUB_SHA"
+          git -C "$APP_DIR" log -1 --oneline
+
+      - name: Build and restart
+        # --wait blocks until every service passes its healthcheck (fails the job otherwise).
+        # The api entrypoint applies pending Prisma migrations before it turns healthy.
+        working-directory: ${{ env.APP_DIR }}
+        run: docker compose up -d --build --remove-orphans --wait --wait-timeout 300
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          docker compose ps
+          docker compose logs --tail=150 api web
+
+      - name: Prune dangling images
+        if: success()
+        run: docker image prune -f
