@@ -40,7 +40,7 @@ import {
   TablesRepository,
 } from './tables.repository';
 
-const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use';
+const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use in this section';
 
 @Injectable()
 export class TablesService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -131,7 +131,11 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   async create(actor: Actor, input: CreateTableRequest): Promise<CreateTableResponse> {
     if (input.captainUserId) this.assertMayAssignCaptain(actor);
     const details = await this.toTableDetails(actor.restaurantId, input);
-    await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber);
+    await this.assertTableNumberAvailable(
+      actor.restaurantId,
+      details.sectionId,
+      details.tableNumber,
+    );
 
     const created = await this.mapTableNumberConflict(() =>
       this.tablesRepository.create(actor.restaurantId, details, (section) =>
@@ -170,11 +174,17 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     const existing = await this.findInRestaurant(actor.restaurantId, tableId);
     const details = await this.toPartialTableDetails(actor.restaurantId, input);
 
-    if (
-      details.tableNumber !== undefined &&
-      details.tableNumber.toLowerCase() !== existing.tableNumber.toLowerCase()
-    ) {
-      await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber, tableId);
+    const targetNumber = details.tableNumber ?? existing.tableNumber;
+    const targetSectionId = details.sectionId ?? existing.section.id;
+    const numberChanged = targetNumber.toLowerCase() !== existing.tableNumber.toLowerCase();
+    const sectionChanged = targetSectionId !== existing.section.id;
+    if (numberChanged || sectionChanged) {
+      await this.assertTableNumberAvailable(
+        actor.restaurantId,
+        targetSectionId,
+        targetNumber,
+        tableId,
+      );
     }
 
     const updated = await this.mapTableNumberConflict(() =>
@@ -355,10 +365,18 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
 
   private async assertTableNumberAvailable(
     restaurantId: string,
+    sectionId: string,
     tableNumber: string,
     excludeTableId?: string,
   ): Promise<void> {
-    if (await this.tablesRepository.isTableNumberTaken(restaurantId, tableNumber, excludeTableId)) {
+    if (
+      await this.tablesRepository.isTableNumberTaken(
+        restaurantId,
+        sectionId,
+        tableNumber,
+        excludeTableId,
+      )
+    ) {
       throw new ConflictException(TABLE_NUMBER_IN_USE_MESSAGE);
     }
   }
