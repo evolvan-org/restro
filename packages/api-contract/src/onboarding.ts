@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
+import { portionStyleSchema, sourceBoxSchema } from './ai-scans';
 import { onboardingStateSchema } from './auth';
 import { errorResponseSchema } from './common';
 import { inventoryBaseUnitSchema } from './inventory';
-import { MAX_MENU_ITEM_PRICE, menuItemPriceSchema } from './menu-items';
+import {
+  dietTypeSchema,
+  MAX_MENU_ITEM_PRICE,
+  MENU_ITEM_MAX_VARIANTS,
+  menuItemPriceSchema,
+  recipeQuantitySchema,
+} from './menu-items';
 import { restaurantSettingsSchema } from './restaurant-settings';
 import { servingTypeSchema } from './serving-types';
+import { unitSchema } from './stock-items';
 import { userEmailSchema, userNameSchema } from './user-fields';
 
 /*
@@ -22,6 +30,7 @@ export const ONBOARDING_STEPS = [
   'details',
   'floor',
   'menu',
+  'recipes',
   'inventory',
   'team',
   'review',
@@ -34,6 +43,7 @@ export const SKIPPABLE_ONBOARDING_STEPS = [
   'details',
   'floor',
   'menu',
+  'recipes',
   'inventory',
   'team',
 ] as const satisfies readonly OnboardingStep[];
@@ -47,6 +57,7 @@ export const ONBOARDING_STAGES = [
   'statuses',
   'menu',
   'inventory',
+  'recipes',
   'team',
   'final',
 ] as const;
@@ -60,9 +71,26 @@ export const ONBOARDING_STAGE_STEP: Record<OnboardingStage, OnboardingStep> = {
   statuses: 'floor',
   menu: 'menu',
   inventory: 'inventory',
+  recipes: 'recipes',
   team: 'team',
   final: 'review',
 };
+
+/**
+ * Stored step numbers (`onboarding_drafts.current_step` / `skipped_steps`). Fixed forever: display
+ * order comes from `ONBOARDING_STEPS`, so adding a step never shifts a saved draft.
+ */
+export const ONBOARDING_STEP_CODES: Record<OnboardingStep, number> = {
+  details: 1,
+  floor: 2,
+  menu: 3,
+  inventory: 4,
+  team: 5,
+  review: 6,
+  recipes: 7,
+};
+
+export const ONBOARDING_RECIPE_MAX_LINES = 50;
 
 export const ONBOARDING_MAX_SECTIONS = 50;
 export const ONBOARDING_MAX_TABLES_PER_SECTION = 200;
@@ -185,6 +213,26 @@ export const onboardingFloorDraftSchema = z
   })
   .strict();
 
+export const onboardingMenuVariantDraftSchema = z
+  .object({ key: rowKey, name: draftText, price: draftText })
+  .strict();
+
+/** Where a scanned row came from and how sure the model was; the owner's review state. */
+export const onboardingMenuRowAiSchema = z
+  .object({
+    jobId: z.string().uuid(),
+    seq: z.number().int().nonnegative(),
+    confidence: z.number().int().min(0).max(100),
+    issues: z.array(z.string().max(200)).max(5),
+    rawText: z.string().max(300).nullable(),
+    source: sourceBoxSchema.nullable(),
+    flag: z.enum(['dish', 'not_a_dish', 'duplicate']),
+    flagNote: z.string().max(200).nullable(),
+    /** The owner accepted or edited it; it no longer needs attention. */
+    reviewed: z.boolean(),
+  })
+  .strict();
+
 export const onboardingMenuRowSchema = z
   .object({
     key: rowKey,
@@ -196,14 +244,133 @@ export const onboardingMenuRowSchema = z
     price: draftText,
     description: draftText,
     available: z.boolean(),
+    dietType: dietTypeSchema.nullable().optional(),
+    /** Portion prices (Half / Full); when present, `price` may be blank. */
+    variants: z.array(onboardingMenuVariantDraftSchema).max(MENU_ITEM_MAX_VARIANTS).optional(),
+    /** Name as printed, when it differs from the cleaned-up name. */
+    originalName: draftText.optional(),
+    ai: onboardingMenuRowAiSchema.optional(),
+    /** Left out of the import (not a dish, duplicate, or the owner's choice). */
+    excluded: z.boolean().optional(),
   })
   .strict();
 
 export const onboardingMenuDraftSchema = z
   .object({
-    mode: z.enum(['csv', 'manual', 'later']),
+    mode: z.enum(['scan', 'csv', 'manual', 'later']),
     fileName: z.string().max(255).optional(),
     rows: z.array(onboardingMenuRowSchema).max(ONBOARDING_MENU_MAX_ROWS),
+    /** The menu scan the rows stream from; resumes after a refresh. */
+    scanJobId: z.string().uuid().optional(),
+  })
+  .strict();
+
+export const onboardingRecipeLineDraftSchema = z
+  .object({
+    key: rowKey,
+    /** Ingredient name; links to the ingredient list (and inventory) by normalised name. */
+    ingredient: draftText,
+    quantity: draftText,
+    unit: draftText,
+    /** Model confidence for this line; absent for lines the owner added. */
+    confidence: z.number().int().min(0).max(100).optional(),
+    edited: z.boolean().optional(),
+  })
+  .strict();
+
+export const onboardingRecipeDishDraftSchema = z
+  .object({
+    menuRowKey: rowKey,
+    status: z.enum(['draft', 'approved', 'no-recipe']),
+    lines: z.array(onboardingRecipeLineDraftSchema).max(ONBOARDING_RECIPE_MAX_LINES),
+    note: z.string().max(500).optional(),
+    confidence: z.number().int().min(0).max(100).optional(),
+    fromAi: z.boolean().optional(),
+  })
+  .strict();
+
+export const onboardingIngredientPriceSourceSchema = z.enum([
+  'catalog',
+  'ai',
+  'invoice',
+  'manual',
+  'none',
+]);
+
+/** De-duplicated ingredients the recipes use, with their estimated price per base unit. */
+export const onboardingIngredientDraftSchema = z
+  .object({
+    key: rowKey,
+    name: draftText,
+    baseUnit: draftText,
+    /** ₹ per base unit (g, ml or unit). */
+    estimatedPricePerBase: draftText,
+    priceSource: onboardingIngredientPriceSourceSchema,
+    aliases: z.array(z.string().max(150)).max(20).optional(),
+  })
+  .strict();
+
+export const onboardingRecipesDraftSchema = z
+  .object({
+    targetMin: z.number().min(1).max(90),
+    targetMax: z.number().min(1).max(90),
+    portionStyle: portionStyleSchema,
+    jobId: z.string().uuid().optional(),
+    dishes: z.array(onboardingRecipeDishDraftSchema).max(ONBOARDING_MENU_MAX_ROWS),
+    ingredients: z.array(onboardingIngredientDraftSchema).max(ONBOARDING_INVENTORY_MAX_ROWS),
+    /** Merge suggestions the owner dismissed ("keep both"). */
+    dismissedMerges: z.array(z.string().max(140)).max(200).optional(),
+  })
+  .strict();
+
+export const onboardingInvoiceLineDraftSchema = z
+  .object({
+    key: rowKey,
+    rawText: draftText,
+    description: draftText,
+    /** Inventory row key it matched; null = add as a new ingredient. */
+    ingredientKey: z.string().max(64).nullable(),
+    matchScore: z.number().int().min(0).max(100).nullable(),
+    newIngredientName: draftText.optional(),
+    /** Converted quantity in the ingredient's base unit (5 × 1 kg → 5000). */
+    baseQuantity: draftText,
+    baseUnit: draftText,
+    amount: draftText,
+    /** Line amount ÷ base quantity: ₹ per base unit. */
+    unitCost: draftText,
+    ignored: z.boolean().optional(),
+  })
+  .strict();
+
+export const onboardingInvoiceDraftSchema = z
+  .object({
+    key: rowKey,
+    jobId: z.string().uuid(),
+    supplierName: draftText,
+    supplierGstin: draftText,
+    invoiceNumber: draftText,
+    invoiceDate: draftText,
+    cgst: draftText,
+    sgst: draftText,
+    igst: draftText,
+    roundOff: draftText,
+    total: draftText,
+    lines: z.array(onboardingInvoiceLineDraftSchema).max(100),
+    applied: z.boolean(),
+    /** Food-cost changes recorded when the invoice was applied (before → after). */
+    marginChanges: z
+      .array(
+        z
+          .object({
+            key: z.string().max(64),
+            name: z.string().max(255),
+            before: z.number(),
+            after: z.number(),
+          })
+          .strict(),
+      )
+      .max(ONBOARDING_MENU_MAX_ROWS)
+      .optional(),
   })
   .strict();
 
@@ -217,6 +384,12 @@ export const onboardingInventoryRowSchema = z
     reorderLevel: draftText,
     openingQuantity: draftText,
     openingUnitCost: draftText,
+    /** Where the row came from: drafted recipes, a scanned invoice, CSV or typed. */
+    origin: z.enum(['recipe', 'invoice', 'csv', 'manual']).optional(),
+    /** Whether `openingUnitCost` is a real invoice cost or typed by the owner. */
+    costSource: z.enum(['estimated', 'invoice', 'manual']).optional(),
+    /** Estimated ₹ per base unit, used for costing until a real cost exists. */
+    estimatedUnitCost: draftText.optional(),
   })
   .strict();
 
@@ -224,6 +397,8 @@ export const onboardingInventoryDraftSchema = z
   .object({
     fileName: z.string().max(255).optional(),
     rows: z.array(onboardingInventoryRowSchema).max(ONBOARDING_INVENTORY_MAX_ROWS),
+    mode: z.enum(['scan', 'csv', 'manual', 'later']).optional(),
+    invoices: z.array(onboardingInvoiceDraftSchema).max(20).optional(),
   })
   .strict();
 
@@ -240,8 +415,17 @@ export const onboardingDraftDataSchema = z
     details: onboardingDetailsDraftSchema.optional(),
     floor: onboardingFloorDraftSchema.optional(),
     menu: onboardingMenuDraftSchema.optional(),
+    recipes: onboardingRecipesDraftSchema.optional(),
     inventory: onboardingInventoryDraftSchema.optional(),
     team: onboardingTeamDraftSchema.optional(),
+    /**
+     * Steps passed over by a shortcut (the Welcome photo hero jumps to Menu): still "to do", not
+     * done, until the owner opens and continues them. They are optional at finish.
+     */
+    deferred: z
+      .array(skippableOnboardingStepSchema)
+      .max(SKIPPABLE_ONBOARDING_STEPS.length)
+      .optional(),
   })
   .strict();
 
@@ -301,15 +485,55 @@ export const onboardingMenuItemSchema = z
       .max(255, 'Description must be 255 characters or fewer')
       .transform((value) => value || null),
     available: z.boolean(),
+    dietType: dietTypeSchema.nullable().optional(),
+    variants: z
+      .array(
+        z.object({
+          key: rowKey,
+          name: z
+            .string()
+            .trim()
+            .min(1, 'Portion name is required')
+            .max(50, 'Portion name must be 50 characters or fewer'),
+          price: menuItemPriceSchema,
+        }),
+      )
+      .max(MENU_ITEM_MAX_VARIANTS)
+      .optional()
+      .refine(
+        (rows) => !rows || new Set(rows.map((row) => row.name.toLowerCase())).size === rows.length,
+        'Two portions have the same name',
+      )
+      .refine((rows) => !rows || rows.length !== 1, 'Add at least two portions, or none'),
   })
   .describe(`Price is a decimal string up to ${MAX_MENU_ITEM_PRICE}`);
+
+/**
+ * The item's own price: as typed, or, for an item with portions and no single price, its most
+ * expensive portion (shown wherever a single price is needed).
+ */
+export function effectiveMenuRowPrice(row: Pick<OnboardingMenuRow, 'price' | 'variants'>): string {
+  if (row.price.trim() || !row.variants?.length) return row.price;
+  const prices = row.variants
+    .map((variant) => variant.price.trim())
+    .filter((price) => /^\d{1,10}(?:\.\d{1,2})?$/.test(price));
+  if (!prices.length) return row.price;
+  return prices.reduce((max, price) => (Number(price) > Number(max) ? price : max));
+}
+
+/** Rows that will be imported: everything the owner didn't leave out. */
+export function includedMenuRows(rows: readonly OnboardingMenuRow[]): OnboardingMenuRow[] {
+  return rows.filter((row) => !row.excluded);
+}
 
 /** Every problem with the menu rows, including the same name twice in one category. */
 export function findMenuRowIssues(rows: readonly OnboardingMenuRow[]): OnboardingRowIssue[] {
   const issues: OnboardingRowIssue[] = [];
   const seen = new Map<string, number>();
   rows.forEach((row, index) => {
-    issues.push(...schemaIssues(onboardingMenuItemSchema, row, index));
+    if (row.excluded) return;
+    const priced: OnboardingMenuRow = { ...row, price: effectiveMenuRowPrice(row) };
+    issues.push(...schemaIssues(onboardingMenuItemSchema, priced, index));
     if (!row.name.trim() || !row.category.trim()) return;
     const key = `${normalized(row.category)}\u0000${normalized(row.name)}`;
     const first = seen.get(key);
@@ -347,6 +571,7 @@ export function summarizeMenuCategories(
 ): OnboardingMenuCategorySummary[] {
   const byName = new Map<string, OnboardingMenuCategorySummary & { types: Set<string> }>();
   for (const row of rows) {
+    if (row.excluded) continue;
     const name = row.category.trim();
     const type = row.type.trim().toUpperCase();
     if (!name || (type !== 'FOOD' && type !== 'BAR')) continue;
@@ -598,6 +823,23 @@ const completeInventorySchema = onboardingInventoryDraftSchema.superRefine((inve
   }
 });
 
+const completeRecipesSchema = onboardingRecipesDraftSchema.superRefine((recipes, ctx) => {
+  if (recipes.targetMin > recipes.targetMax) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['targetMax'],
+      message: 'The lower target must not exceed the upper one',
+    });
+  }
+  for (const issue of findRecipeIssues(recipes)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dishes', issue.dishIndex, 'lines', issue.lineIndex, issue.field],
+      message: issue.message,
+    });
+  }
+});
+
 const completeTeamSchema = z
   .object({
     members: z
@@ -634,10 +876,63 @@ export const completeOnboardingDataSchema = z
     details: completeOnboardingDetailsSchema.optional(),
     floor: completeFloorSchema.optional(),
     menu: completeMenuSchema.optional(),
+    recipes: completeRecipesSchema.optional(),
     inventory: completeInventorySchema.optional(),
     team: completeTeamSchema.optional(),
   })
   .strict();
+
+export type RecipeLineIssue = {
+  dishIndex: number;
+  lineIndex: number;
+  field: 'ingredient' | 'quantity' | 'unit';
+  message: string;
+};
+
+/** Problems with recipe lines; dishes marked "No recipe needed" are not checked. */
+export function findRecipeIssues(
+  recipes: Pick<OnboardingRecipesDraft, 'dishes'>,
+): RecipeLineIssue[] {
+  const issues: RecipeLineIssue[] = [];
+  recipes.dishes.forEach((dish, dishIndex) => {
+    if (dish.status === 'no-recipe') return;
+    const seen = new Set<string>();
+    dish.lines.forEach((line, lineIndex) => {
+      const name = normalized(line.ingredient);
+      if (!name) {
+        issues.push({ dishIndex, lineIndex, field: 'ingredient', message: 'Choose an ingredient' });
+      } else if (name.length > 150) {
+        issues.push({
+          dishIndex,
+          lineIndex,
+          field: 'ingredient',
+          message: 'Ingredient name must be 150 characters or fewer',
+        });
+      } else if (seen.has(name)) {
+        issues.push({
+          dishIndex,
+          lineIndex,
+          field: 'ingredient',
+          message: 'This ingredient is listed twice in the recipe',
+        });
+      }
+      seen.add(name);
+      const quantity = recipeQuantitySchema.safeParse(line.quantity);
+      if (!quantity.success) {
+        issues.push({
+          dishIndex,
+          lineIndex,
+          field: 'quantity',
+          message: quantity.error.issues[0]?.message ?? 'Enter a quantity',
+        });
+      }
+      if (!unitSchema.safeParse(line.unit.trim().toUpperCase()).success) {
+        issues.push({ dishIndex, lineIndex, field: 'unit', message: 'Choose a unit' });
+      }
+    });
+  });
+  return issues;
+}
 
 /** Which finish stage a validation issue at `path` belongs to (drives "Fix in <step>"). */
 export function onboardingStageForPath(path: readonly (string | number)[]): OnboardingStage {
@@ -745,6 +1040,8 @@ export const completeOnboardingResponseSchema = z
         menuItems: z.number().int().nonnegative(),
         stockItems: z.number().int().nonnegative(),
         openingStock: z.number().int().nonnegative(),
+        menuVariants: z.number().int().nonnegative(),
+        recipes: z.number().int().nonnegative(),
         teamMembers: z.number().int().nonnegative(),
       })
       .strict(),
@@ -807,6 +1104,15 @@ export type OnboardingCancellationReasonDraft = z.infer<
 export type OnboardingFloorDraft = z.infer<typeof onboardingFloorDraftSchema>;
 export type OnboardingMenuRow = z.infer<typeof onboardingMenuRowSchema>;
 export type OnboardingMenuDraft = z.infer<typeof onboardingMenuDraftSchema>;
+export type OnboardingMenuVariantDraft = z.infer<typeof onboardingMenuVariantDraftSchema>;
+export type OnboardingMenuRowAi = z.infer<typeof onboardingMenuRowAiSchema>;
+export type OnboardingRecipeLineDraft = z.infer<typeof onboardingRecipeLineDraftSchema>;
+export type OnboardingRecipeDishDraft = z.infer<typeof onboardingRecipeDishDraftSchema>;
+export type OnboardingIngredientDraft = z.infer<typeof onboardingIngredientDraftSchema>;
+export type OnboardingIngredientPriceSource = z.infer<typeof onboardingIngredientPriceSourceSchema>;
+export type OnboardingRecipesDraft = z.infer<typeof onboardingRecipesDraftSchema>;
+export type OnboardingInvoiceLineDraft = z.infer<typeof onboardingInvoiceLineDraftSchema>;
+export type OnboardingInvoiceDraft = z.infer<typeof onboardingInvoiceDraftSchema>;
 export type OnboardingInventoryRow = z.infer<typeof onboardingInventoryRowSchema>;
 export type OnboardingInventoryDraft = z.infer<typeof onboardingInventoryDraftSchema>;
 export type OnboardingTeamMemberDraft = z.infer<typeof onboardingTeamMemberDraftSchema>;

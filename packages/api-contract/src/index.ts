@@ -29,3 +29,7 @@ export * from './bill-summary';
 export * from './dashboard';
 export * from './reports';
 export * from './onboarding';
+export * from './ai-scans';
+export * from './costing';
+export * from './ingredient-matching';
+export * from './margins';

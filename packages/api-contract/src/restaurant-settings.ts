@@ -78,7 +78,10 @@ export const restaurantSettingsSchema = z
   })
   .strict();
 
-export const updateRestaurantSettingsRequestSchema = restaurantSettingsSchema;
+export const updateRestaurantSettingsRequestSchema = restaurantSettingsSchema.extend({
+  targetFoodCostMin: z.number().min(1).max(90).optional(),
+  targetFoodCostMax: z.number().min(1).max(90).optional(),
+});
 
 export const restaurantSettingsResponseSchema = z
   .object({
@@ -89,8 +92,26 @@ export const restaurantSettingsResponseSchema = z
     defaultGstRate: z.number(),
     maxDiscountPercent: z.number(),
     address: z.string().nullable(),
+    targetFoodCostMin: z.number(),
+    targetFoodCostMax: z.number(),
   })
   .strict();
 
+const foodCostPercentSchema = z
+  .number({ invalid_type_error: 'Target must be a number' })
+  .min(1, 'Target must be between 1 and 90')
+  .max(90, 'Target must be between 1 and 90')
+  .refine(hasAtMostTwoDecimals, 'Target can have at most 2 decimal places');
+
+/** Target food-cost band; dishes above it are flagged watch / poor. */
+export const foodCostTargetSchema = z
+  .object({ min: foodCostPercentSchema, max: foodCostPercentSchema })
+  .strict()
+  .refine((value) => value.min <= value.max, {
+    message: 'The lower target must not exceed the upper one',
+    path: ['max'],
+  });
+
+export type FoodCostTarget = z.infer<typeof foodCostTargetSchema>;
 export type UpdateRestaurantSettingsRequest = z.infer<typeof updateRestaurantSettingsRequestSchema>;
 export type RestaurantSettingsResponse = z.infer<typeof restaurantSettingsResponseSchema>;

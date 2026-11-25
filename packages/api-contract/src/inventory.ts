@@ -132,16 +132,31 @@ const supplierFields = {
   phone: z.string().trim().max(30),
   address: z.string().trim().max(500),
 };
-export const createInventorySupplierSchema = z.object(supplierFields).strict();
+/** Canonical GSTIN: 2-digit state code, PAN, entity number, `Z`, checksum. */
+export const SUPPLIER_GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const gstinInput = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .refine(
+    (value) => !value || SUPPLIER_GSTIN_PATTERN.test(value),
+    'Enter a valid 15-character GSTIN',
+  )
+  .transform((value) => value || null);
+export const createInventorySupplierSchema = z
+  .object({ ...supplierFields, gstin: gstinInput.optional() })
+  .strict();
 export const updateInventorySupplierSchema = z
   .object({
     ...supplierFields,
+    gstin: gstinInput.optional(),
     isActive: z.boolean(),
   })
   .strict();
 export const inventorySupplierSchema = z.object({
   id,
   ...supplierFields,
+  gstin: z.string().nullable(),
   isActive: z.boolean(),
 });
 export const inventoryOptionsSchema = z.object({
@@ -275,15 +290,48 @@ const receiptLineSchema = supplyLineSchema
   })
   .strict()
   .superRefine(checkPackageSize);
+const money = z
+  .string()
+  .regex(/^-?\d{1,12}(?:\.\d{1,2})?$/, 'Enter an amount with up to 2 decimals');
+export const invoiceTaxBreakdownSchema = z
+  .object({
+    cgst: money.nullable(),
+    sgst: money.nullable(),
+    igst: money.nullable(),
+    roundOff: money.nullable(),
+  })
+  .strict();
+/** Printed details of the supplier's invoice, when the receipt was scanned from one. */
+export const receiptInvoiceDetailsSchema = z
+  .object({
+    supplierInvoiceNumber: z.string().trim().min(1).max(50),
+    supplierInvoiceDate: dateOnly.optional(),
+    invoiceTotal: money.optional(),
+    taxBreakdown: invoiceTaxBreakdownSchema.optional(),
+  })
+  .strict();
 export const createInventoryReceiptSchema = z
   .object({
     idempotencyKey: id,
-    supplierId: id,
+    /** An existing supplier, or `newSupplier` to create one (matched by GSTIN first). */
+    supplierId: id.optional(),
+    newSupplier: z
+      .object({ name: supplierFields.name, gstin: gstinInput.optional() })
+      .strict()
+      .optional(),
     purchaseOrderId: id.optional(),
     notes,
     lines: z.array(receiptLineSchema).min(1).max(50),
+    invoice: receiptInvoiceDetailsSchema.optional(),
+    scanJobId: id.optional(),
+    /** Required to save when the same supplier invoice number was already recorded. */
+    acknowledgeDuplicate: z.boolean().optional(),
   })
   .strict()
+  .refine((value) => Boolean(value.supplierId) !== Boolean(value.newSupplier), {
+    message: 'Select a supplier',
+    path: ['supplierId'],
+  })
   .superRefine(({ purchaseOrderId, lines }, context) => {
     lines.forEach(({ purchaseOrderLineId }, index) => {
       if (Boolean(purchaseOrderId) !== Boolean(purchaseOrderLineId)) {
@@ -303,6 +351,9 @@ export const inventoryReceiptSchema = z.object({
   supplier: supplierIdentity,
   purchaseOrder: z.object({ id, number: z.number().int().positive() }).nullable(),
   notes: z.string(),
+  supplierInvoiceNumber: z.string().nullable(),
+  supplierInvoiceDate: dateOnly.nullable(),
+  invoiceTotal: decimal.nullable(),
   createdAt: timestamp,
   lines: z.array(
     z.object({
@@ -322,6 +373,38 @@ export const inventoryReceiptQuerySchema = paginationQuerySchema.extend({
   purchaseOrderId: id.optional(),
 });
 
+/** Warnings before saving a scanned invoice: already recorded, or prices jumped since last time. */
+export const receiptChecksRequestSchema = z
+  .object({
+    supplierId: id.optional(),
+    supplierGstin: z.string().trim().max(15).optional(),
+    supplierInvoiceNumber: z.string().trim().max(50).optional(),
+    lines: z.array(z.object({ stockItemId: id, unitCost: cost }).strict()).max(50),
+  })
+  .strict();
+export const receiptChecksResponseSchema = z
+  .object({
+    supplier: z.object({ id, name: z.string() }).nullable(),
+    duplicate: z
+      .object({ receiptId: id, number: z.number().int(), recordedAt: timestamp })
+      .nullable(),
+    priceJumps: z.array(
+      z
+        .object({
+          stockItemId: id,
+          previousUnitCost: decimal,
+          unitCost: decimal,
+          changePercent: z.number(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export type InvoiceTaxBreakdown = z.infer<typeof invoiceTaxBreakdownSchema>;
+export type ReceiptInvoiceDetails = z.infer<typeof receiptInvoiceDetailsSchema>;
+export type ReceiptChecksRequest = z.infer<typeof receiptChecksRequestSchema>;
+export type ReceiptChecksResponse = z.infer<typeof receiptChecksResponseSchema>;
 export type InventorySupplyUnit = z.infer<typeof inventorySupplyUnitSchema>;
 export type InventoryPackageSize = z.infer<typeof inventoryPackageSizeSchema>;
 export type InventoryOptions = z.infer<typeof inventoryOptionsSchema>;
