@@ -58,7 +58,7 @@ There is no per-commit hook. To bypass in an emergency, use `git push --no-verif
 
 ## Continuous integration
 
-Every PR to `development` or `main` runs `.github/workflows/ci.yml`:
+Every PR to `development` runs `.github/workflows/ci.yml`. Release PRs (`development` → `main`) skip both jobs, since that code already passed CI on its way into `development`; skipped jobs report success, so the required checks on `main` still pass.
 
 - **`verify`** (one job, all static checks): install (immutable lockfile), lint, format check, typecheck, Prisma migration-drift, and gitleaks secret scan. Each check reports independently even if an earlier one fails.
 - **`docker-smoke`** (gated behind `verify`): builds both images with layer caching and boots the full stack via `docker compose up --wait`, which also runs `prisma migrate deploy`.
