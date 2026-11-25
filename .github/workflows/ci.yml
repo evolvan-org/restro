@@ -86,6 +86,9 @@ jobs:
       COMPOSE_FILE: docker-compose.prod.yml
       # Must match the web image's build arg below: the browser-facing API URL.
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Required public URLs (no defaults in the production stack).
+      APP_PUBLIC_URL: http://localhost:3001
+      WEB_ORIGIN: http://localhost:3001
       # Required by the production stack; throwaway CI-only credential.
       POSTGRES_PASSWORD: ci-smoke-postgres-password
       # Boot-only throwaway; env validation requires it but it grants nothing.
