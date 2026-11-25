@@ -1,6 +1,6 @@
 'use client';
 
-import { QrCode, RefreshCw, Store, Unplug, WifiOff } from 'lucide-react';
+import { CalendarClock, QrCode, RefreshCw, Sparkles, Store, Unplug, WifiOff } from 'lucide-react';
 import type { ReactElement } from 'react';
 
 import { type Brand, BrandHeader, CallRestaurant, Circle } from './parts';
@@ -81,6 +81,56 @@ export function TableInactive({ brand }: { brand: Brand }): ReactElement {
         </p>
         <div style={{ marginTop: 6, width: '100%' }}>
           <CallRestaurant phone={brand.guestPhone} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The table is held for a booking (Reserved from 90 minutes before it) or waiting to be cleaned.
+ * New guests can't order here; staff seat them elsewhere. Styled like G7c.
+ */
+export function TableUnavailable({
+  brand,
+  reason,
+  onViewMenu,
+}: {
+  brand: Brand;
+  reason: 'reserved' | 'cleaning';
+  onViewMenu: () => void;
+}): ReactElement {
+  const copy =
+    reason === 'reserved'
+      ? {
+          icon: <CalendarClock size={52} strokeWidth={2} />,
+          title: 'This table is reserved',
+          body: 'It’s being kept for a booking. Please ask staff to seat you at another table, then scan the code there.',
+        }
+      : {
+          icon: <Sparkles size={52} strokeWidth={2} />,
+          title: 'This table is being got ready',
+          body: 'Please ask staff to seat you. You can order as soon as the table is ready.',
+        };
+  return (
+    <div>
+      <BrandHeader brand={brand} sub="Welcome" />
+      <div
+        className="col"
+        style={{ alignItems: 'center', textAlign: 'center', padding: '60px 28px 0', gap: 14 }}
+      >
+        <Circle>{copy.icon}</Circle>
+        <h1 className="fr" style={{ fontSize: 26, lineHeight: 1.15 }}>
+          {copy.title}
+        </h1>
+        <p className="gm" style={{ fontSize: 16, lineHeight: 1.5 }}>
+          {copy.body}
+        </p>
+        <div className="col" style={{ marginTop: 6, width: '100%', gap: 10 }}>
+          <CallRestaurant phone={brand.guestPhone} />
+          <button type="button" className="gb o" onClick={onViewMenu}>
+            View menu
+          </button>
         </div>
       </div>
     </div>

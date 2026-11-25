@@ -50,7 +50,19 @@ export const qrAlertKindSchema = z.enum(['NO_CAPTAIN', 'ESCALATION']);
 export const qrAlertStatusSchema = z.enum(['OPEN', 'RESOLVED', 'DISMISSED']);
 
 /** Why guests at a table can or cannot order. INVALID tokens get a generic 404 instead. */
-export const qrOrderingStateSchema = z.enum(['OPEN', 'NO_CAPTAIN', 'CLOSED', 'TABLE_INACTIVE']);
+/**
+ * `TABLE_RESERVED`: the table is held for a booking (the floor shows Reserved from 90 minutes before
+ * it); `TABLE_CLEANING`: it is marked Needs cleaning. Guests already eating keep ordering because a
+ * table with an open order stays Occupied.
+ */
+export const qrOrderingStateSchema = z.enum([
+  'OPEN',
+  'NO_CAPTAIN',
+  'CLOSED',
+  'TABLE_INACTIVE',
+  'TABLE_RESERVED',
+  'TABLE_CLEANING',
+]);
 export type QrOrderingState = z.infer<typeof qrOrderingStateSchema>;
 
 /** `#RRGGBB` hex colour. */

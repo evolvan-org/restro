@@ -80,6 +80,10 @@ export class QrGuestService {
     if (table.restaurant.status !== 'ACTIVE' || !table.restaurant.qrOrderingEnabled)
       return 'CLOSED';
     if (!table.isActive) return 'TABLE_INACTIVE';
+    // Same rule as the floor board: a table is Reserved from RESERVATION_DURATION_MINUTES (90)
+    // before a booking, unless someone is already eating there (an open order keeps it Occupied).
+    if (table.currentStatus.code === 'RESERVED') return 'TABLE_RESERVED';
+    if (table.currentStatus.code === 'NEEDS_CLEANING') return 'TABLE_CLEANING';
     if (!table.captain || table.captain.status !== 'ACTIVE') return 'NO_CAPTAIN';
     return 'OPEN';
   }
@@ -588,6 +592,8 @@ export class QrGuestService {
       CLOSED: 'We’re not taking orders from this table right now',
       TABLE_INACTIVE: 'This table isn’t in use',
       NO_CAPTAIN: 'Ordering isn’t available at this table right now',
+      TABLE_RESERVED: 'This table is reserved. Please ask staff to seat you at another table.',
+      TABLE_CLEANING: 'This table is being got ready. Please ask staff to seat you.',
     }[state];
     throw new ConflictException(message);
   }

@@ -23,6 +23,7 @@ function table(overrides: Partial<QrTableContext> = {}): QrTableContext {
     tableNumber: '7',
     isActive: true,
     captainUserId: 'arjun',
+    currentStatus: { code: 'AVAILABLE' },
     captain: { id: 'arjun', name: 'Arjun Mehta', status: 'ACTIVE', lastSeenAt: new Date() },
     restaurant: {
       id: 'r1',
@@ -115,6 +116,44 @@ describe('QrGuestService.state', () => {
     const closed = table();
     closed.restaurant.qrOrderingEnabled = false;
     expect(QrGuestService.state(closed)).toBe('CLOSED');
+  });
+});
+
+describe('QrGuestService reserved and cleaning tables (option B)', () => {
+  it('blocks new guests at a table held for a booking or waiting to be cleaned', () => {
+    expect(QrGuestService.state(table({ currentStatus: { code: 'RESERVED' } }))).toBe(
+      'TABLE_RESERVED',
+    );
+    expect(QrGuestService.state(table({ currentStatus: { code: 'NEEDS_CLEANING' } }))).toBe(
+      'TABLE_CLEANING',
+    );
+  });
+
+  it('lets guests already eating keep ordering (an open order keeps the table Occupied)', () => {
+    expect(QrGuestService.state(table({ currentStatus: { code: 'OCCUPIED' } }))).toBe('OPEN');
+  });
+
+  it('shows reserved rather than no-captain, so managers are not alerted needlessly', async () => {
+    const { service, repository, notifier } = setup(
+      table({ currentStatus: { code: 'RESERVED' }, captain: null, captainUserId: null }),
+    );
+    const result = await service.resolve(TOKEN, 'ip');
+    expect(result.state).toBe('TABLE_RESERVED');
+    expect(repository.openNoCaptainAlert).not.toHaveBeenCalled();
+    expect(notifier.noCaptainScan).not.toHaveBeenCalled();
+  });
+
+  it('refuses to join or send an order at a reserved table', async () => {
+    const { service, repository } = setup(table({ currentStatus: { code: 'RESERVED' } }));
+    await expect(service.join(TOKEN, { name: 'Riya', phone: '9876543210' }, 'ip')).rejects.toThrow(
+      'This table is reserved',
+    );
+    await expect(
+      service.submitRound(TOKEN, SECRET, {
+        idempotencyKey: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repository.createRound).not.toHaveBeenCalled();
   });
 });
 

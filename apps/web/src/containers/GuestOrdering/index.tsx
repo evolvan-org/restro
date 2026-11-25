@@ -39,6 +39,7 @@ import {
   OfflineBanner,
   RestaurantClosed,
   TableInactive,
+  TableUnavailable,
 } from './EdgeStates';
 import ItemSheet from './ItemSheet';
 import JoinView from './JoinView';
@@ -103,8 +104,19 @@ export default function GuestOrdering({ token }: { token: string }): ReactElemen
   else if (data.state === 'TABLE_INACTIVE') content = <TableInactive brand={brand} />;
   else if (data.state === 'CLOSED' && !viewMenuWhileClosed)
     content = <RestaurantClosed brand={brand} onViewMenu={() => setViewMenuWhileClosed(true)} />;
+  else if (
+    (data.state === 'TABLE_RESERVED' || data.state === 'TABLE_CLEANING') &&
+    !viewMenuWhileClosed
+  )
+    content = (
+      <TableUnavailable
+        brand={brand}
+        reason={data.state === 'TABLE_RESERVED' ? 'reserved' : 'cleaning'}
+        onViewMenu={() => setViewMenuWhileClosed(true)}
+      />
+    );
   else if (!menu.data) content = <MenuSkeleton />;
-  else if (data.state === 'CLOSED' || data.state === 'NO_CAPTAIN')
+  else if (data.state !== 'OPEN')
     content = (
       <MenuView
         brand={brand}

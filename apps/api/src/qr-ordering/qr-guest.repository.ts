@@ -9,6 +9,7 @@ const tableContextSelect = {
   tableNumber: true,
   isActive: true,
   captainUserId: true,
+  currentStatus: { select: { code: true } },
   captain: { select: { id: true, name: true, status: true, lastSeenAt: true } },
   restaurant: {
     select: {
