@@ -1,16 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import {
   API_ERROR_CODES,
+  baseUnitOf,
   type CompleteOnboardingData,
   type CompleteOnboardingDetails,
+  effectiveMenuRowPrice,
+  includedMenuRows,
   type OnboardingStage,
+  portionFactorForVariant,
   summarizeMenuCategories,
   tableStatusCodeFromName,
+  type Unit,
 } from '@rms/api-contract';
 import {
   BILL_CANCELLATION_REASONS,
+  type InventoryBaseUnit,
   Prisma,
   type ServingType,
   SYSTEM_TABLE_STATUSES,
@@ -36,6 +42,7 @@ export type CompletionInput = {
   details?: CompleteOnboardingDetails;
   floor?: NonNullable<CompleteOnboardingData['floor']>;
   menu?: NonNullable<CompleteOnboardingData['menu']>;
+  recipes?: NonNullable<CompleteOnboardingData['recipes']>;
   inventory?: NonNullable<CompleteOnboardingData['inventory']>;
   team: readonly TeamAccount[];
 };
@@ -50,6 +57,8 @@ export type CompletionResult = {
     menuItems: number;
     stockItems: number;
     openingStock: number;
+    menuVariants: number;
+    recipes: number;
     teamMembers: number;
   };
   users: { id: string; email: string }[];
@@ -92,8 +101,12 @@ export class OnboardingCompletionWriter {
             menuItems: 0,
             stockItems: 0,
             openingStock: 0,
+            menuVariants: 0,
+            recipes: 0,
             teamMembers: 0,
           };
+          // Menu row key → created item id, so recipes can attach after inventory exists.
+          let menuItemIds = new Map<string, string>();
 
           stage = 'details';
           const restaurantName = input.details
@@ -114,7 +127,11 @@ export class OnboardingCompletionWriter {
 
           if (input.menu && input.menu.mode !== 'later' && input.menu.rows.length) {
             stage = 'menu';
-            Object.assign(counts, await this.writeMenu(tx, input.restaurantId, input.menu));
+            const menu = await this.writeMenu(tx, input.restaurantId, input.menu);
+            menuItemIds = menu.itemIds;
+            counts.menuCategories = menu.menuCategories;
+            counts.menuItems = menu.menuItems;
+            counts.menuVariants = menu.menuVariants;
           }
 
           if (input.inventory?.rows.length) {
@@ -122,6 +139,14 @@ export class OnboardingCompletionWriter {
             const result = await this.writeInventory(tx, input);
             counts.stockItems = result.created;
             counts.openingStock = result.opened;
+          }
+
+          // Recipes reference stock items, so they go in after inventory.
+          if (input.recipes && menuItemIds.size) {
+            stage = 'recipes';
+            const result = await this.writeRecipes(tx, input, menuItemIds);
+            counts.recipes = result.recipes;
+            counts.stockItems += result.stockItemsCreated;
           }
 
           stage = 'team';
@@ -294,9 +319,14 @@ export class OnboardingCompletionWriter {
     tx: Prisma.TransactionClient,
     restaurantId: string,
     menu: NonNullable<CompletionInput['menu']>,
-  ): Promise<Pick<CompletionResult['counts'], 'menuCategories' | 'menuItems'>> {
+  ): Promise<
+    Pick<CompletionResult['counts'], 'menuCategories' | 'menuItems' | 'menuVariants'> & {
+      itemIds: Map<string, string>;
+    }
+  > {
+    const rows = includedMenuRows(menu.rows);
     const categoryIds = new Map<string, string>();
-    for (const [sortOrder, category] of summarizeMenuCategories(menu.rows).entries()) {
+    for (const [sortOrder, category] of summarizeMenuCategories(rows).entries()) {
       const created = await tx.menuCategory.create({
         data: { restaurantId, name: category.name, categoryType: category.type, sortOrder },
         select: { id: true },
@@ -304,25 +334,131 @@ export class OnboardingCompletionWriter {
       categoryIds.set(category.name.toLowerCase(), created.id);
     }
 
+    // Ids are assigned here so variants and recipes can reference items without a read-back.
+    const itemIds = new Map(rows.map((row) => [row.key, randomUUID()]));
     const result = await tx.menuItem.createMany({
-      data: menu.rows.map((row) => {
+      data: rows.map((row) => {
         const categoryId = categoryIds.get(row.category.trim().toLowerCase());
         if (!categoryId) throw new Error(`Menu category ${row.category} was not created`);
         return {
+          id: itemIds.get(row.key)!,
           restaurantId,
           categoryId,
           name: row.name.trim(),
           description: row.description.trim() || null,
-          price: new Prisma.Decimal(row.price.trim()),
+          price: new Prisma.Decimal(effectiveMenuRowPrice(row).trim()),
           itemType: row.type.trim().toUpperCase() as ServingType,
           isAvailable: row.available,
+          dietType: row.dietType ?? null,
         };
       }),
     });
-    return { menuCategories: categoryIds.size, menuItems: result.count };
+    const variants = rows.flatMap((row) =>
+      (row.variants ?? []).map((variant, sortOrder) => ({
+        restaurantId,
+        menuItemId: itemIds.get(row.key)!,
+        name: variant.name.trim(),
+        price: new Prisma.Decimal(variant.price.trim()),
+        portionFactor: new Prisma.Decimal(portionFactorForVariant(variant.name)),
+        sortOrder,
+      })),
+    );
+    if (variants.length) await tx.menuItemVariant.createMany({ data: variants });
+    return {
+      menuCategories: categoryIds.size,
+      menuItems: result.count,
+      menuVariants: variants.length,
+      itemIds,
+    };
   }
 
-  private writeInventory(
+  /**
+   * Attaches each dish's recipe. Ingredients the inventory step didn't create are added here (with
+   * their estimated cost), so a skipped inventory step never loses a recipe.
+   */
+  private async writeRecipes(
+    tx: Prisma.TransactionClient,
+    input: CompletionInput,
+    menuItemIds: ReadonlyMap<string, string>,
+  ): Promise<{ recipes: number; stockItemsCreated: number }> {
+    const recipes = input.recipes!;
+    const { restaurantId } = input;
+    const key = (name: string): string => name.trim().toLowerCase();
+
+    const existing = await tx.stockItem.findMany({
+      where: { restaurantId },
+      select: { id: true, name: true, baseUnit: true },
+    });
+    const stock = new Map(existing.map((item) => [key(item.name), item]));
+    const registry = new Map(
+      recipes.ingredients.map((ingredient) => [key(ingredient.name), ingredient]),
+    );
+
+    let stockItemsCreated = 0;
+    let recipeCount = 0;
+    const now = new Date();
+    for (const dish of recipes.dishes) {
+      const menuItemId = menuItemIds.get(dish.menuRowKey);
+      if (!menuItemId) continue; // The dish's menu row was left out of the import.
+
+      if (dish.status === 'no-recipe') {
+        await tx.menuItem.update({ where: { id: menuItemId }, data: { recipeRequired: false } });
+        continue;
+      }
+      if (!dish.lines.length) continue;
+
+      const lines: Prisma.RecipeItemCreateManyInput[] = [];
+      for (const line of dish.lines) {
+        const unit = line.unit.trim().toUpperCase() as Unit;
+        const base = baseUnitOf(unit) as InventoryBaseUnit;
+        let item = stock.get(key(line.ingredient));
+        if (!item) {
+          const known = registry.get(key(line.ingredient));
+          const estimated = known?.estimatedPricePerBase.trim();
+          item = await tx.stockItem.create({
+            data: {
+              restaurantId,
+              name: line.ingredient.trim(),
+              baseUnit: (known?.baseUnit.trim().toUpperCase() as InventoryBaseUnit) || base,
+              estimatedUnitCost:
+                estimated && Number(estimated) > 0 ? new Prisma.Decimal(estimated) : null,
+            },
+            select: { id: true, name: true, baseUnit: true },
+          });
+          stock.set(key(item.name), item);
+          stockItemsCreated += 1;
+        }
+        if (item.baseUnit && item.baseUnit !== base) {
+          throw new BadRequestException(
+            `${line.ingredient.trim()} is stocked in ${item.baseUnit.toLowerCase()}, but a recipe uses ${unit.toLowerCase()}. Change the unit in Recipes & costs.`,
+          );
+        }
+        lines.push({
+          menuItemId,
+          stockItemId: item.id,
+          quantity: new Prisma.Decimal(line.quantity.trim()),
+          unit,
+        });
+      }
+      await tx.recipeItem.createMany({ data: lines });
+      await tx.menuItem.update({
+        where: { id: menuItemId },
+        data: {
+          recipeSource: dish.fromAi ? 'AI_DRAFT' : 'MANUAL',
+          recipeReviewedAt: dish.status === 'approved' || !dish.fromAi ? now : null,
+        },
+      });
+      recipeCount += 1;
+    }
+
+    await tx.restaurant.update({
+      where: { id: restaurantId },
+      data: { targetFoodCostMin: recipes.targetMin, targetFoodCostMax: recipes.targetMax },
+    });
+    return { recipes: recipeCount, stockItemsCreated };
+  }
+
+  private async writeInventory(
     tx: Prisma.TransactionClient,
     input: CompletionInput,
   ): Promise<{ created: number; opened: number }> {
@@ -344,7 +480,22 @@ export class OnboardingCompletionWriter {
           : undefined,
       };
     });
-    return this.inventory.createItemsInTransaction(tx, input.restaurantId, input.ownerId, rows);
+    const result = await this.inventory.createItemsInTransaction(
+      tx,
+      input.restaurantId,
+      input.ownerId,
+      rows,
+    );
+    // Estimated prices keep food cost meaningful until the first real purchase.
+    for (const row of input.inventory?.rows ?? []) {
+      const estimated = row.estimatedUnitCost?.trim();
+      if (!estimated || !(Number(estimated) > 0)) continue;
+      await tx.stockItem.updateMany({
+        where: { restaurantId: input.restaurantId, name: row.name.trim() },
+        data: { estimatedUnitCost: new Prisma.Decimal(estimated) },
+      });
+    }
+    return result;
   }
 
   private async writeTeam(
