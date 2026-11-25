@@ -63,8 +63,8 @@ export function toInventoryMovement(row: InventoryMovementRecord): InventoryMove
 }
 
 export function toInventorySupplier(row: SupplierRecord): InventorySupplier {
-  const { id, name, contactName, email, phone, address, isActive } = row;
-  return { id, name, contactName, email, phone, address, isActive };
+  const { id, name, contactName, email, phone, address, gstin, isActive } = row;
+  return { id, name, contactName, email, phone, address, gstin, isActive };
 }
 
 export function toInventoryPurchase(row: InventoryPurchaseRecord): InventoryPurchase {
@@ -95,6 +95,9 @@ export function toInventoryReceipt(row: InventoryReceiptRecord): InventoryReceip
     supplier: row.supplier,
     purchaseOrder: row.purchaseOrder,
     notes: row.notes,
+    supplierInvoiceNumber: row.supplierInvoiceNumber,
+    supplierInvoiceDate: dateOnly(row.supplierInvoiceDate),
+    invoiceTotal: row.invoiceTotal?.toFixed(2) ?? null,
     createdAt: row.createdAt.toISOString(),
     lines: row.lines.map((line) => ({
       id: line.id,

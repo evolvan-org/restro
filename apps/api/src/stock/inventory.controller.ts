@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   Header,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -24,6 +26,7 @@ import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiProduces,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -78,6 +81,10 @@ import {
   logInventoryWasteSchema,
   type OpeningInventoryStock,
   openingStockSchema,
+  type ReceiptChecksRequest,
+  receiptChecksRequestSchema,
+  type ReceiptChecksResponse,
+  receiptChecksResponseSchema,
   type UpdateInventoryItem,
   updateInventoryItemSchema,
   type UpdateInventoryPurchaseStatus,
@@ -88,6 +95,7 @@ import {
 import { Permission } from '@rms/permissions';
 import type { Paginated } from '@rms/shared';
 
+import { AiJobsService } from '../ai/jobs/ai-jobs.service';
 import type { Actor } from '../common/auth/authenticated-request';
 import { CurrentActor } from '../common/auth/current-actor.decorator';
 import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
@@ -108,7 +116,10 @@ import { InventoryService } from './inventory.service';
 @RequirePermissions(Permission.INVENTORY_MANAGE)
 @Controller('inventory')
 export class InventoryController {
-  constructor(private readonly inventory: InventoryService) {}
+  constructor(
+    private readonly inventory: InventoryService,
+    private readonly scans: AiJobsService,
+  ) {}
 
   @Get('options')
   @ApiOkResponse({ schema: zodOpenApiSchema(inventoryOptionsSchema) })
@@ -320,10 +331,26 @@ export class InventoryController {
   @Post('goods-receipts')
   @ApiBody({ schema: zodOpenApiSchema(createInventoryReceiptSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(inventoryReceiptSchema) })
-  receive(
+  @ApiConflictResponse(apiError('The supplier invoice number was already recorded'))
+  async receive(
     @CurrentActor() actor: Actor,
     @Body(new ZodValidationPipe(createInventoryReceiptSchema)) input: CreateInventoryReceipt,
   ): Promise<InventoryReceipt> {
-    return this.inventory.receive(actor, input);
+    const receipt = await this.inventory.receive(actor, input);
+    // The scanned invoice is now on record: its photos are no longer needed.
+    if (input.scanJobId) await this.scans.purgeAfterUse(actor.restaurantId, [input.scanJobId]);
+    return receipt;
+  }
+
+  @Post('goods-receipts/checks')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Duplicate-invoice and price-jump warnings before saving a receipt' })
+  @ApiBody({ schema: zodOpenApiSchema(receiptChecksRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(receiptChecksResponseSchema) })
+  receiptChecks(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(receiptChecksRequestSchema)) input: ReceiptChecksRequest,
+  ): Promise<ReceiptChecksResponse> {
+    return this.inventory.receiptChecks(actor, input);
   }
 }
