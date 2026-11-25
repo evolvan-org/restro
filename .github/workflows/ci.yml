@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, development]
 
 # A new push to the same PR cancels the in-flight run (save runner minutes).
 concurrency:

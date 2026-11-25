@@ -3,6 +3,9 @@ name: Deploy
 # Deploys main to the production VPS. Runs on a self-hosted runner installed on
 # the VPS itself (label `vps-prod`), which connects out to GitHub, so the server
 # needs no inbound SSH. See docker/README.md → "Continuous deployment".
+#
+# main only receives changes through release PRs from `development`, enforced by
+# the required `Release source` check (release-source.yml) on main.
 on:
   push:
     branches: [main]
@@ -21,6 +24,8 @@ jobs:
     name: Deploy to VPS
     # Only this workflow may target the VPS runner; PR workflows stay on GitHub-hosted runners.
     runs-on: [self-hosted, vps-prod]
+    # "Run workflow" lets you pick any branch; only ever deploy main.
+    if: github.ref == 'refs/heads/main'
     environment: production
     timeout-minutes: 30
     env:

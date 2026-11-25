@@ -66,6 +66,8 @@ idempotently.
 ## Continuous deployment (production VPS)
 
 Every push to `main` deploys automatically via `.github/workflows/deploy.yml`.
+`main` only takes release PRs from `development` (see
+`docs/01-development-guide.md` → "Releases").
 It runs on a **self-hosted GitHub Actions runner installed on the VPS**: the
 runner connects _out_ to GitHub, so the server accepts no inbound SSH from
 GitHub's rotating runner IPs.
