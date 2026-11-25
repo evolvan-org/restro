@@ -297,6 +297,45 @@ export default function RestaurantSettings({
                     </FieldDescription>
                     <FieldError>{errors.maxDiscountPercent?.message}</FieldError>
                   </Field>
+
+                  <Field
+                    data-invalid={Boolean(errors.targetFoodCostMin || errors.targetFoodCostMax)}
+                  >
+                    <FieldLabel htmlFor="restaurant-food-cost-min">Target food cost (%)</FieldLabel>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="restaurant-food-cost-min"
+                        type="number"
+                        inputMode="decimal"
+                        min={1}
+                        max={90}
+                        step="0.5"
+                        className="w-24"
+                        disabled={!canEdit}
+                        aria-label="Lowest target food cost, percent"
+                        {...form.register('targetFoodCostMin', { valueAsNumber: true })}
+                      />
+                      <span aria-hidden>–</span>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min={1}
+                        max={90}
+                        step="0.5"
+                        className="w-24"
+                        disabled={!canEdit}
+                        aria-label="Highest target food cost, percent"
+                        {...form.register('targetFoodCostMax', { valueAsNumber: true })}
+                      />
+                    </div>
+                    <FieldDescription>
+                      Dishes up to the higher number are healthy; up to 7 points above it, watch;
+                      beyond that, poor.
+                    </FieldDescription>
+                    <FieldError>
+                      {errors.targetFoodCostMin?.message ?? errors.targetFoodCostMax?.message}
+                    </FieldError>
+                  </Field>
                 </>
               )}
 

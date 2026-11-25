@@ -3,13 +3,26 @@
 import type { MenuItem, ServingType } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
-import { Archive, Loader2, Pencil, Plus, Search, ToggleLeft, ToggleRight } from 'lucide-react';
+import {
+  Archive,
+  Camera,
+  Loader2,
+  Pencil,
+  PieChart,
+  Plus,
+  Search,
+  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+} from 'lucide-react';
+import Link from 'next/link';
 import { type ReactElement, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import { DietMarker } from '@/components/AiScan/markers';
 import MenuItemPriceEditor from '@/components/MenuItemPriceEditor';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -41,6 +54,7 @@ type MenuItemFilters = {
   categoryId: string;
   itemType: ServingType | '';
   isAvailable: '' | 'true' | 'false';
+  recipeStatus: '' | 'ai-unreviewed';
   page: number;
 };
 
@@ -55,15 +69,25 @@ export default function MenuItems(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.MENU_READ);
   const canWrite = can(Permission.MENU_WRITE);
+  const canScan = canWrite && can(Permission.MENU_SCAN);
+  const canSeeMargins = can(Permission.REPORT_READ);
 
   const filters = useForm<MenuItemFilters>({
-    defaultValues: { q: '', categoryId: '', itemType: '', isAvailable: '', page: 1 },
+    defaultValues: {
+      q: '',
+      categoryId: '',
+      itemType: '',
+      isAvailable: '',
+      recipeStatus: '',
+      page: 1,
+    },
   });
   const q = useWatch({ control: filters.control, name: 'q' });
   const categoryId = useWatch({ control: filters.control, name: 'categoryId' });
   const itemType = useWatch({ control: filters.control, name: 'itemType' });
   const isAvailable = useWatch({ control: filters.control, name: 'isAvailable' });
   const page = useWatch({ control: filters.control, name: 'page' });
+  const recipeStatus = useWatch({ control: filters.control, name: 'recipeStatus' });
   const debouncedQ = useDebouncedValue(q.trim(), SEARCH_DEBOUNCE_MS);
   const resetPage = (): void => filters.setValue('page', 1);
 
@@ -76,6 +100,7 @@ export default function MenuItems(): ReactElement | null {
       categoryId: categoryId || undefined,
       itemType: itemType || undefined,
       isAvailable: isAvailable === '' ? undefined : isAvailable === 'true',
+      recipeStatus: recipeStatus || undefined,
       activeOnly: false,
     },
     canRead,
@@ -104,7 +129,7 @@ export default function MenuItems(): ReactElement | null {
   const categoriesById = new Map(
     (categories.data ?? []).map((category) => [category.id, category]),
   );
-  const hasFilters = Boolean(debouncedQ || categoryId || itemType || isAvailable);
+  const hasFilters = Boolean(debouncedQ || categoryId || itemType || isAvailable || recipeStatus);
 
   const toggleAvailability = async (item: MenuItem): Promise<void> => {
     try {
@@ -126,12 +151,26 @@ export default function MenuItems(): ReactElement | null {
               : 'The dishes and drinks your restaurant sells, with their recipes.'}
           </p>
         </div>
-        {canWrite && (
-          <Button type="button" onClick={() => showForm()}>
-            <Plus aria-hidden />
-            Add item
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canSeeMargins && (
+            <Link href="/margins" className={buttonVariants({ variant: 'outline' })}>
+              <PieChart aria-hidden />
+              Margins
+            </Link>
+          )}
+          {canScan && (
+            <Link href="/menu/import" className={buttonVariants({ variant: 'outline' })}>
+              <Camera aria-hidden />
+              Import from photo
+            </Link>
+          )}
+          {canWrite && (
+            <Button type="button" onClick={() => showForm()}>
+              <Plus aria-hidden />
+              Add item
+            </Button>
+          )}
+        </div>
       </div>
 
       <form
@@ -191,6 +230,13 @@ export default function MenuItems(): ReactElement | null {
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        <NativeSelect
+          aria-label="Filter by recipe"
+          {...filters.register('recipeStatus', { onChange: resetPage })}
+        >
+          <NativeSelectOption value="">All recipes</NativeSelectOption>
+          <NativeSelectOption value="ai-unreviewed">AI draft, not yet reviewed</NativeSelectOption>
+        </NativeSelect>
       </form>
 
       {items.isError ? (
@@ -220,7 +266,18 @@ export default function MenuItems(): ReactElement | null {
                 return (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">
+                      {item.dietType && (
+                        <span className="mr-2 inline-flex align-middle">
+                          <DietMarker diet={item.dietType} showLabel={false} />
+                        </span>
+                      )}
                       {item.name}
+                      {item.recipeSource === 'AI_DRAFT' && !item.recipeReviewedAt && (
+                        <Badge variant="outline" className="ml-2 border-indigo-300 text-indigo-800">
+                          <Sparkles aria-hidden />
+                          AI draft, not reviewed
+                        </Badge>
+                      )}
                       {item.isActive && item.recipeRequired && item.recipe.length === 0 && (
                         <Badge variant="outline" className="ml-2 border-amber-300 text-amber-800">
                           Needs recipe
@@ -236,7 +293,17 @@ export default function MenuItems(): ReactElement | null {
                       )}
                     </TableCell>
                     <TableCell>
-                      {canWrite && item.isActive ? <MenuItemPriceEditor item={item} /> : item.price}
+                      {item.variants.length ? (
+                        <span className="text-sm tabular-nums">
+                          {item.variants
+                            .map((variant) => `${variant.name} ${variant.price}`)
+                            .join(' · ')}
+                        </span>
+                      ) : canWrite && item.isActive ? (
+                        <MenuItemPriceEditor item={item} />
+                      ) : (
+                        item.price
+                      )}
                     </TableCell>
                     <TableCell>
                       {!item.isActive ? (

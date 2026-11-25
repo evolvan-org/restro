@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   type LucideIcon,
+  PieChart,
   Receipt,
   Soup,
 } from 'lucide-react';
@@ -82,6 +83,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: Box,
         href: '/inventory',
         permission: Permission.INVENTORY_MANAGE,
+      },
+      {
+        label: 'Margins',
+        icon: PieChart,
+        href: '/margins',
+        permission: Permission.REPORT_READ,
       },
     ],
   },
