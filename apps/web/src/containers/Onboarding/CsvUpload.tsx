@@ -67,13 +67,13 @@ export function CsvUpload({
         </p>
       )}
       {fileName && !error && (
-        <p className="flex items-center gap-2 text-sm text-neutral-700">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <FileText className="size-4" aria-hidden />
           <strong className="font-semibold">{fileName}</strong>
           {summary && <span>· {summary}</span>}
         </p>
       )}
-      <p className="text-xs text-neutral-600">
+      <p className="text-xs text-muted-foreground">
         Files up to {Math.round(maxBytes / 1024)} KB. The file is checked here and nothing is saved
         until you finish setup.
       </p>

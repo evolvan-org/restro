@@ -88,7 +88,7 @@ export default function TeamStep(): ReactElement {
         ),
       }}
     >
-      <p className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+      <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
         When setup finishes, we email each person an invitation to set their own password.
         {!profile.data?.emailVerifiedAt && profile.data && (
           <span className="mt-2 flex items-start gap-2 text-amber-900">

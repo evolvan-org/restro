@@ -124,7 +124,7 @@ export default function DetailsStep(): ReactElement {
         </Field>
         <Field data-invalid={Boolean(errors.address)}>
           <FieldLabel htmlFor="r-addr">
-            Address <span className="font-normal text-neutral-600">· printed on invoices</span>
+            Address <span className="font-normal text-muted-foreground">· printed on invoices</span>
           </FieldLabel>
           <Textarea
             id="r-addr"
@@ -141,7 +141,7 @@ export default function DetailsStep(): ReactElement {
         <Field data-invalid={Boolean(errors.gstNumber)}>
           <FieldLabel htmlFor="r-gst">
             GSTIN{' '}
-            <span className="font-normal text-neutral-600">· needed on your GST invoices</span>
+            <span className="font-normal text-muted-foreground">· needed on your GST invoices</span>
           </FieldLabel>
           <Input
             id="r-gst"
@@ -183,8 +183,8 @@ export default function DetailsStep(): ReactElement {
                   onClick={() => update({ defaultGstRate: rate })}
                   className={`h-11 min-w-16 rounded-full border px-4 text-sm transition-colors ${
                     checked
-                      ? 'border-neutral-900 bg-neutral-900 font-semibold text-white'
-                      : 'border-neutral-300 bg-white font-medium hover:border-neutral-400'
+                      ? 'border-primary bg-primary font-semibold text-white'
+                      : 'border-zinc-300 dark:border-zinc-700 bg-card font-medium hover:border-zinc-300 dark:border-zinc-700'
                   }`}
                 >
                   {rate}%
@@ -192,7 +192,7 @@ export default function DetailsStep(): ReactElement {
               );
             })}
           </div>
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-muted-foreground">
             Most standalone restaurants charge 5%. You can override it per bill.
           </p>
         </fieldset>
@@ -209,7 +209,7 @@ export default function DetailsStep(): ReactElement {
                 aria-invalid={Boolean(errors.maxDiscountPercent)}
                 onChange={(event) => update({ maxDiscountPercent: event.target.value })}
               />
-              <span className="absolute top-1/2 right-3 -translate-y-1/2 text-sm text-neutral-600">
+              <span className="absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">
                 %
               </span>
             </div>
@@ -239,7 +239,9 @@ export default function DetailsStep(): ReactElement {
         <Field data-invalid={Boolean(errors.timezone)}>
           <FieldLabel htmlFor="r-tz">
             Time zone{' '}
-            <span className="font-normal text-neutral-600">· used for reports and day close</span>
+            <span className="font-normal text-muted-foreground">
+              · used for reports and day close
+            </span>
           </FieldLabel>
           <NativeSelect
             className="w-full [&_select]:h-11"

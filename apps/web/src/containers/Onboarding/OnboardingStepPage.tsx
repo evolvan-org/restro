@@ -11,6 +11,7 @@ import DetailsStep from './steps/DetailsStep';
 import FloorStep from './steps/FloorStep';
 import InventoryStep from './steps/InventoryStep';
 import MenuStep from './steps/MenuStep';
+import RecipesStep from './steps/RecipesStep';
 import ReviewStep from './steps/ReviewStep';
 import TeamStep from './steps/TeamStep';
 
@@ -18,6 +19,7 @@ const STEP_COMPONENTS = {
   details: DetailsStep,
   floor: FloorStep,
   menu: MenuStep,
+  recipes: RecipesStep,
   inventory: InventoryStep,
   team: TeamStep,
   review: ReviewStep,

@@ -31,9 +31,11 @@ export default function OnboardingLayout({ children }: { children: ReactNode }):
 
   if (state.isError) {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-neutral-50 px-4">
+      <main className="flex min-h-svh items-center justify-center bg-muted px-4">
         <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-          <p className="text-sm text-neutral-700">We couldn&apos;t load your setup progress.</p>
+          <p className="text-sm text-muted-foreground">
+            We couldn&apos;t load your setup progress.
+          </p>
           <Button onClick={() => void state.refetch()}>Try again</Button>
         </div>
       </main>
@@ -41,7 +43,7 @@ export default function OnboardingLayout({ children }: { children: ReactNode }):
   }
 
   if (!loaded.current || (completed && !onFinishRoute)) {
-    return <div className="min-h-svh bg-neutral-50" aria-busy="true" />;
+    return <div className="min-h-svh bg-muted" aria-busy="true" />;
   }
 
   return <OnboardingProvider server={loaded.current}>{children}</OnboardingProvider>;

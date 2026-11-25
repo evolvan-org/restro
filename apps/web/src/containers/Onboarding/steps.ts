@@ -29,30 +29,39 @@ export const STEPS: readonly StepMeta[] = [
     number: 3,
     label: 'Menu',
     tag: 'Optional',
-    need: 'A CSV of your dishes and drinks. We give you a template.',
+    need: 'Scan a photo of your menu, import a CSV or add items by hand.',
+  },
+  {
+    step: 'recipes',
+    number: 4,
+    label: 'Recipes & costs',
+    tag: 'Optional',
+    need: 'AI drafts a recipe and food cost for every dish. You review them.',
   },
   {
     step: 'inventory',
-    number: 4,
+    number: 5,
     label: 'Inventory',
     tag: 'Optional',
-    need: 'A CSV of ingredients, with opening stock if you have it.',
+    need: 'Ingredients from your recipes, real costs from a supplier invoice.',
   },
   {
     step: 'team',
-    number: 5,
+    number: 6,
     label: 'Team',
     tag: 'Optional',
     need: 'Names and emails of managers, captains and cashiers.',
   },
   {
     step: 'review',
-    number: 6,
+    number: 7,
     label: 'Review & finish',
     tag: 'Final step',
     need: 'Check everything, then we build your restaurant.',
   },
 ];
+
+export const STEP_COUNT = STEPS.length;
 
 export function stepMeta(step: OnboardingStep): StepMeta {
   return STEPS.find((meta) => meta.step === step) ?? STEPS[0]!;
