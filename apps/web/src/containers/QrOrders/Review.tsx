@@ -60,19 +60,15 @@ export default function QrRoundReview({ roundId }: { roundId: string }): ReactEl
           </h2>
           <div className="flex flex-col gap-2">
             {queue.data?.awaiting.map((card) => (
-              <Link
+              <QueueOrderCard
                 key={card.roundId}
-                href={`/qr-orders/rounds/${card.roundId}`}
-                className="rounded-[10px]"
-              >
-                <QueueOrderCard
-                  card={card}
-                  now={now}
-                  escalationMinutes={queue.data.escalationMinutes}
-                  readOnly={!card.canAct}
-                  selected={card.roundId === roundId}
-                />
-              </Link>
+                card={card}
+                now={now}
+                escalationMinutes={queue.data.escalationMinutes}
+                readOnly={!card.canAct}
+                selected={card.roundId === roundId}
+                linked
+              />
             ))}
           </div>
         </div>

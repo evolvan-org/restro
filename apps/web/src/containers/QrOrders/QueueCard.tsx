@@ -25,27 +25,34 @@ export function QueueOrderCard({
   escalationMinutes,
   readOnly,
   selected,
+  linked,
 }: {
   card: QrQueueCard;
   now: number;
   escalationMinutes: number;
   readOnly: boolean;
   selected?: boolean;
+  /**
+   * The whole card is the link (tablet review list, C3d) and shows no action button: a link can't
+   * contain another link.
+   */
+  linked?: boolean;
 }): ReactElement {
   const waiting = card.status === 'awaiting' || card.status === 'escalated';
   const tone = timerTone(card.submittedAt, escalationMinutes, card.escalatedAt !== null, now);
   const bar = waiting ? BAR_COLOR[tone] : null;
   const href = `/qr-orders/rounds/${card.roundId}`;
-  return (
-    <article
-      className="rounded-[10px] border bg-card p-3.5 text-card-foreground"
-      style={{
-        boxShadow: bar ? `inset 3px 0 0 ${bar}` : undefined,
-        outline: selected ? '2px solid var(--foreground)' : undefined,
-        outlineOffset: selected ? 2 : undefined,
-      }}
-      aria-label={`Table ${card.table.number}, round ${card.roundNumber}`}
-    >
+  const shell = {
+    className: 'block rounded-[10px] border bg-card p-3.5 text-card-foreground',
+    style: {
+      boxShadow: bar ? `inset 3px 0 0 ${bar}` : undefined,
+      outline: selected ? '2px solid var(--foreground)' : undefined,
+      outlineOffset: selected ? 2 : undefined,
+    },
+    'aria-label': `Table ${card.table.number}, round ${card.roundNumber}`,
+  };
+  const content = (
+    <>
       <div className="flex items-center gap-2">
         <b className="text-[22px] leading-none">Table {card.table.number}</b>
         <span className="inline-flex h-5 items-center rounded-full border px-2 text-[11px] font-semibold">
@@ -94,7 +101,7 @@ export function QueueOrderCard({
       <div className="mt-3 flex items-center gap-2">
         <QrStatusPill status={card.status} />
         <span className="ml-auto">
-          {waiting && card.canAct ? (
+          {linked ? null : waiting && card.canAct ? (
             <Link href={href} className={buttonVariants({ className: 'min-h-10 px-3.5' })}>
               Review
             </Link>
@@ -108,7 +115,14 @@ export function QueueOrderCard({
           ) : null}
         </span>
       </div>
-    </article>
+    </>
+  );
+  return linked ? (
+    <Link href={href} aria-current={selected ? 'page' : undefined} {...shell}>
+      {content}
+    </Link>
+  ) : (
+    <article {...shell}>{content}</article>
   );
 }
 
