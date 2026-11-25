@@ -8,6 +8,11 @@ import type {
   OrderRecord,
 } from './orders.repository';
 
+/** "Chicken Tikka (Half)" for a portion; the plain name otherwise. */
+export function lineName(name: string, variantName: string | null | undefined): string {
+  return variantName ? `${name} (${variantName})` : name;
+}
+
 export function toOrder(record: OrderRecord): Order {
   const { kots, ...order } = record;
   return {
@@ -21,7 +26,7 @@ export function toOrder(record: OrderRecord): Order {
     items: record.items.map(({ menuItem, kotItems, ...item }) => ({
       ...item,
       sentQuantity: sentQuantity(kotItems),
-      name: menuItem.name,
+      name: lineName(menuItem.name, item.variantName),
       itemType: menuItem.itemType,
       unitPrice: item.unitPrice.toFixed(2),
       lineTotal: orderItemTotal(item).toFixed(2),
@@ -42,7 +47,7 @@ export function toKot(record: KotRecord): Kot {
     items: record.items.map(({ orderItem, ...item }) => ({
       ...item,
       menuItemId: orderItem.menuItemId,
-      name: orderItem.menuItem.name,
+      name: lineName(orderItem.menuItem.name, orderItem.variantName),
       specialInstructions: orderItem.specialInstructions,
     })),
   };
@@ -93,7 +98,7 @@ export function toCaptainOrderSummary(record: CaptainOrderRecord): CaptainOrderS
     status: record.status,
     bill: record.bill ? { billNumber: record.bill.billNumber, status: record.bill.status } : null,
     itemCount: active.reduce((count, item) => count + item.quantity, 0),
-    itemNames: [...new Set(active.map((item) => item.menuItem.name))],
+    itemNames: [...new Set(active.map((item) => lineName(item.menuItem.name, item.variantName)))],
     kotCounts,
     openedAt: record.openedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,

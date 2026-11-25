@@ -32,14 +32,24 @@ export class OrderItemsService {
       const menuItem = await context.findMenuItem(input.menuItemId);
       if (!menuItem) throw new NotFoundException('Menu item not found');
       if (!menuItem.isAvailable) throw new BadRequestException('Menu item is unavailable');
+      // An item with portions is always ordered as one of them, at that portion's price.
+      let variant: { id: string; name: string; price: typeof menuItem.price } | null = null;
+      if (menuItem.variants.length) {
+        variant = menuItem.variants.find((entry) => entry.id === input.variantId) ?? null;
+        if (!variant) throw new BadRequestException('Choose a portion for this item');
+      } else if (input.variantId) {
+        throw new BadRequestException('This item has no portions');
+      }
+      const unitPrice = variant?.price ?? menuItem.price;
       const specialInstructions = input.specialInstructions?.trim() || null;
       // Fold into an identical active line (same item, note and price snapshot) so repeated
       // additions raise its quantity. Units already sent stay on their KOT; the next send
       // carries only the difference.
       const existing = await context.findMergeableItem({
         menuItemId: menuItem.id,
+        variantId: variant?.id ?? null,
         specialInstructions,
-        unitPrice: menuItem.price,
+        unitPrice,
       });
       if (existing) {
         const quantity = existing.quantity + input.quantity;
@@ -51,9 +61,11 @@ export class OrderItemsService {
       }
       const itemId = await context.add({
         menuItemId: menuItem.id,
+        variantId: variant?.id ?? null,
+        variantName: variant?.name ?? null,
         quantity: input.quantity,
         specialInstructions,
-        unitPrice: menuItem.price,
+        unitPrice,
       });
       return this.response(context, itemId);
     });

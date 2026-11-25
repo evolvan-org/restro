@@ -22,6 +22,8 @@ const orderSelect = {
     select: {
       id: true,
       menuItemId: true,
+      variantId: true,
+      variantName: true,
       kotItems: { select: { quantity: true } },
       menuItem: { select: { name: true, itemType: true } },
       quantity: true,
@@ -52,6 +54,7 @@ const kotSelect = {
         select: {
           menuItemId: true,
           specialInstructions: true,
+          variantName: true,
           menuItem: { select: { name: true } },
         },
       },
@@ -88,6 +91,7 @@ const captainOrderSelect = {
       quantity: true,
       unitPrice: true,
       status: true,
+      variantName: true,
       menuItem: { select: { name: true } },
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -122,9 +126,12 @@ export type OrderOpeningContext = {
 
 export type LockedOrderContext = {
   order: Pick<OrderRecord, 'id' | 'status'> | null;
-  findMenuItem: (
-    id: string,
-  ) => Promise<{ id: string; price: Prisma.Decimal; isAvailable: boolean } | null>;
+  findMenuItem: (id: string) => Promise<{
+    id: string;
+    price: Prisma.Decimal;
+    isAvailable: boolean;
+    variants: { id: string; name: string; price: Prisma.Decimal }[];
+  } | null>;
   findItem: (id: string) => Promise<{
     id: string;
     status: OrderRecord['items'][number]['status'];
@@ -133,11 +140,14 @@ export type LockedOrderContext = {
   } | null>;
   findMergeableItem: (match: {
     menuItemId: string;
+    variantId: string | null;
     specialInstructions: string | null;
     unitPrice: Prisma.Decimal;
   }) => Promise<{ id: string; quantity: number } | null>;
   add: (data: {
     menuItemId: string;
+    variantId: string | null;
+    variantName: string | null;
     quantity: number;
     specialInstructions: string | null;
     unitPrice: Prisma.Decimal;
@@ -197,7 +207,15 @@ export class OrdersRepository {
           findMenuItem: (id) =>
             tx.menuItem.findFirst({
               where: { id, restaurantId, isActive: true },
-              select: { id: true, price: true, isAvailable: true },
+              select: {
+                id: true,
+                price: true,
+                isAvailable: true,
+                variants: {
+                  where: { isActive: true },
+                  select: { id: true, name: true, price: true },
+                },
+              },
             }),
           findItem: async (id) => {
             await tx.$queryRaw`SELECT id FROM order_items WHERE id = ${id}::uuid AND order_id = ${orderId}::uuid FOR UPDATE`;
@@ -211,12 +229,13 @@ export class OrdersRepository {
               },
             });
           },
-          findMergeableItem: ({ menuItemId, specialInstructions, unitPrice }) =>
+          findMergeableItem: ({ menuItemId, variantId, specialInstructions, unitPrice }) =>
             tx.orderItem.findFirst({
               where: {
                 orderId,
                 order: { restaurantId },
                 menuItemId,
+                variantId,
                 specialInstructions,
                 unitPrice,
                 status: 'ACTIVE',

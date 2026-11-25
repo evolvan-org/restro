@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
   type CategoryType,
+  type DietType,
   inventorySupplyMeasures,
+  type MenuItemVariantInput,
+  portionFactorForVariant,
   type RecipeRow,
   type ServingType,
 } from '@rms/api-contract';
@@ -24,8 +27,23 @@ const menuItemSelect = {
   isAvailable: true,
   isActive: true,
   recipeRequired: true,
+  dietType: true,
+  recipeSource: true,
+  recipeReviewedAt: true,
   createdAt: true,
   updatedAt: true,
+  variants: {
+    where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      portionFactor: true,
+      sortOrder: true,
+      isActive: true,
+    },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  },
   recipeItems: {
     select: {
       quantity: true,
@@ -49,11 +67,13 @@ export type NewMenuItem = {
   itemType: CategoryType;
   isAvailable: boolean;
   recipeRequired: boolean;
+  dietType?: DietType | null;
 };
 
 export type MenuItemChanges = Partial<Omit<NewMenuItem, 'description'>> & {
   description?: string | null;
   isActive?: boolean;
+  recipeReviewedAt?: Date;
 };
 
 export class InactiveRecipeIngredientError extends Error {}
@@ -93,6 +113,7 @@ export class MenuItemsRepository {
       categoryId?: string;
       itemType?: ServingType;
       isAvailable?: boolean;
+      recipeStatus?: 'ai-unreviewed';
       skip: number;
       take: number;
     },
@@ -103,6 +124,10 @@ export class MenuItemsRepository {
       ...(filters.categoryId && { categoryId: filters.categoryId }),
       ...(filters.itemType && { itemType: filters.itemType }),
       ...(filters.isAvailable !== undefined && { isAvailable: filters.isAvailable }),
+      ...(filters.recipeStatus === 'ai-unreviewed' && {
+        recipeSource: 'AI_DRAFT',
+        recipeReviewedAt: null,
+      }),
       ...(filters.q && {
         OR: [
           { name: { contains: filters.q, mode: 'insensitive' } },
@@ -169,14 +194,66 @@ export class MenuItemsRepository {
   }
 
   /** Creates the item and its recipe in one transaction so a half-written recipe never persists. */
-  create(restaurantId: string, item: NewMenuItem, recipe: RecipeRow[]): Promise<MenuItemRecord> {
+  create(
+    restaurantId: string,
+    item: NewMenuItem,
+    recipe: RecipeRow[],
+    variants: readonly MenuItemVariantInput[] = [],
+  ): Promise<MenuItemRecord> {
     return this.prisma.$transaction(async (tx) => {
       await this.requireRecipeIngredients(tx, restaurantId, recipe);
-      return tx.menuItem.create({
+      const created = await tx.menuItem.create({
         data: { restaurantId, ...item, recipeItems: { create: recipe } },
-        select: menuItemSelect,
+        select: { id: true },
       });
+      if (variants.length) await this.replaceVariants(tx, restaurantId, created.id, variants);
+      return tx.menuItem.findFirstOrThrow({ where: { id: created.id }, select: menuItemSelect });
     }, recipeTransactionOptions);
+  }
+
+  /**
+   * Makes the item's active portions exactly `variants`. Portions are matched by id, then by name;
+   * dropped ones are deactivated (never deleted), since past orders reference them.
+   */
+  async replaceVariants(
+    tx: Prisma.TransactionClient,
+    restaurantId: string,
+    menuItemId: string,
+    variants: readonly MenuItemVariantInput[],
+  ): Promise<void> {
+    const existing = await tx.menuItemVariant.findMany({
+      where: { menuItemId, restaurantId },
+      select: { id: true, name: true },
+    });
+    const kept = new Set<string>();
+    for (const [sortOrder, variant] of variants.entries()) {
+      const match =
+        existing.find((row) => variant.id && row.id === variant.id) ??
+        existing.find((row) => row.name.toLowerCase() === variant.name.toLowerCase());
+      const data = {
+        name: variant.name,
+        price: new Prisma.Decimal(variant.price),
+        portionFactor: new Prisma.Decimal(
+          variant.portionFactor ?? portionFactorForVariant(variant.name),
+        ),
+        sortOrder,
+        isActive: true,
+      };
+      if (match) {
+        kept.add(match.id);
+        await tx.menuItemVariant.update({ where: { id: match.id }, data });
+      } else {
+        const created = await tx.menuItemVariant.create({
+          data: { ...data, restaurantId, menuItemId },
+          select: { id: true },
+        });
+        kept.add(created.id);
+      }
+    }
+    await tx.menuItemVariant.updateMany({
+      where: { menuItemId, restaurantId, id: { notIn: [...kept] } },
+      data: { isActive: false },
+    });
   }
 
   /** Updates fields and (when given) replaces the whole recipe atomically. */
@@ -185,6 +262,7 @@ export class MenuItemsRepository {
     id: string,
     changes: MenuItemChanges,
     recipe?: RecipeRow[],
+    variants?: readonly MenuItemVariantInput[],
   ): Promise<MenuItemRecord | null> {
     return this.prisma.$transaction(async (tx) => {
       if (recipe) await this.requireRecipeIngredients(tx, restaurantId, recipe);
@@ -201,6 +279,7 @@ export class MenuItemsRepository {
           data: recipe.map((row) => ({ menuItemId: id, ...row })),
         });
       }
+      if (variants) await this.replaceVariants(tx, restaurantId, id, variants);
 
       return tx.menuItem.findFirst({ where: { id, restaurantId }, select: menuItemSelect });
     }, recipeTransactionOptions);
