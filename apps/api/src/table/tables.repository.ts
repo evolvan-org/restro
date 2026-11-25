@@ -241,6 +241,15 @@ export class TablesRepository {
     return count === 0 ? null : this.findById(restaurantId, tableId);
   }
 
+  /** Open QR table visits on this table, so their guest phones can be told about changes. */
+  async findOpenQrSessionIds(restaurantId: string, tableId: string): Promise<string[]> {
+    const sessions = await this.prisma.qrSession.findMany({
+      where: { restaurantId, tableId, status: 'OPEN' },
+      select: { id: true },
+    });
+    return sessions.map((session) => session.id);
+  }
+
   findSection(restaurantId: string, sectionId: string): Promise<DiningSectionRecord | null> {
     return this.prisma.diningSection.findFirst({
       where: { id: sectionId, restaurantId },

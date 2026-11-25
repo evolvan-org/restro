@@ -1,6 +1,7 @@
 import { Permission } from '@rms/permissions';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import type { TablesRepository } from './tables.repository';
 import { TablesService } from './tables.service';
 
@@ -23,7 +24,8 @@ function setup() {
     reconcileStatuses: jest.fn().mockResolvedValue(undefined),
     findActiveBoard,
   } as unknown as TablesRepository;
-  return { service: new TablesService(repository), findActiveBoard };
+  const qrRealtime = { publish: jest.fn() } as unknown as QrRealtimePublisher;
+  return { service: new TablesService(repository, qrRealtime), findActiveBoard };
 }
 
 describe('TablesService.board', () => {

@@ -33,6 +33,7 @@ import { buildPageMeta } from '@rms/shared';
 import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { roleCan } from '../common/auth/role-access';
+import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import {
   type TableDetails,
   TableNumberConflictError,
@@ -48,7 +49,23 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   private reconciliationTimer?: NodeJS.Timeout;
   private isReconciling = false;
 
-  constructor(private readonly tablesRepository: TablesRepository) {}
+  constructor(
+    private readonly tablesRepository: TablesRepository,
+    private readonly qrRealtime: QrRealtimePublisher,
+  ) {}
+
+  /**
+   * A table's captain or availability changed: QR floor markers, alerts and the guest phones at
+   * that table depend on it (REST-88). Best effort after the write has committed.
+   */
+  private async announceQrTableChange(restaurantId: string, tableId: string): Promise<void> {
+    try {
+      const sessions = await this.tablesRepository.findOpenQrSessionIds(restaurantId, tableId);
+      await this.qrRealtime.publish(restaurantId, sessions, { kind: 'captain.changed', tableId });
+    } catch (error) {
+      this.logger.warn('Unable to announce a table change to QR screens', error);
+    }
+  }
 
   onApplicationBootstrap(): void {
     this.reconciliationTimer = setInterval(() => void this.reconcileAllStatuses(), 60_000);
@@ -139,6 +156,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       ),
     );
 
+    await this.announceQrTableChange(actor.restaurantId, created.id);
     return toRestaurantTable(created, actor);
   }
 
@@ -186,6 +204,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new NotFoundException('Table not found');
     }
 
+    await this.announceQrTableChange(actor.restaurantId, tableId);
     return toRestaurantTable(updated, actor);
   }
 
@@ -219,6 +238,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new NotFoundException('Table not found');
     }
 
+    await this.announceQrTableChange(actor.restaurantId, tableId);
     return toRestaurantTable(updated, actor);
   }
 

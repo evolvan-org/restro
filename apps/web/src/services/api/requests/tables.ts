@@ -21,6 +21,7 @@ import {
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import {
   keepPreviousData,
+  type QueryClient,
   useMutation,
   type UseMutationResult,
   useQuery,
@@ -33,6 +34,7 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 
+import { QrQueryKey } from '../types/QrQueryKey';
 import { TableQueryKey } from '../types/TableQueryKey';
 
 type UpdateTableVariables = { id: string; input: UpdateTableRequest };
@@ -57,6 +59,23 @@ export function useCaptainOptions(enabled: boolean): UseQueryResult<CaptainOptio
   return query;
 }
 
+/**
+ * A table change (captain, active state, new table) also changes QR ordering state: floor markers,
+ * no-captain alerts, the badge and the QR table cards (REST-88).
+ */
+function invalidateTablesAndQr(queryClient: QueryClient): Promise<unknown> {
+  return Promise.all(
+    [
+      [TableQueryKey.Tables],
+      [QrQueryKey.Floor],
+      [QrQueryKey.Alerts],
+      [QrQueryKey.Summary],
+      [QrQueryKey.Cards],
+      [QrQueryKey.Captains],
+    ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  );
+}
+
 export function useAssignTableCaptain(): UseMutationResult<
   RestaurantTable,
   Error,
@@ -70,7 +89,7 @@ export function useAssignTableCaptain(): UseMutationResult<
       const response = await api.patch(`/tables/${id}/captain`, input);
       return restaurantTableSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onSuccess: () => invalidateTablesAndQr(queryClient),
     onError: showApiError,
   });
 }
@@ -164,7 +183,7 @@ export function useCreateTable(): UseMutationResult<
       const response = await api.post('/tables', input);
       return createTableResponseSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onSuccess: () => invalidateTablesAndQr(queryClient),
     onError: showApiError,
   });
 }
@@ -178,7 +197,7 @@ export function useUpdateTable(): UseMutationResult<RestaurantTable, Error, Upda
       const response = await api.patch(`/table/${id}`, input);
       return restaurantTableSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onSuccess: () => invalidateTablesAndQr(queryClient),
     onError: showApiError,
   });
 }
@@ -196,7 +215,7 @@ export function useUpdateTableActive(): UseMutationResult<
       const response = await api.patch(`/table/${id}/active`, input);
       return restaurantTableSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onSuccess: () => invalidateTablesAndQr(queryClient),
     onError: showApiError,
   });
 }
@@ -215,7 +234,7 @@ export function useTransitionTableStatus(): UseMutationResult<
       const response = await api.patch(`/tables/${id}/status`, input);
       return restaurantTableSchema.parse(response.data);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+    onSuccess: () => invalidateTablesAndQr(queryClient),
     onError: async (error) => {
       showApiError(error);
       await Promise.all([
