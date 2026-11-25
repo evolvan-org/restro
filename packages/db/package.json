@@ -24,6 +24,7 @@
     "seed:stock": "dotenv -e ../../.env -- ts-node src/seed-stock.ts",
     "seed:bill-cancellation-reasons": "dotenv -e ../../.env -- ts-node src/seed-bill-cancellation-reasons.ts",
     "seed:restaurant": "dotenv -e ../../.env -- ts-node src/seed-restaurant.ts",
+    "seed:restaurant:validate": "dotenv -e ../../.env -- ts-node src/validate-restaurant-seed.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

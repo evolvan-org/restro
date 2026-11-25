@@ -31,6 +31,8 @@ import { seedInventoryActivity, seedStockItems, seedSuppliers } from './seed/inv
 import { seedMenu } from './seed/menu';
 import { type SeedTable, type SeedUser, seedServiceHistory } from './seed/service-history';
 import { assertSafeSeedTarget } from './seed/support';
+import { parseSeedOptions } from './seed/year-config';
+import { assertLegacySeedAllowed, runYearSeed, withRestaurantSeedLock } from './seed/year-seed';
 import { BILL_CANCELLATION_REASONS, SYSTEM_TABLE_STATUSES } from './tenant-defaults';
 
 // Matches apps/api BCRYPT_ROUNDS; kept local so @rms/db does not depend on the api app.
@@ -266,91 +268,102 @@ async function loadTables(
 
 async function main(): Promise<void> {
   assertSafeSeedTarget();
+  const year = parseSeedOptions(process.argv.slice(2));
   const prisma = new PrismaClient();
   const passwordHash = await hash(SHARED_PASSWORD, BCRYPT_ROUNDS);
-
+  const setupRestaurant = async (tx: Prisma.TransactionClient) => {
+    const restaurantId = await resolveRestaurantId(tx);
+    const billing = await seedRestaurantProfile(tx, restaurantId);
+    const roleIds = await seedRoles(tx, restaurantId);
+    const users = await seedUsers(tx, restaurantId, roleIds, passwordHash);
+    const statusIds = await seedFloor(tx, restaurantId);
+    return { restaurantId, billing, roleCount: roleIds.size, users, statusIds };
+  };
   try {
-    const setup = await prisma.$transaction(async (tx) => {
-      const restaurantId = await resolveRestaurantId(tx);
-      const billing = await seedRestaurantProfile(tx, restaurantId);
-      const roleIds = await seedRoles(tx, restaurantId);
-      const users = await seedUsers(tx, restaurantId, roleIds, passwordHash);
-      const statusIds = await seedFloor(tx, restaurantId);
-      return { restaurantId, billing, roleCount: roleIds.size, users, statusIds };
-    }, TX_OPTIONS);
-    const { restaurantId, users } = setup;
-    const userId = (role: RoleName): string => {
-      const user = users.find((entry) => entry.role === role);
-      if (!user) throw new Error(`No seeded ${role} user`);
-      return user.id;
-    };
+    await withRestaurantSeedLock(async () => {
+      if (year) {
+        await runYearSeed(prisma, year, { setupRestaurant, loadTables }, TX_OPTIONS);
+        printCredentials();
+        return;
+      }
+      await assertLegacySeedAllowed(prisma);
+      const setup = await prisma.$transaction(setupRestaurant, TX_OPTIONS);
+      const { restaurantId, users } = setup;
+      const userId = (role: RoleName): string => {
+        const user = users.find((entry) => entry.role === role);
+        if (!user) throw new Error(`No seeded ${role} user`);
+        return user.id;
+      };
 
-    const catalog = await prisma.$transaction(async (tx) => {
-      const stock = await seedStockItems(tx, restaurantId);
-      const suppliers = await seedSuppliers(tx, restaurantId);
-      const menu = await seedMenu(tx, restaurantId, stock);
-      return { stock, suppliers, menu };
-    }, TX_OPTIONS);
+      const catalog = await prisma.$transaction(async (tx) => {
+        const stock = await seedStockItems(tx, restaurantId);
+        const suppliers = await seedSuppliers(tx, restaurantId);
+        const menu = await seedMenu(tx, restaurantId, stock);
+        return { stock, suppliers, menu };
+      }, TX_OPTIONS);
 
-    const inventory = await prisma.$transaction(async (tx) => {
-      // Same advisory lock the API takes, so a running app can't interleave stock writes.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'inventory:' + restaurantId}, 0))`;
-      return seedInventoryActivity(tx, restaurantId, catalog.stock, catalog.suppliers, {
-        owner: userId(Role.OWNER),
-        manager: userId(Role.MANAGER),
-      });
-    }, TX_OPTIONS);
+      const inventory = await prisma.$transaction(async (tx) => {
+        // Same advisory lock the API takes, so a running app can't interleave stock writes.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'inventory:' + restaurantId}, 0))`;
+        return seedInventoryActivity(tx, restaurantId, catalog.stock, catalog.suppliers, {
+          owner: userId(Role.OWNER),
+          manager: userId(Role.MANAGER),
+        });
+      }, TX_OPTIONS);
 
-    const service = await prisma.$transaction(
-      async (tx) =>
-        seedServiceHistory(tx, {
-          restaurantId,
-          users,
-          tables: await loadTables(tx, restaurantId),
-          menu: catalog.menu.items,
-          statusIds: setup.statusIds,
-          gstRate: setup.billing.gstRate,
-          maxDiscountPercent: setup.billing.maxDiscountPercent,
-        }),
-      TX_OPTIONS,
-    );
-
-    const tableCount = DINING_SECTIONS.reduce((sum, section) => sum + section.tables.length, 0);
-    console.log(`Seeded "${RESTAURANT_NAME}" (${restaurantId}):`);
-    console.log(`  ${setup.roleCount} roles, ${users.length} users`);
-    console.log(`  ${DINING_SECTIONS.length} dining sections, ${tableCount} tables`);
-    console.log(
-      `  ${catalog.menu.items.length} menu items, ${catalog.menu.recipeLines} new recipe lines` +
-        (catalog.menu.skipped.length
-          ? ` (skipped ${catalog.menu.skipped.length} with mismatched units)`
-          : ''),
-    );
-    console.log(
-      `  ${catalog.stock.size} ingredients, ${catalog.suppliers.size} suppliers, opened stock for ${inventory.opened}`,
-    );
-    console.log(
-      inventory.skippedHistory
-        ? '  Inventory history already present: skipped purchase orders and receipts'
-        : `  ${inventory.purchaseOrders} purchase orders, ${inventory.receipts} goods receipts, waste and adjustments`,
-    );
-    if (service.skipped) {
-      console.log(`  Service history already present: skipped (${service.guests} guests)`);
-    } else {
-      console.log(
-        `  ${service.guests} guests, ${service.reservations} reservations, ${service.orders} orders, ` +
-          `${service.kots} KOTs, ${service.bills} bills`,
+      const service = await prisma.$transaction(
+        async (tx) =>
+          seedServiceHistory(tx, {
+            restaurantId,
+            users,
+            tables: await loadTables(tx, restaurantId),
+            menu: catalog.menu.items,
+            statusIds: setup.statusIds,
+            gstRate: setup.billing.gstRate,
+            maxDiscountPercent: setup.billing.maxDiscountPercent,
+          }),
+        TX_OPTIONS,
       );
-      for (const line of service.live) console.log(`    live: ${line}`);
-    }
 
-    console.log('\nLogin credentials (password for all): ' + SHARED_PASSWORD);
-    console.log(`  OWNER          ${OWNER.email}`);
-    for (const person of STAFF) {
-      console.log(`  ${person.role.padEnd(14)} ${person.email}`);
-    }
+      const tableCount = DINING_SECTIONS.reduce((sum, section) => sum + section.tables.length, 0);
+      console.log(`Seeded "${RESTAURANT_NAME}" (${restaurantId}):`);
+      console.log(`  ${setup.roleCount} roles, ${users.length} users`);
+      console.log(`  ${DINING_SECTIONS.length} dining sections, ${tableCount} tables`);
+      console.log(
+        `  ${catalog.menu.items.length} menu items, ${catalog.menu.recipeLines} new recipe lines` +
+          (catalog.menu.skipped.length
+            ? ` (skipped ${catalog.menu.skipped.length} with mismatched units)`
+            : ''),
+      );
+      console.log(
+        `  ${catalog.stock.size} ingredients, ${catalog.suppliers.size} suppliers, opened stock for ${inventory.opened}`,
+      );
+      console.log(
+        inventory.skippedHistory
+          ? '  Inventory history already present: skipped purchase orders and receipts'
+          : `  ${inventory.purchaseOrders} purchase orders, ${inventory.receipts} goods receipts, waste and adjustments`,
+      );
+      if (service.skipped) {
+        console.log(`  Service history already present: skipped (${service.guests} guests)`);
+      } else {
+        console.log(
+          `  ${service.guests} guests, ${service.reservations} reservations, ${service.orders} orders, ` +
+            `${service.kots} KOTs, ${service.bills} bills`,
+        );
+        for (const line of service.live) console.log(`    live: ${line}`);
+      }
+
+      printCredentials();
+    });
   } finally {
     await prisma.$disconnect();
   }
+}
+
+function printCredentials(): void {
+  console.log('\nLogin credentials (password for all): ' + SHARED_PASSWORD);
+  console.log(`  OWNER          ${OWNER.email}`);
+  for (const person of STAFF) console.log(`  ${person.role.padEnd(14)} ${person.email}`);
 }
 
 void main().catch((error: unknown) => {
