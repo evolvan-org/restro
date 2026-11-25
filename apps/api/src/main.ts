@@ -3,13 +3,18 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Body parsers are registered by hand to raise the JSON limit: an onboarding draft with scanned
+  // menu rows, drafted recipes and invoices can exceed Express's 100 KB default.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '100kb' });
   const config = app.get(ConfigService);
 
   if (config.get<string>('TRUST_PROXY') === 'true') {
@@ -40,6 +45,7 @@ async function bootstrap() {
     .addTag('guests', 'Look up guest profiles')
     .addTag('reservations', 'Manage reservation records')
     .addTag('walk-ins', 'Register walk-in guests')
+    .addTag('ai', 'AI menu / invoice scans and recipe drafts (results feed drafts only)')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);

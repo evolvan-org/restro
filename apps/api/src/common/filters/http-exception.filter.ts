@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import {
+  aiQuotaErrorSchema,
   apiErrorCodeSchema,
   type ErrorResponse,
   onboardingDraftConflictErrorSchema,
@@ -27,10 +28,18 @@ const ERROR_EXTENSIONS = [
   onboardingIncompleteErrorSchema,
   onboardingStageErrorSchema,
   onboardingDraftConflictErrorSchema,
+  aiQuotaErrorSchema,
 ] as const;
 
 /** Extra properties an exception body may carry for one of `ERROR_EXTENSIONS`. */
-const EXTENSION_FIELDS = ['existingOrder', 'restaurantName', 'stage', 'draft'] as const;
+const EXTENSION_FIELDS = [
+  'existingOrder',
+  'restaurantName',
+  'stage',
+  'draft',
+  'limit',
+  'used',
+] as const;
 
 /**
  * Maps Prisma errors to client-facing responses without importing the client
