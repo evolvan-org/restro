@@ -1,0 +1,28 @@
+name: Release source
+
+# main deploys to production on every push (deploy.yml), so it must only take
+# release PRs from `development`. Make the `Release source` check required on
+# main (branch ruleset) so a PR from any other branch cannot be merged.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  release-source:
+    name: Release source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require development as the source branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REF" = "development" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
+            echo "OK: release PR from development."
+            exit 0
+          fi
+          echo "::error::PRs into main must come from 'development' (got '$HEAD_REPO:$HEAD_REF'). Retarget this PR to development."
+          exit 1
