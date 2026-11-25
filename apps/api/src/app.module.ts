@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AiModule } from './ai/ai.module';
 import { AuthModule } from './auth/auth.module';
 import { BillsModule } from './bills/bills.module';
 import { validateEnv } from './config/env.validation';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module';
     StockModule,
     ReservationsModule,
     OnboardingModule,
+    AiModule,
   ],
 })
 export class AppModule {}

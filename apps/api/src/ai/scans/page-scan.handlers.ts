@@ -1,0 +1,222 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  type AiJobErrorCode,
+  type AiJobKind,
+  dishKey,
+  menuScanRowSchema,
+  type ScanPageResult,
+} from '@rms/api-contract';
+
+import type { AiJobHandler, JobOutcome, JobRunContext } from '../jobs/ai-job-runner';
+import type { AiJobRecord, AiJobResult } from '../jobs/ai-jobs.repository';
+import { AiJobsRepository } from '../jobs/ai-jobs.repository';
+import {
+  INVOICE_SCHEMA,
+  INVOICE_SYSTEM,
+  invoicePagePrompt,
+  MENU_SCHEMA,
+  MENU_SYSTEM,
+  menuPagePrompt,
+} from '../prompts/prompts';
+import { AI_PROVIDER, type AiProvider, AiUnavailableError } from '../provider/ai-provider';
+import { ScanImageStore } from '../storage/scan-image.store';
+import { JsonArrayStream, parseJsonObject } from '../streaming/json-array-stream';
+import { mapInvoiceLine, mapMenuRow, mergeInvoiceHeader } from './row-mapping';
+
+type PageReader = {
+  /** Element key of the streamed array. */
+  arrayKey: string;
+  /** Maps one raw element; null drops it. */
+  map(raw: Record<string, unknown>, page: number): Record<string, unknown> | null;
+  /** Reads the page-level fields once the page's JSON is complete. */
+  finish(full: Record<string, unknown> | null, result: AiJobResult): void;
+};
+
+/**
+ * Shared page-by-page reading for menu and invoice scans. Each pending page is read with one
+ * streamed call; rows are saved and pushed as they arrive. Pages a restart interrupted, or that
+ * the owner retook, are read again from scratch.
+ */
+abstract class PageScanHandler implements AiJobHandler {
+  abstract readonly kind: AiJobKind;
+  protected abstract readonly model: string;
+  protected abstract readonly system: string;
+  protected abstract readonly schema: Record<string, unknown>;
+  protected abstract readonly task: 'menu-page' | 'invoice-page';
+  protected abstract readonly wrongDocument: AiJobErrorCode;
+  protected abstract prompt(page: number, pages: number): string;
+  protected abstract reader(job: AiJobRecord): Promise<PageReader>;
+
+  constructor(
+    protected readonly provider: AiProvider,
+    protected readonly images: ScanImageStore,
+    protected readonly repository: AiJobsRepository,
+  ) {}
+
+  async run(context: JobRunContext): Promise<JobOutcome> {
+    const { job } = context;
+    const result: AiJobResult = structuredClone(job.result);
+    const reader = await this.reader(job);
+    let unavailable = false;
+
+    for (const pageResult of result.pages) {
+      if (pageResult.status !== 'pending' && pageResult.status !== 'reading') continue;
+      if (context.signal.aborted) break;
+      if (pageResult.status === 'reading')
+        await this.repository.deletePageItems(job.id, pageResult.page);
+      Object.assign(pageResult, { status: 'reading', itemCount: 0, quality: null, title: null });
+      await context.saveResult(result, doneCount(result.pages));
+
+      const image = await this.images.read(job.restaurantId, job.id, pageResult.page);
+      if (!image) {
+        pageResult.status = 'failed';
+        await context.saveResult(result, doneCount(result.pages));
+        continue;
+      }
+      if (unavailable) {
+        pageResult.status = 'failed';
+        continue;
+      }
+
+      try {
+        const stream = new JsonArrayStream(reader.arrayKey);
+        for await (const chunk of this.provider.stream({
+          task: this.task,
+          model: this.model,
+          system: this.system,
+          prompt: this.prompt(pageResult.page, result.pages.length),
+          images: [{ mimeType: image.type, data: image.data }],
+          responseSchema: this.schema,
+          signal: context.signal,
+        })) {
+          if ('usage' in chunk) {
+            await context.recordUsage(chunk.usage);
+            continue;
+          }
+          for (const element of stream.push(chunk.text)) {
+            const row = reader.map(element as Record<string, unknown>, pageResult.page);
+            if (!row) {
+              result.droppedRows += 1;
+              continue;
+            }
+            await context.emit({
+              page: pageResult.page,
+              confidence: Number(row.confidence ?? 0),
+              data: row,
+            });
+            pageResult.itemCount += 1;
+          }
+        }
+        const full = parseJsonObject(stream.fullText);
+        reader.finish(full, result);
+        const quality = full?.quality;
+        pageResult.quality =
+          quality === 'blurry' || quality === 'cropped' || quality === 'dark' ? quality : 'ok';
+        pageResult.title = typeof full?.title === 'string' ? full.title.slice(0, 100) : null;
+        if (pageResult.itemCount > 0) pageResult.status = 'done';
+        else if (full && full.documentType !== (this.task === 'menu-page' ? 'menu' : 'invoice')) {
+          pageResult.status = 'not_document';
+        } else pageResult.status = 'unreadable';
+      } catch (error) {
+        if (context.signal.aborted) break;
+        pageResult.status = 'failed';
+        if (error instanceof AiUnavailableError) unavailable = true;
+      }
+      await context.saveResult(result, doneCount(result.pages));
+    }
+
+    return outcome(result.pages, unavailable, this.wrongDocument);
+  }
+}
+
+function doneCount(pages: readonly ScanPageResult[]): number {
+  return pages.filter((page) => page.status !== 'pending' && page.status !== 'reading').length;
+}
+
+function outcome(
+  pages: readonly ScanPageResult[],
+  unavailable: boolean,
+  wrongDocument: AiJobErrorCode,
+): JobOutcome {
+  const read = pages.filter((page) => page.status === 'done').length;
+  if (read === pages.length) return { status: 'SUCCEEDED', errorCode: null };
+  if (read > 0) return { status: 'PARTIAL', errorCode: unavailable ? 'AI_UNAVAILABLE' : null };
+  if (unavailable) return { status: 'FAILED', errorCode: 'AI_UNAVAILABLE' };
+  if (pages.every((page) => page.status === 'not_document')) {
+    return { status: 'FAILED', errorCode: wrongDocument };
+  }
+  return { status: 'FAILED', errorCode: 'UNREADABLE' };
+}
+
+@Injectable()
+export class MenuScanHandler extends PageScanHandler {
+  readonly kind = 'MENU_SCAN' as const;
+  protected readonly system = MENU_SYSTEM;
+  protected readonly schema = MENU_SCHEMA;
+  protected readonly task = 'menu-page' as const;
+  protected readonly wrongDocument = 'NOT_A_MENU' as const;
+  protected readonly model: string;
+
+  constructor(
+    @Inject(AI_PROVIDER) provider: AiProvider,
+    images: ScanImageStore,
+    repository: AiJobsRepository,
+    config: ConfigService,
+  ) {
+    super(provider, images, repository);
+    this.model = config.get<string>('AI_MODEL_MENU') ?? 'gemini-2.5-flash-lite';
+  }
+
+  protected prompt(page: number, pages: number): string {
+    return menuPagePrompt(page, pages);
+  }
+
+  protected async reader(job: AiJobRecord): Promise<PageReader> {
+    // Duplicate detection spans pages, including rows read before a restart or retake.
+    const seen = new Map<string, string>();
+    for (const item of await this.repository.items(job.id)) {
+      const row = menuScanRowSchema.safeParse(item.data);
+      if (row.success && row.data.flag === 'dish') seen.set(dishKey(row.data.name), row.data.name);
+    }
+    return {
+      arrayKey: 'rows',
+      map: (raw, page) => mapMenuRow(raw, page, dishKey, seen),
+      finish: () => undefined,
+    };
+  }
+}
+
+@Injectable()
+export class InvoiceScanHandler extends PageScanHandler {
+  readonly kind = 'INVOICE_SCAN' as const;
+  protected readonly system = INVOICE_SYSTEM;
+  protected readonly schema = INVOICE_SCHEMA;
+  protected readonly task = 'invoice-page' as const;
+  protected readonly wrongDocument = 'NOT_AN_INVOICE' as const;
+  protected readonly model: string;
+
+  constructor(
+    @Inject(AI_PROVIDER) provider: AiProvider,
+    images: ScanImageStore,
+    repository: AiJobsRepository,
+    config: ConfigService,
+  ) {
+    super(provider, images, repository);
+    this.model = config.get<string>('AI_MODEL_INVOICE') ?? 'gemini-2.5-flash';
+  }
+
+  protected prompt(page: number, pages: number): string {
+    return invoicePagePrompt(page, pages);
+  }
+
+  protected reader(): Promise<PageReader> {
+    return Promise.resolve({
+      arrayKey: 'lines',
+      map: (raw, page) => mapInvoiceLine(raw, page),
+      finish: (full, result) => {
+        result.invoiceHeader = mergeInvoiceHeader(result.invoiceHeader, full?.header);
+      },
+    });
+  }
+}
