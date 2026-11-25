@@ -51,6 +51,10 @@ function setup(round: { status: string; ownerCaptainUserId: string | null }) {
     rejectRound: jest.fn(),
     findRound: jest.fn().mockResolvedValue(null),
     findCaptainCandidate: jest.fn(),
+    resolveStaleAlerts: jest.fn().mockResolvedValue(1),
+    findAlerts: jest.fn().mockResolvedValue([]),
+    countMyWaiting: jest.fn().mockResolvedValue({ count: 0, oldest: null }),
+    countOpenAlerts: jest.fn().mockResolvedValue(0),
   };
   const notifications = { ticketSent: jest.fn() };
   const notifier = { live: jest.fn(), roundSubmitted: jest.fn() };
@@ -144,5 +148,28 @@ describe('QrStaffService.assignCaptain', () => {
     await expect(
       service.assignCaptain(manager, 't7', { captainUserId: 'rina', moveWaitingOrders: true }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('QrStaffService alerts', () => {
+  it('closes alerts whose cause is gone before listing them', async () => {
+    const { service, repository } = setup({
+      status: 'AWAITING_APPROVAL',
+      ownerCaptainUserId: 'arjun',
+    });
+    await service.alerts(manager);
+    expect(repository.resolveStaleAlerts).toHaveBeenCalledWith('r1', expect.any(Date));
+    expect(repository.resolveStaleAlerts.mock.invocationCallOrder[0]).toBeLessThan(
+      repository.findAlerts.mock.invocationCallOrder[0] ?? Infinity,
+    );
+  });
+
+  it('keeps the manager badge count in step, and skips the cleanup for captains', async () => {
+    const managerSetup = setup({ status: 'AWAITING_APPROVAL', ownerCaptainUserId: 'arjun' });
+    await managerSetup.service.summary(manager);
+    expect(managerSetup.repository.resolveStaleAlerts).toHaveBeenCalled();
+    const captainSetup = setup({ status: 'AWAITING_APPROVAL', ownerCaptainUserId: 'arjun' });
+    await captainSetup.service.summary(captain('arjun'));
+    expect(captainSetup.repository.resolveStaleAlerts).not.toHaveBeenCalled();
   });
 });

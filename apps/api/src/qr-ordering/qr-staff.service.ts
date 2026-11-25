@@ -122,11 +122,11 @@ export class QrStaffService {
 
   async summary(actor: Actor): Promise<QrSummaryResponse> {
     const restaurant = await this.restaurant(actor);
+    const canManage = actorCan(actor, Permission.QR_ORDER_MANAGE);
+    if (canManage) await this.repository.resolveStaleAlerts(actor.restaurantId, new Date());
     const [waiting, openAlerts] = await Promise.all([
       this.repository.countMyWaiting(actor.restaurantId, actor.userId),
-      actorCan(actor, Permission.QR_ORDER_MANAGE)
-        ? this.repository.countOpenAlerts(actor.restaurantId)
-        : Promise.resolve(0),
+      canManage ? this.repository.countOpenAlerts(actor.restaurantId) : Promise.resolve(0),
     ]);
     return {
       enabled: restaurant.qrOrderingEnabled,
@@ -402,6 +402,7 @@ export class QrStaffService {
   async alerts(actor: Actor): Promise<QrAlertsResponse> {
     const restaurant = await this.restaurant(actor);
     const now = new Date();
+    await this.repository.resolveStaleAlerts(actor.restaurantId, now);
     const records = await this.repository.findAlerts(
       actor.restaurantId,
       new Date(now.getTime() - ALERT_HISTORY_MS),

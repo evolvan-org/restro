@@ -180,6 +180,42 @@ export class QrStaffRepository {
       .then((result) => ({ count: result._count._all, oldest: result._min.submittedAt }));
   }
 
+  /**
+   * Closes alerts whose cause is gone, whatever path removed it (approve/reject from any screen,
+   * a reassign, a captain set from the Tables screen, a settled bill): an escalation stays open only
+   * while its round still waits escalated, a no-captain alert only while the table has no captain.
+   * Idempotent; runs before alerts are listed or counted.
+   */
+  async resolveStaleAlerts(restaurantId: string, now: Date): Promise<number> {
+    const escalations = await this.prisma.$executeRaw`
+      UPDATE qr_alerts a
+      SET status = 'RESOLVED', resolved_at = ${now}, updated_at = ${now},
+          resolution = CASE
+            WHEN r.status = 'APPROVED' THEN 'Approved'
+            WHEN r.status = 'REJECTED' THEN 'Rejected'
+            WHEN s.status = 'CLOSED' THEN 'Table closed'
+            ELSE 'Reassigned'
+          END
+      FROM qr_rounds r
+      JOIN qr_sessions s ON s.id = r.session_id
+      WHERE a.round_id = r.id
+        AND a.restaurant_id = ${restaurantId}::uuid
+        AND a.kind = 'ESCALATION' AND a.status = 'OPEN'
+        AND (r.status <> 'AWAITING_APPROVAL' OR r.escalated_at IS NULL OR s.status = 'CLOSED')
+    `;
+    const noCaptain = await this.prisma.$executeRaw`
+      UPDATE qr_alerts a
+      SET status = 'RESOLVED', resolved_at = ${now}, updated_at = ${now},
+          resolution = 'Captain assigned'
+      FROM restaurant_tables t
+      WHERE a.table_id = t.id
+        AND a.restaurant_id = ${restaurantId}::uuid
+        AND a.kind = 'NO_CAPTAIN' AND a.status = 'OPEN'
+        AND t.captain_user_id IS NOT NULL
+    `;
+    return escalations + noCaptain;
+  }
+
   countOpenAlerts(restaurantId: string): Promise<number> {
     return this.prisma.qrAlert.count({ where: { restaurantId, status: 'OPEN' } });
   }
