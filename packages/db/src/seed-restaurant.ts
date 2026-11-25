@@ -221,7 +221,13 @@ async function seedFloor(
 
     for (const table of section.tables) {
       await tx.restaurantTable.upsert({
-        where: { restaurantId_tableNumber: { restaurantId, tableNumber: table.tableNumber } },
+        where: {
+          restaurantId_sectionId_tableNumber: {
+            restaurantId,
+            sectionId,
+            tableNumber: table.tableNumber,
+          },
+        },
         create: {
           restaurantId,
           sectionId,
