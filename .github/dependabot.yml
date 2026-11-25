@@ -3,6 +3,8 @@ updates:
   # Keep SHA-pinned GitHub Actions current (Dependabot rewrites the pin + tag).
   - package-ecosystem: github-actions
     directory: /
+    # Feature work (including dependency bumps) lands on development first.
+    target-branch: development
     schedule:
       interval: weekly
     commit-message:
