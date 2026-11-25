@@ -1,5 +1,10 @@
 name: CI
 
+# Runs on PRs into development, where every change is checked before it lands.
+# Release PRs (development -> main) carry only code that already passed here, so
+# both jobs are skipped for them. A job skipped by `if` reports success, so the
+# required checks on main still pass without a rerun. The trigger stays on main
+# so those checks are reported at all (otherwise they would wait forever).
 on:
   pull_request:
     branches: [main, development]
@@ -18,6 +23,7 @@ jobs:
   # Steps use `if: !cancelled()` so a failure in one still reports the rest.
   verify:
     name: Verify
+    if: github.base_ref != 'main'
     runs-on: ubuntu-latest
     services:
       # `prisma migrate diff --from-migrations` replays migrations into a shadow DB.
