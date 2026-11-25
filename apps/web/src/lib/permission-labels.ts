@@ -76,6 +76,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
     items: [
       { permission: Permission.MENU_READ, label: 'View menu' },
       { permission: Permission.MENU_WRITE, label: 'Edit menu' },
+      { permission: Permission.MENU_SCAN, label: 'Import menu from photos (AI)' },
     ],
   },
   {
@@ -83,6 +84,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
     items: [
       { permission: Permission.STOCK_READ, label: 'View stock' },
       { permission: Permission.INVENTORY_MANAGE, label: 'Manage inventory' },
+      { permission: Permission.INVENTORY_SCAN_INVOICE, label: 'Scan supplier invoices (AI)' },
     ],
   },
   {
