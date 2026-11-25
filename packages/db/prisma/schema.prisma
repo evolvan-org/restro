@@ -425,9 +425,10 @@ model RestaurantTable {
   reservations  Reservation[]
   orders        Order[]
 
-  // Case-insensitive uniqueness is enforced by a raw index on lower(table_number)
-  // (20261010120000_tables_number_case_insensitive_unique); Prisma can't express it.
-  @@unique([restaurantId, tableNumber])
+  // Case-insensitive uniqueness per section is enforced by a raw index on
+  // (restaurant_id, section_id, lower(table_number))
+  // (20261125120000_tables_number_unique_per_section); Prisma can't express it.
+  @@unique([restaurantId, sectionId, tableNumber])
   @@index([restaurantId])
   @@index([sectionId])
   @@index([currentStatusId])
