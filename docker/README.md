@@ -62,3 +62,33 @@ idempotently.
 > First-time setup: `docker compose up -d postgres` to bring the DB up, then
 > `yarn workspace @rms/db migrate:dev --name init` to create the initial
 > migration, then `docker compose up --build` for the full stack.
+
+## Continuous deployment (production VPS)
+
+Every push to `main` deploys automatically via `.github/workflows/deploy.yml`.
+It runs on a **self-hosted GitHub Actions runner installed on the VPS**: the
+runner connects _out_ to GitHub, so the server accepts no inbound SSH from
+GitHub's rotating runner IPs.
+
+| What               | Where                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| Project + prod env | `/opt/restro` (`.env` with `COMPOSE_FILE=docker-compose.prod.yml`)                                        |
+| Unix user          | `deploy` (in the `docker` group; owns `/opt/restro`)                                                      |
+| Runner             | `/home/deploy/actions-runner`, label `vps-prod`, systemd service `actions.runner.evolvan-org-restro.ezer` |
+
+A deploy runs `git fetch` + `git reset --hard <sha>` in `/opt/restro`, then
+`docker compose up -d --build --wait`, which fails the job if any service is
+not healthy. Pending migrations apply on api startup.
+
+- **Manual deploy / redeploy:** Actions → Deploy → _Run workflow_.
+- **Rollback:** revert the commit on `main` (a revert PR) so the next deploy
+  ships the previous code. Migrations do not roll back on their own.
+- **No GitHub credential is stored on the server:** the fetch uses the job's
+  short-lived `GITHUB_TOKEN`, so a manual `git pull` on the VPS will not
+  authenticate. Deploy through the workflow.
+- **Run commands as `deploy`** in `/opt/restro`, e.g.
+  `sudo -iu deploy bash -c 'cd /opt/restro && docker compose ps'`.
+- **Runner service:** `cd /home/deploy/actions-runner && sudo ./svc.sh status`
+  (also `start` / `stop`); logs with `journalctl -u 'actions.runner.*' -f`.
+- **Security:** only `deploy.yml` may use `runs-on: [self-hosted, vps-prod]`.
+  Never target this runner from a `pull_request` workflow.
