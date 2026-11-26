@@ -186,15 +186,11 @@ export async function downloadTentPdf(
   });
   faces.forEach(({ face }, index) => {
     if (index > 0) pdf.addPage([FACE_MM.width, FACE_MM.height * 2], 'portrait');
-    pdf.addImage(rotated(face).toDataURL('image/png'), 'PNG', 0, 0, FACE_MM.width, FACE_MM.height);
-    pdf.addImage(
-      face.toDataURL('image/png'),
-      'PNG',
-      0,
-      FACE_MM.height,
-      FACE_MM.width,
-      FACE_MM.height,
-    );
+    // JPEG keeps a 20-table PDF to a few MB (PNG faces were ~8 MB each, uncompressed in the PDF).
+    // The face has an opaque background, so nothing is lost to the missing alpha channel.
+    const jpeg = (canvas: HTMLCanvasElement): string => canvas.toDataURL('image/jpeg', 0.9);
+    pdf.addImage(jpeg(rotated(face)), 'JPEG', 0, 0, FACE_MM.width, FACE_MM.height);
+    pdf.addImage(jpeg(face), 'JPEG', 0, FACE_MM.height, FACE_MM.width, FACE_MM.height);
     pdf.setLineDashPattern([2, 1.5], 0);
     pdf.setDrawColor(138, 125, 112);
     pdf.setLineWidth(0.3);
