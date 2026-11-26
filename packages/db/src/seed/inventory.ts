@@ -19,7 +19,8 @@ import type {
 } from '@prisma/client';
 
 import { STOCK_ITEMS, SUPPLIERS, type SupplierKey } from './catalog';
-import { Decimal, type DecimalValue, localDate, localTime, type Tx } from './support';
+import { addMinutes, Decimal, type DecimalValue, localDate, localTime, type Tx } from './support';
+import { fixtureId, type HistoryChunk, YEAR_DAYS } from './year-config';
 
 const SUPPLY_FACTOR: Record<Unit, { base: string; factor: number }> = {
   G: { base: 'G', factor: 1 },
@@ -102,6 +103,7 @@ class StockLedger {
     private readonly tx: Tx,
     private readonly restaurantId: string,
     private readonly catalog: StockCatalog,
+    private readonly nextId?: () => string,
   ) {}
 
   /** The item if it exists, is active, and its base unit matches the seed's expectation. */
@@ -132,6 +134,7 @@ class StockLedger {
     const unitCost = input.unitCost.toDecimalPlaces(8, Decimal.ROUND_HALF_UP);
     const batch = await this.tx.stockBatch.create({
       data: {
+        id: this.nextId?.(),
         restaurantId: this.restaurantId,
         stockItemId: item.id,
         quantityReceived: input.quantity,
@@ -145,6 +148,7 @@ class StockLedger {
     });
     await this.tx.stockMovement.create({
       data: {
+        id: this.nextId?.(),
         restaurantId: this.restaurantId,
         stockItemId: item.id,
         batchId: batch.id,
@@ -201,6 +205,7 @@ class StockLedger {
       });
       await this.tx.stockMovement.create({
         data: {
+          id: this.nextId?.(),
           restaurantId: this.restaurantId,
           stockItemId: item.id,
           batchId: lot.id,
@@ -223,13 +228,20 @@ class StockLedger {
     );
   }
 
-  async open(item: StockItem, quantity: number, unitCost: string, actorId: string, at: Date) {
+  async open(
+    item: StockItem,
+    quantity: number,
+    unitCost: string,
+    actorId: string,
+    at: Date,
+    batchId: string = randomUUID(),
+  ) {
     await this.add(item, {
       quantity: new Decimal(quantity),
       unitCost: new Decimal(unitCost),
       kind: 'OPENING',
       reason: 'Opening stock count',
-      batchNumber: `OPEN-${randomUUID()}`,
+      batchNumber: `OPEN-${batchId}`,
       actorId,
       at,
     });
@@ -269,22 +281,38 @@ export async function seedInventoryActivity(
   catalog: StockCatalog,
   suppliers: ReadonlyMap<SupplierKey | 'archived', string>,
   actors: { owner: string; manager: string },
+  year?: HistoryChunk & { now: Date },
 ): Promise<InventoryActivitySummary> {
-  const ledger = new StockLedger(tx, restaurantId, catalog);
-  const openedAt = localTime(-35, 9, 30);
+  let sequence = 0;
+  const nextId = year
+    ? () =>
+        fixtureId(`${restaurantId}:inventory:${year.now.toISOString()}:${year.start}:${sequence++}`)
+    : undefined;
+  const ledger = new StockLedger(tx, restaurantId, catalog, nextId);
+  const time = (day: number, hour: number) => localTime(day, hour, 0, year?.now);
+  const openedAt = year ? time(-YEAR_DAYS - 1, 9) : localTime(-35, 9, 30);
   let opened = 0;
   for (const seed of STOCK_ITEMS) {
     const item = ledger.ready(seed.name, false);
     if (!item || item.openedAt) continue;
-    await ledger.open(item, seed.opening, seed.unitCost, actors.owner, openedAt);
+    await ledger.open(
+      item,
+      seed.opening,
+      seed.unitCost,
+      actors.owner,
+      openedAt,
+      year ? fixtureId(`${restaurantId}:opening:${item.name}`) : undefined,
+    );
     opened += 1;
   }
 
-  const [purchaseCount, receiptCount] = await Promise.all([
-    tx.inventoryPurchaseOrder.count({ where: { restaurantId } }),
-    tx.inventoryReceipt.count({ where: { restaurantId } }),
+  const [purchases, receipts] = await Promise.all([
+    tx.inventoryPurchaseOrder.aggregate({ where: { restaurantId }, _max: { number: true } }),
+    tx.inventoryReceipt.aggregate({ where: { restaurantId }, _max: { number: true } }),
   ]);
-  if (purchaseCount > 0 || receiptCount > 0) {
+  const priorPurchases = purchases._max.number ?? 0;
+  const priorReceipts = receipts._max.number ?? 0;
+  if (!year && (priorPurchases > 0 || priorReceipts > 0)) {
     return { opened, purchaseOrders: 0, receipts: 0, skippedHistory: true };
   }
 
@@ -293,8 +321,8 @@ export async function seedInventoryActivity(
     if (!id) throw new Error(`Supplier ${key} was not seeded`);
     return id;
   };
-  let poNumber = 0;
-  let grnNumber = 0;
+  let poNumber = priorPurchases;
+  let grnNumber = priorReceipts;
 
   const createPurchase = async (input: {
     supplier: SupplierKey;
@@ -311,6 +339,7 @@ export async function seedInventoryActivity(
       const { packageQuantity, packageUnit } = supplyTerms(line);
       return [
         {
+          id: nextId?.(),
           stockItemId: item.id,
           quantity: line.quantity,
           unitCost: line.unitCost,
@@ -322,6 +351,7 @@ export async function seedInventoryActivity(
     });
     return tx.inventoryPurchaseOrder.create({
       data: {
+        id: nextId?.(),
         restaurantId,
         supplierId: supplierId(input.supplier),
         actorId: actors.manager,
@@ -349,15 +379,16 @@ export async function seedInventoryActivity(
   }) => {
     grnNumber += 1;
     const number = grnNumber;
-    const at = localTime(input.day, input.hour);
+    const at = time(input.day, input.hour);
     const receipt = await tx.inventoryReceipt.create({
       data: {
+        id: nextId?.(),
         restaurantId,
         supplierId: supplierId(input.supplier),
         purchaseOrderId: input.purchaseOrder?.id,
         actorId: actors.manager,
         number,
-        idempotencyKey: randomUUID(),
+        idempotencyKey: year ? fixtureId(`${restaurantId}:receipt:${number}`) : randomUUID(),
         requestHash: createHash('sha256').update(JSON.stringify(input.lines)).digest('hex'),
         notes: input.notes ?? '',
         createdAt: at,
@@ -374,6 +405,7 @@ export async function seedInventoryActivity(
         line.expiryInDays === undefined ? undefined : localDate(input.day + line.expiryInDays);
       const receiptLine = await tx.inventoryReceiptLine.create({
         data: {
+          id: nextId?.(),
           receiptId: receipt.id,
           stockItemId: item.id,
           purchaseOrderLineId: orderLine?.id,
@@ -440,6 +472,67 @@ export async function seedInventoryActivity(
       batchId: batch?.id,
     });
   };
+
+  if (year) {
+    const supplies: readonly [SupplierKey, SupplyLine][] = [
+      ['produce', { item: 'Onion', quantity: '3', unitCost: '36', unit: 'KG' }],
+      ['dairy', { item: 'Paneer', quantity: '2', unitCost: '320', unit: 'KG' }],
+      ['meat', { item: 'Chicken', quantity: '3', unitCost: '250', unit: 'KG' }],
+      ['staples', { item: 'Rice', quantity: '5', unitCost: '76', unit: 'KG' }],
+      ['bar', { item: 'Whisky', quantity: '2', unitCost: '2400', unit: 'L' }],
+    ];
+    for (let day = year.start; day <= year.end && day < 0; day++) {
+      const index = day + YEAR_DAYS;
+      for (const [offset, [supplier, line]] of supplies.entries()) {
+        if (index % 7 !== offset) continue;
+        const cycle = Math.floor(index / 7) + offset;
+        const cancelled = cycle % 17 === 0;
+        const partial = cycle % 7 === 0 || day >= -5;
+        const at = time(day, 9);
+        const delivery = time(day, 14);
+        const purchaseOrder = await createPurchase({
+          supplier,
+          status: cancelled ? 'CANCELLED' : 'SENT',
+          createdAt: at,
+          expectedDate: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate())),
+          notes: 'Scheduled supplier restock',
+          lines: [line],
+        });
+        if (!cancelled) {
+          await receive({
+            supplier,
+            day,
+            hour: 14,
+            purchaseOrder,
+            lines: [
+              {
+                ...line,
+                quantity: partial ? new Decimal(line.quantity).div(2).toString() : line.quantity,
+              },
+            ],
+          });
+          if (!partial && index % 2 === 0) {
+            await removeStock(
+              line.item,
+              Number(line.quantity) * 100,
+              'WASTE',
+              'Damaged or spoiled stock',
+              addMinutes(delivery, 180),
+            );
+          }
+        }
+      }
+      if (index % 30 === 29) {
+        await removeStock('Rice', 250, 'ADJUSTMENT', 'Monthly stock count variance', time(day, 19));
+      }
+    }
+    return {
+      opened,
+      purchaseOrders: poNumber - priorPurchases,
+      receipts: grnNumber - priorReceipts,
+      skippedHistory: false,
+    };
+  }
 
   // Day -14: weekly produce order, received in full two days later.
   const produce = await createPurchase({
