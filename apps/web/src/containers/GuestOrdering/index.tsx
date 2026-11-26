@@ -183,7 +183,7 @@ function OrderingApp({
   token,
   brand,
   tableNumber,
-  captainName,
+  captainName: resolvedCaptainName,
   menu,
   realtime,
   banner,
@@ -203,6 +203,9 @@ function OrderingApp({
   const online = useOnline();
   const [live, setLive] = useState(false);
   const session = useQrSession(token, secret, live);
+  // The session refreshes every few seconds even without Pusher, so a reassigned captain shows up
+  // there first; the table lookup only refreshes on a live event.
+  const captainName = session.data?.captainName ?? resolvedCaptainName;
   const [toast, setToast] = useState<string | null>(null);
   const [openItem, setOpenItem] = useState<QrMenuItem | null>(null);
   const [cartError, setCartError] = useState<string | null>(null);
