@@ -808,6 +808,27 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fontsource/dm-sans@npm:5.1.0":
+  version: 5.1.0
+  resolution: "@fontsource/dm-sans@npm:5.1.0"
+  checksum: 10c0/c9b83e0fb4a688feff119b040bdb5416f680fdb6ab2a25f07dd762cf2a778beb8d8105942ccaae29d8153f0a51a1c01ac7f9ac671b905dc20667de1d0f00734f
+  languageName: node
+  linkType: hard
+
+"@fontsource/fraunces@npm:5.1.0":
+  version: 5.1.0
+  resolution: "@fontsource/fraunces@npm:5.1.0"
+  checksum: 10c0/3eeb09c4151ebd8c532adb5c979cb2649df47876feed2d62ecd27c59884ac6d287ae26b4687d9ddec9b974dda196ea00929bce70354225ee8d96196104e9b103
+  languageName: node
+  linkType: hard
+
+"@fontsource/inter@npm:5.1.0":
+  version: 5.1.0
+  resolution: "@fontsource/inter@npm:5.1.0"
+  checksum: 10c0/48c740b8a311908ca9527bf598e759bdfad6429f730450cc4904877915537e857a322db3ff7ade0bf731a3853ab34e611638d560529774a7e94ca2237735c86b
+  languageName: node
+  linkType: hard
+
 "@hono/node-server@npm:^1.19.9 || ^2.0.5":
   version: 2.1.1
   resolution: "@hono/node-server@npm:2.1.1"
@@ -2212,6 +2233,9 @@ __metadata:
   resolution: "@rms/web@workspace:apps/web"
   dependencies:
     "@base-ui/react": "npm:^1.8.0"
+    "@fontsource/dm-sans": "npm:5.1.0"
+    "@fontsource/fraunces": "npm:5.1.0"
+    "@fontsource/inter": "npm:5.1.0"
     "@hookform/resolvers": "npm:^3.9.1"
     "@reduxjs/toolkit": "npm:^2.5.0"
     "@rms/api-contract": "workspace:*"

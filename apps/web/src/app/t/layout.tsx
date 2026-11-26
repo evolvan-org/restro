@@ -1,22 +1,15 @@
-import type { Metadata, Viewport } from 'next';
-import { DM_Sans, Fraunces, Inter } from 'next/font/google';
-import type { ReactNode } from 'react';
+import '@fontsource/dm-sans/400.css';
+import '@fontsource/dm-sans/500.css';
+import '@fontsource/dm-sans/700.css';
+import '@fontsource/fraunces/600.css';
+import '@fontsource/fraunces/700.css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
 
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
-  variable: '--font-guest-body',
-});
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  weight: ['600', '700'],
-  variable: '--font-guest-display',
-});
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-guest-ui',
-});
+import type { Metadata, Viewport } from 'next';
+import type { CSSProperties, ReactNode } from 'react';
 
 export const metadata: Metadata = {
   title: 'Order at your table',
@@ -31,11 +24,19 @@ export const viewport: Viewport = {
 };
 
 /**
- * Public guest QR ordering. Lives outside `(protected)`: no staff shell, no auth. Guest type is
- * DM Sans (body) and Fraunces (display), self-hosted by next/font.
+ * The guest type families (DM Sans body, Fraunces display, Inter for status pills). The font
+ * files ship with the app (@fontsource), so neither the build nor the guest's phone depends on
+ * Google Fonts being reachable.
+ */
+const fontVariables = {
+  '--font-guest-body': "'DM Sans'",
+  '--font-guest-display': "'Fraunces'",
+  '--font-guest-ui': "'Inter'",
+} as CSSProperties;
+
+/**
+ * Public guest QR ordering. Lives outside `(protected)`: no staff shell, no auth.
  */
 export default function GuestLayout({ children }: { children: ReactNode }): ReactNode {
-  return (
-    <div className={`${dmSans.variable} ${fraunces.variable} ${inter.variable}`}>{children}</div>
-  );
+  return <div style={fontVariables}>{children}</div>;
 }
