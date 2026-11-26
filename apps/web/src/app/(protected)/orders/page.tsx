@@ -1,6 +1,10 @@
-import { redirect } from 'next/navigation';
+import type { Metadata } from 'next';
 
-/** The live orders board lives on the dashboard floor view. */
-export default function OrdersRedirect(): never {
-  redirect('/dashboard');
-}
+import Orders from '@/containers/Orders';
+
+export const metadata: Metadata = {
+  title: 'Orders | Restaurant Management System',
+  description: 'Browse and filter orders across service.',
+};
+
+export default Orders;

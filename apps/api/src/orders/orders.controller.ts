@@ -48,6 +48,11 @@ import {
   type OrderItemMutationResponse,
   orderItemMutationResponseSchema,
   orderItemSchema,
+  type OrderListQuery,
+  orderListQueryParamsSchema,
+  orderListQuerySchema,
+  type OrderListResponse,
+  orderListResponseSchema,
   orderSchema,
   type UpdateOrderItemInstructionsRequest,
   updateOrderItemInstructionsRequestSchema,
@@ -113,6 +118,26 @@ export class OrdersController {
     @Body(new ZodValidationPipe(createOrderRequestSchema)) input: CreateOrderRequest,
   ): Promise<Order> {
     return this.service.create(actor, input);
+  }
+
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_READ)
+  @ApiOperation({
+    summary: 'List orders, newest first, with filters',
+    description:
+      'The owner and roles with `table:assign-captain` see every order and may filter by captain. Roles with `table:be-captain` only see orders on tables they captain (`captainId` is ignored). Any other role gets 403. `from` / `to` are inclusive restaurant-local days on `openedAt`.',
+  })
+  @ApiZodQuery(orderListQueryParamsSchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderListResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid filters, or the start date is after the end date'))
+  @ApiForbiddenResponse(apiError('Not allowed to view the order list'))
+  @ApiNotFoundResponse(apiError('The restaurant no longer exists'))
+  list(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(orderListQuerySchema)) query: OrderListQuery,
+  ): Promise<OrderListResponse> {
+    return this.service.list(actor, query);
   }
 
   @Get('mine')
