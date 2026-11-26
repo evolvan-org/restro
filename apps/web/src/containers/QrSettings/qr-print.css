@@ -1,0 +1,42 @@
+/* A6 tent card printing (A2): one A5 sheet per table, top face turned 180°, fold line marked. */
+.qr-print {
+  display: none;
+}
+@media print {
+  @page {
+    size: 148mm 210mm;
+    margin: 0;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .qr-print,
+  .qr-print * {
+    visibility: visible !important;
+  }
+  .qr-print {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 148mm;
+  }
+  .qr-print-sheet {
+    position: relative;
+    width: 148mm;
+    height: 210mm;
+    break-after: page;
+    overflow: hidden;
+  }
+  .qr-print-sheet img {
+    display: block;
+    width: 148mm;
+    height: 105mm;
+  }
+  .qr-print-fold {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 105mm;
+    border-top: 0.3mm dashed #8a7d70;
+  }
+}

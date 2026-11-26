@@ -9,6 +9,7 @@ import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrdersModule } from './orders/orders.module';
+import { QrOrderingModule } from './qr-ordering/qr-ordering.module';
 import { ReportsModule } from './reports/reports.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { RestaurantModule } from './restaurant/restaurant.module';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module';
     StockModule,
     ReservationsModule,
     OnboardingModule,
+    QrOrderingModule,
   ],
 })
 export class AppModule {}

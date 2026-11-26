@@ -26,6 +26,7 @@ import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import { NotificationsService } from '../notifications/notifications.service';
+import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import {
   sentQuantity,
   toCaptainOrderSummary,
@@ -40,6 +41,7 @@ export class OrdersService {
   constructor(
     private readonly repository: OrdersRepository,
     private readonly notifications: NotificationsService,
+    private readonly qrRealtime: QrRealtimePublisher,
   ) {}
 
   async create(actor: Actor, input: CreateOrderRequest): Promise<Order> {
@@ -131,6 +133,16 @@ export class OrdersService {
     );
     if (input.status === 'READY') {
       await this.notifications.ticketReady(actor.restaurantId, record.id);
+    }
+    if (record.qrRound) {
+      // Push kitchen progress to the guest tracker within seconds instead of its next refresh.
+      // "round.ready" fires once the whole round is Ready (tickets were stamped together).
+      const roundReady = input.status === 'READY' && record.guestNotifiedAt !== null;
+      await this.qrRealtime.publish(actor.restaurantId, [record.qrRound.sessionId], {
+        kind: roundReady ? 'round.ready' : 'round.kitchen',
+        tableId: record.qrRound.tableId,
+        ...(record.qrRoundId && { roundId: record.qrRoundId }),
+      });
     }
     return toKotQueueItem(record);
   }

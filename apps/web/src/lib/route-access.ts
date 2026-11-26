@@ -17,6 +17,8 @@ export const ROUTE_RULES: readonly RouteRule[] = [
   { path: '/dashboard', permissions: [Permission.DASHBOARD_READ] },
   { path: '/orders', permissions: [Permission.ORDER_READ] },
   { path: '/reservations', permissions: [Permission.RESERVATION_READ] },
+  { path: '/qr-orders', permissions: [Permission.QR_ORDER_READ] },
+  { path: '/qr-orders/alerts', permissions: [Permission.QR_ORDER_MANAGE] },
   { path: '/billing', permissions: [Permission.BILL_READ] },
   { path: '/menu', permissions: [Permission.MENU_READ] },
   { path: '/inventory', permissions: [Permission.INVENTORY_MANAGE] },
@@ -39,6 +41,7 @@ export const ROUTE_RULES: readonly RouteRule[] = [
   { path: '/restaurant/settings/menu-categories', permissions: [Permission.MENU_READ] },
   { path: '/restaurant/settings/tax-discounts', permissions: [Permission.SETTINGS_READ] },
   { path: '/restaurant/settings/cancellation-reasons', permissions: [Permission.SETTINGS_READ] },
+  { path: '/restaurant/settings/qr-ordering', permissions: [Permission.SETTINGS_READ] },
 ];
 
 /** Permissions required for `pathname`, or `null` when the route is open to any signed-in user. */

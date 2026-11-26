@@ -2,8 +2,18 @@
 
 import type { KotQueueItem } from '@rms/api-contract';
 import { useIsMutating } from '@tanstack/react-query';
-import { ArrowRight, Check, CircleAlert, LoaderCircle, MapPin, Timer } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  CheckCheck,
+  CircleAlert,
+  LoaderCircle,
+  MapPin,
+  QrCode,
+  Timer,
+} from 'lucide-react';
 import { memo, type ReactElement } from 'react';
+import { toast } from 'sonner';
 
 import { useTransitionKot } from '@/services/api/requests/kots';
 import { KotQueryKey } from '@/services/api/types/KotQueryKey';
@@ -69,6 +79,9 @@ function TicketCard({
         id: ticket.id,
         input: { expectedStatus: ticket.status, status: lane.next },
       });
+      if (ticket.qr && lane.next === 'READY') {
+        toast.success(`Guest notified · Table ${tableNumber} sees “Your food is on its way”`);
+      }
     } catch {
       // The request hook restores the ticket and owns the shared error toast.
     }
@@ -103,6 +116,14 @@ function TicketCard({
           </span>
         </div>
       </div>
+      {ticket.qr && (
+        <div className="px-4 pb-2.5">
+          <span className="inline-flex h-[26px] items-center gap-1.5 rounded-[7px] bg-[var(--qrt-b)] px-[9px] text-xs font-bold text-[var(--qrt-f)]">
+            <QrCode className="size-3.5" strokeWidth={2.4} aria-hidden />
+            QR · approved by {ticket.qr.approvedBy}
+          </span>
+        </div>
+      )}
       <div className="flex justify-between gap-2 border-b border-[var(--border)] px-4 pb-3 text-[13px] text-[var(--muted)]">
         <b className="font-semibold">{ticket.kotNumber}</b>
         <span>Sent {formatClock(ticket.createdAt)}</span>
@@ -130,8 +151,17 @@ function TicketCard({
           </li>
         ))}
       </ul>
+      {ticket.qr?.guestNotifiedAt && (
+        <div
+          className="kds-pop mx-3.5 mt-auto mb-2.5 flex items-center gap-2 rounded-[9px] bg-[var(--qrn-b)] px-3 py-2.5 text-base font-bold text-[var(--qrn-f)]"
+          role="status"
+        >
+          <CheckCheck className="size-[18px]" strokeWidth={2.4} aria-hidden />
+          Guest notified · {formatClock(ticket.qr.guestNotifiedAt)}
+        </div>
+      )}
       {canAdvance && (
-        <div className="mt-auto px-3 pb-3">
+        <div className={`${ticket.qr?.guestNotifiedAt ? '' : 'mt-auto '}px-3 pb-3`}>
           <button
             type="button"
             disabled={disabled || isPending}

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { CaptainOrderView, KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import { createKotTickets } from '../common/database/kot-tickets';
 import { PrismaService } from '../common/database/prisma.service';
 import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
 
@@ -62,6 +63,11 @@ const kotSelect = {
 
 const kotQueueSelect = {
   ...kotSelect,
+  source: true,
+  guestNotifiedAt: true,
+  approvedByUser: { select: { name: true } },
+  qrRoundId: true,
+  qrRound: { select: { sessionId: true, tableId: true } },
   order: {
     select: {
       table: {
@@ -258,36 +264,14 @@ export class OrdersRepository {
               },
               orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             }),
-          createKots: async (createdByUserId, groups) => {
-            // Serialize the restaurant-wide human-readable sequence without adding a
-            // duplicate counter table. The existing unique constraint remains the backstop.
-            await tx.$queryRaw`SELECT id FROM restaurants WHERE id = ${restaurantId}::uuid FOR UPDATE`;
-            const rows = await tx.$queryRaw<{ currentNumber: bigint }[]>`
-              SELECT COALESCE(MAX(SUBSTRING(kot_number FROM 5)::bigint), 0) AS "currentNumber"
-              FROM kots
-              WHERE restaurant_id = ${restaurantId}::uuid
-                AND kot_number ~ '^KOT-[0-9]+$'
-            `;
-            const firstNumber = Number(rows[0]?.currentNumber ?? 0n) + 1;
-            return Promise.all(
-              groups.map((group, index) =>
-                tx.kot.create({
-                  data: {
-                    restaurantId,
-                    orderId,
-                    createdByUserId,
-                    kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
-                    destination: group.destination,
-                    status: 'PENDING',
-                    items: {
-                      create: group.items.map((item) => ({ ...item, status: 'PENDING' })),
-                    },
-                  },
-                  select: kotSelect,
-                }),
-              ),
-            );
-          },
+          createKots: (createdByUserId, groups) =>
+            createKotTickets(tx, {
+              restaurantId,
+              orderId,
+              createdByUserId,
+              groups,
+              select: kotSelect,
+            }),
           submit: async () => {
             await tx.order.update({
               where: { id: orderId, restaurantId },
@@ -437,6 +421,20 @@ export class OrdersRepository {
             where: { kotId: id, kot: { restaurantId } },
             data: { status },
           });
+          // The guest hears "Your food is on its way" only when every ticket of the round is
+          // Ready, so "Guest notified · h:mm pm" is stamped on all of them at that moment.
+          const roundId = ticket?.qrRound ? ticket.qrRoundId : null;
+          if (status === 'READY' && roundId) {
+            const waiting = await tx.kot.count({
+              where: { restaurantId, qrRoundId: roundId, status: { in: ['PENDING', 'PREPARING'] } },
+            });
+            if (waiting === 0) {
+              await tx.kot.updateMany({
+                where: { restaurantId, qrRoundId: roundId, guestNotifiedAt: null },
+                data: { guestNotifiedAt: new Date() },
+              });
+            }
+          }
           return tx.kot.findFirstOrThrow({ where: { id, restaurantId }, select: kotQueueSelect });
         },
       });

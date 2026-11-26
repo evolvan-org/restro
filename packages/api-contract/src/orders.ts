@@ -169,6 +169,16 @@ export const kotQueueItemSchema = kotSchema.extend({
       section: z.object({ id: z.string().uuid(), name: z.string() }).strict(),
     })
     .strict(),
+  /** Present on tickets from an approved guest QR round: "QR · approved by <name>". */
+  qr: z
+    .object({
+      approvedBy: z.string(),
+      /** When the chef's Ready reached the guest's tracker. */
+      guestNotifiedAt: z.string().datetime().nullable(),
+    })
+    .strict()
+    .nullable()
+    .default(null),
 });
 
 /** A complete active station snapshot, without pagination. */

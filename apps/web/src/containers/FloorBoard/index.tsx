@@ -26,6 +26,7 @@ import {
 import FloorHeader from './FloorHeader';
 import FloorSection, { type TilePermissions } from './FloorSection';
 import { type FloorBoardFilters, getFloorBoardFilterDefaults } from './mapper';
+import QrFloorBanner, { useQrTileMarkers } from './QrFloorBanner';
 import { searchTables } from './search';
 import SectionTabs from './SectionTabs';
 import StatusFilterChips from './StatusFilterChips';
@@ -73,6 +74,7 @@ export default function FloorBoard(): ReactElement | null {
   const options = useTableOptions(canRead);
   // One complete snapshot keeps local filters, chip counts, and covers consistent.
   const tables = useTableBoard(canRead);
+  const qr = useQrTileMarkers(canRead);
 
   useEffect(() => {
     if (!tables.isFetching) setNowMs(Date.now());
@@ -235,6 +237,7 @@ export default function FloorBoard(): ReactElement | null {
               nowMs={nowMs}
               statuses={statuses}
               permissions={permissions}
+              qrMarkers={qr.markers}
               onWalkInClick={(table) =>
                 showWalkInForm({
                   id: table.id,
@@ -298,6 +301,12 @@ export default function FloorBoard(): ReactElement | null {
               lastUpdatedLabel={`Last ${formatAgo(age)}.`}
               onRefresh={() => void tables.refetch()}
               isRefreshing={tables.isFetching}
+            />
+          )}
+          {rows.length > 0 && (
+            <QrFloorBanner
+              data={qr.data}
+              tableNumbers={new Map(rows.map((table) => [table.id, table.tableNumber]))}
             />
           )}
           {renderBody()}

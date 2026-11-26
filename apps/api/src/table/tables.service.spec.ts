@@ -1,6 +1,7 @@
 import { Permission } from '@rms/permissions';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import type { TablesRepository } from './tables.repository';
 import { TablesService } from './tables.service';
 
@@ -23,7 +24,8 @@ function setup() {
     reconcileStatuses: jest.fn().mockResolvedValue(undefined),
     findActiveBoard,
   } as unknown as TablesRepository;
-  return { service: new TablesService(repository), findActiveBoard };
+  const qrRealtime = { publish: jest.fn() } as unknown as QrRealtimePublisher;
+  return { service: new TablesService(repository, qrRealtime), findActiveBoard };
 }
 
 describe('TablesService.board', () => {
@@ -82,8 +84,15 @@ describe('TablesService table number uniqueness per section', () => {
       findDefaultStatus: jest.fn().mockResolvedValue({ id: 's1' }),
       findStatus: jest.fn().mockResolvedValue({ id: 's1' }),
       findActiveStatusByCode: jest.fn().mockResolvedValue({ id: 's1' }),
+      findOpenQrSessionIds: jest.fn().mockResolvedValue([]),
     } as unknown as TablesRepository;
-    return { service: new TablesService(repository), isTableNumberTaken, create, update };
+    const qrRealtime = { publish: jest.fn() } as unknown as QrRealtimePublisher;
+    return {
+      service: new TablesService(repository, qrRealtime),
+      isTableNumberTaken,
+      create,
+      update,
+    };
   }
 
   const owner = actor({ isOwner: true, permissions: [] });
