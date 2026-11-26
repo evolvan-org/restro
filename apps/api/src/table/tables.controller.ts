@@ -197,7 +197,9 @@ export class TablesController {
   })
   @ApiBadRequestResponse(apiError('Invalid data, section or status'))
   @ApiConflictResponse(
-    apiError('The table number is already in use, or the destination section is inactive'),
+    apiError(
+      'The table number is already in use in this section, or the destination section is inactive',
+    ),
   )
   create(
     @CurrentActor() actor: Actor,
@@ -220,7 +222,9 @@ export class TablesController {
   @ApiBadRequestResponse(apiError('Invalid data or section'))
   @ApiNotFoundResponse(apiError('No table with this id in your restaurant'))
   @ApiConflictResponse(
-    apiError('The table number is already in use, or the destination section is inactive'),
+    apiError(
+      'The table number is already in use in this section, or the destination section is inactive',
+    ),
   )
   update(
     @CurrentActor() actor: Actor,

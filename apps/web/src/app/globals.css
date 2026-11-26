@@ -124,3 +124,146 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * QR ordering status system (REST-88, design CP1). One set of hues shared by the guest tracker,
+ * captain queue, floor board and kitchen display; every status also has an icon and a text label.
+ * Pairs meet 4.5:1. `-b` = background, `-f` = foreground, bare = accent (rings, nodes, bars).
+ */
+:root {
+  --qs-aw-b: #fef3c7;
+  --qs-aw-f: #6e3a06;
+  --qs-aw: #d97706;
+  --qs-es-b: #dc2626;
+  --qs-es-f: #ffffff;
+  --qs-es: #dc2626;
+  --qs-ap-b: #dbeafe;
+  --qs-ap-f: #1e3a8a;
+  --qs-ap: #2563eb;
+  --qs-pp-b: #ede9fe;
+  --qs-pp-f: #4c1d95;
+  --qs-pp: #7c3aed;
+  --qs-rd-b: #d1fae5;
+  --qs-rd-f: #064e3b;
+  --qs-rd: #059669;
+  --qs-sv-b: #e7e5e4;
+  --qs-sv-f: #3f3f46;
+  --qs-sv: #71717a;
+  --qs-rj-b: #ffe4e6;
+  --qs-rj-f: #881337;
+  --qs-rj: #e11d48;
+  --qs-tk-k-b: #ffedd5;
+  --qs-tk-k-f: #7c2d12;
+  --qs-tk-b-b: #e0e7ff;
+  --qs-tk-b-f: #312e81;
+}
+
+.dark {
+  --qs-aw-b: #3a2606;
+  --qs-aw-f: #fcd34d;
+  --qs-aw: #fbbf24;
+  --qs-es-b: #b91c1c;
+  --qs-es-f: #ffffff;
+  --qs-es: #f87171;
+  --qs-ap-b: #14264f;
+  --qs-ap-f: #bfdbfe;
+  --qs-ap: #60a5fa;
+  --qs-pp-b: #2a1561;
+  --qs-pp-f: #ddd6fe;
+  --qs-pp: #a78bfa;
+  --qs-rd-b: #052e26;
+  --qs-rd-f: #a7f3d0;
+  --qs-rd: #34d399;
+  --qs-sv-b: #27272a;
+  --qs-sv-f: #d4d4d8;
+  --qs-sv: #a1a1aa;
+  --qs-rj-b: #4a0a1e;
+  --qs-rj-f: #fecdd3;
+  --qs-rj: #fb7185;
+  --qs-tk-k-b: #3b1d08;
+  --qs-tk-k-f: #fdba74;
+  --qs-tk-b-b: #1e2255;
+  --qs-tk-b-f: #c7d2fe;
+}
+
+@keyframes qr-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(217 119 6 / 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgb(217 119 6 / 0);
+  }
+}
+@keyframes qr-pop {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.03);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes qr-slidein {
+  0% {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes qr-ring {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  15% {
+    transform: rotate(14deg);
+  }
+  30% {
+    transform: rotate(-12deg);
+  }
+  45% {
+    transform: rotate(8deg);
+  }
+  60% {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes qr-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.qr-pulse {
+  animation: qr-pulse 1.6s ease-out infinite;
+}
+.qr-pop {
+  animation: qr-pop 0.45s ease-out both;
+}
+.qr-slidein {
+  animation: qr-slidein 0.4s ease-out both;
+}
+.qr-ring {
+  animation: qr-ring 1.2s ease-in-out infinite;
+}
+.qr-skeleton {
+  background: linear-gradient(90deg, var(--muted) 25%, var(--border) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+  animation: qr-shimmer 1.4s linear infinite;
+  border-radius: 7px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .qr-pulse,
+  .qr-pop,
+  .qr-slidein,
+  .qr-ring,
+  .qr-skeleton {
+    animation: none;
+  }
+}

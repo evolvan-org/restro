@@ -19,6 +19,7 @@ import { useShowSidePane } from '@/store/hooks/sidepane';
 import { SidePaneType } from '@/store/types/sidepane';
 
 import { elapsedMinutes, getTableAttention, minutesUntil } from './attention';
+import { qrAriaSuffix, QrTileLine, type QrTileMarker, qrTileStyle } from './qr';
 import styles from './ready.module.css';
 
 export type StatusColorClasses = {
@@ -118,6 +119,8 @@ type FloorTileProps = {
   onWalkInClick: (table: RestaurantTable) => void;
   /** Optional size overrides (merged last); omitted by the floor board, which keeps its sizes. */
   className?: string;
+  /** QR ordering marker (pending guest order, bill request, no captain). */
+  qr?: QrTileMarker;
 };
 
 export default function FloorTile(props: FloorTileProps): ReactElement {
@@ -149,7 +152,9 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
 
   const ariaLabel = `Table ${table.tableNumber}, ${table.capacity} seats, ${table.currentStatus.name}${
     attention ? ', needs attention' : ''
-  }${hasReadyTickets ? `, ${table.readyKotCount} tickets ready to serve` : ''}. Open actions`;
+  }${hasReadyTickets ? `, ${table.readyKotCount} tickets ready to serve` : ''}${qrAriaSuffix(props.qr)}. Open actions`;
+  const qrLine =
+    props.qr && (props.qr.waitingSince || props.qr.noCaptain || props.qr.billRequested);
 
   const tileInner = (
     <>
@@ -184,9 +189,13 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
             {tileTime}
           </span>
         )}
-        <span className="block truncate text-[11px] text-neutral-600 xl:text-xs dark:text-neutral-400">
-          {subLine}
-        </span>
+        {qrLine ? (
+          <QrTileLine marker={props.qr} />
+        ) : (
+          <span className="block truncate text-[11px] text-neutral-600 xl:text-xs dark:text-neutral-400">
+            {subLine}
+          </span>
+        )}
         <span
           className={cn('mt-1 block h-[3px] rounded-full xl:mt-[5px]', colorClasses.strip)}
           aria-hidden
@@ -204,8 +213,10 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     colorClasses.border,
     hasReadyTickets && styles.ready,
     attention && !hasReadyTickets && 'ring-2 ring-amber-500',
+    props.qr?.waitingSince && 'qr-pulse',
     props.className,
   );
+  const tileStyle = qrTileStyle(props.qr);
 
   const popoverBody = (
     <TablePopoverBody
@@ -220,7 +231,7 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
   if (isPhone) {
     return (
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger aria-label={ariaLabel} className={tileClassName}>
+        <SheetTrigger aria-label={ariaLabel} className={tileClassName} style={tileStyle}>
           {tileInner}
         </SheetTrigger>
         <SheetContent
@@ -241,6 +252,7 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
           render={<Tooltip.Trigger delay={300} closeOnClick />}
           aria-label={ariaLabel}
           className={tileClassName}
+          style={tileStyle}
         >
           {tileInner}
         </Popover.Trigger>

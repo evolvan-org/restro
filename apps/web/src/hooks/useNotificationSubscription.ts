@@ -12,7 +12,9 @@ import {
 import { NotificationQueryKey } from '@/services/api/types/NotificationQueryKey';
 import { useAccessToken } from '@/store/hooks/auth';
 
-export default function useNotificationSubscription(onCreated: () => void): { isError: boolean } {
+export default function useNotificationSubscription(
+  onCreated: (event: { silent: boolean }) => void,
+): { isError: boolean } {
   const settings = useNotificationRealtime();
   const token = useAccessToken();
   const queryClient = useQueryClient();
@@ -69,7 +71,8 @@ export default function useNotificationSubscription(onCreated: () => void): { is
       const event = notificationChangedEventSchema.safeParse(payload);
       if (!event.success || disposed) return;
       void queryClient.invalidateQueries({ queryKey: [NotificationQueryKey.List] });
-      if (event.data.kind === 'created') onCreatedRef.current();
+      if (event.data.kind === 'created')
+        onCreatedRef.current({ silent: event.data.silent === true });
     };
     channel.bind(NOTIFICATION_CHANGED_EVENT, onChanged);
     return () => {

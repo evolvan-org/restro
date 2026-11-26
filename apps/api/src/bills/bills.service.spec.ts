@@ -3,6 +3,7 @@ import { recordPaymentRequestSchema } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import { type BillsRepository, PaymentConflictError } from './bills.repository';
 import { BillsService } from './bills.service';
 
@@ -25,7 +26,8 @@ function setup(
         createPayment,
       }),
   } as unknown as BillsRepository;
-  return { service: new BillsService(repository), createPayment };
+  const qrRealtime = { publish: jest.fn() } as unknown as QrRealtimePublisher;
+  return { service: new BillsService(repository, qrRealtime), createPayment };
 }
 
 describe('BillsService.recordPayment', () => {

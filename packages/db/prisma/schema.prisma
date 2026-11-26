@@ -71,17 +71,78 @@ enum AuthRateLimitAction {
   RESEND_STAFF_INVITE_MINUTE
   RESEND_STAFF_INVITE_HOUR
   STAFF_PASSWORD_RESET_HOUR
+  QR_RESOLVE_MINUTE
+  QR_JOIN_WINDOW
+  QR_GUEST_WRITE_MINUTE
 }
 
 enum NotificationType {
-  KOT_SENT            @map("kot.sent")
-  KOT_READY           @map("kot.ready")
-  RESERVATION_CREATED @map("reservation.created")
+  KOT_SENT             @map("kot.sent")
+  KOT_READY            @map("kot.ready")
+  RESERVATION_CREATED  @map("reservation.created")
+  QR_ORDER_SUBMITTED   @map("qr.order.submitted")
+  QR_ORDER_ESCALATED   @map("qr.order.escalated")
+  QR_NO_CAPTAIN        @map("qr.no-captain")
+  QR_BILL_REQUESTED    @map("qr.bill.requested")
+  QR_CALL_SERVER       @map("qr.call-server")
+  QR_PAYMENT_REQUESTED @map("qr.payment.requested")
 }
 
 enum NotificationEntity {
   ORDER       @map("order")
   RESERVATION @map("reservation")
+  QR_ROUND    @map("qr-round")
+  QR_SESSION  @map("qr-session")
+  TABLE       @map("table")
+}
+
+/// Where a kitchen ticket came from: a staff-entered order or an approved guest QR round.
+enum KotSource {
+  STAFF
+  QR
+}
+
+/// QR table session: one OPEN session per table, shared by every phone that scans it.
+enum QrSessionStatus {
+  OPEN
+  CLOSED
+}
+
+/// Approval lifecycle of a guest round. Kitchen progress is derived from its KOTs.
+enum QrRoundStatus {
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum QrRoundItemStatus {
+  ACTIVE
+  REMOVED
+  OUT_OF_STOCK
+}
+
+enum QrSplitMode {
+  FULL
+  EQUAL
+  BY_ITEM
+  CUSTOM
+}
+
+enum QrShareStatus {
+  UNPAID
+  PAYMENT_REQUESTED
+  PAID
+}
+
+enum QrAlertKind {
+  NO_CAPTAIN
+  ESCALATION
+}
+
+enum QrAlertStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
 }
 
 /// Food vs bar — drives menu classification and Kitchen/Bar routing.
@@ -157,6 +218,14 @@ model Restaurant {
   status                RestaurantStatus @default(ACTIVE)
   /// Null while the owner's guided setup is pending; set once by `POST /onboarding/complete`.
   onboardingCompletedAt DateTime?        @map("onboarding_completed_at") @db.Timestamptz(6)
+  /// Master switch for guest QR ordering (REST-88). Off by default.
+  qrOrderingEnabled     Boolean          @default(false) @map("qr_ordering_enabled")
+  /// Minutes a guest round may wait for its captain before managers are alerted (1–15).
+  qrEscalationMinutes   Int              @default(3) @map("qr_escalation_minutes")
+  /// Phone number on the guest "Call restaurant" button.
+  guestPhone            String?          @map("guest_phone") @db.VarChar(30)
+  /// Guest app accent (#RRGGBB). Null uses the default; must give 4.5:1 with white text.
+  brandColor            String?          @map("brand_color") @db.VarChar(7)
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -183,6 +252,13 @@ model Restaurant {
   notifications           Notification[]
   billCancellationReasons BillCancellationReason[]
   onboardingDraft         OnboardingDraft?
+  upiQr                   RestaurantUpiQr?
+  qrSessions              QrSession[]
+  qrGuests                QrGuest[]
+  qrRounds                QrRound[]
+  qrBillShares            QrBillShare[]
+  qrAlerts                QrAlert[]
+  pushSubscriptions       PushSubscription[]
 
   @@map("restaurants")
 }
@@ -222,6 +298,8 @@ model User {
   /// Set for accounts created with a generated one-time password; cleared on the first password change.
   mustChangePassword Boolean    @default(false) @map("must_change_password")
   lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  /// Last authenticated request (throttled to one write a minute). Drives captain availability.
+  lastSeenAt         DateTime?  @map("last_seen_at") @db.Timestamptz(6)
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -241,6 +319,13 @@ model User {
   inventoryPurchaseOrders InventoryPurchaseOrder[]
   inventoryReceipts       InventoryReceipt[]
   roleAuditLogs           RoleAuditLog[]
+  kotsApproved            Kot[]                    @relation("KotApprovedBy")
+  qrRoundsOwned           QrRound[]                @relation("QrRoundOwner")
+  qrRoundsApproved        QrRound[]                @relation("QrRoundApprovedBy")
+  qrRoundsRejected        QrRound[]                @relation("QrRoundRejectedBy")
+  qrSharesRecorded        QrBillShare[]            @relation("QrShareRecordedBy")
+  qrAlertsResolved        QrAlert[]                @relation("QrAlertResolvedBy")
+  pushSubscriptions       PushSubscription[]
 
   @@index([restaurantId])
   @@index([roleId])
@@ -415,6 +500,10 @@ model RestaurantTable {
   isActive        Boolean  @default(true) @map("is_active")
   /// UTC timestamp of the last status transition.
   statusChangedAt DateTime @default(now()) @map("status_changed_at") @db.Timestamptz(6)
+  /// Unguessable, rotatable token printed on the table's QR card (REST-88). Never derived from the
+  /// table number; regenerating it invalidates the old card. Globally unique so the tenant is
+  /// resolved from the token alone.
+  qrToken         String   @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))")) @map("qr_token") @db.VarChar(64)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -424,10 +513,14 @@ model RestaurantTable {
   captain       User?         @relation("TableCaptain", fields: [captainUserId], references: [id])
   reservations  Reservation[]
   orders        Order[]
+  qrSessions    QrSession[]
+  qrRounds      QrRound[]
+  qrAlerts      QrAlert[]
 
-  // Case-insensitive uniqueness is enforced by a raw index on lower(table_number)
-  // (20261010120000_tables_number_case_insensitive_unique); Prisma can't express it.
-  @@unique([restaurantId, tableNumber])
+  // Case-insensitive uniqueness per section is enforced by a raw index on
+  // (restaurant_id, section_id, lower(table_number))
+  // (20261125120000_tables_number_unique_per_section); Prisma can't express it.
+  @@unique([restaurantId, sectionId, tableNumber])
   @@index([restaurantId])
   @@index([sectionId])
   @@index([currentStatusId])
@@ -449,6 +542,7 @@ model Guest {
 
   restaurant   Restaurant    @relation(fields: [restaurantId], references: [id])
   reservations Reservation[]
+  qrGuests     QrGuest[]
 
   @@unique([restaurantId, phoneNumber])
   @@map("guests")
@@ -518,13 +612,17 @@ model MenuItem {
   isActive       Boolean     @default(true) @map("is_active")
   /// False marks "No recipe needed" (e.g. bottled drinks), which silences the missing-recipe prompt.
   recipeRequired Boolean     @default(true) @map("recipe_required")
+  /// FSSAI marker for the guest menu: true = veg, false = non-veg, null = not shown.
+  isVeg          Boolean?    @map("is_veg")
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  restaurant  Restaurant   @relation(fields: [restaurantId], references: [id])
-  category    MenuCategory @relation(fields: [categoryId], references: [id])
-  orderItems  OrderItem[]
-  recipeItems RecipeItem[]
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id])
+  category     MenuCategory  @relation(fields: [categoryId], references: [id])
+  orderItems   OrderItem[]
+  recipeItems  RecipeItem[]
+  qrCartItems  QrCartItem[]
+  qrRoundItems QrRoundItem[]
 
   @@index([restaurantId])
   @@index([categoryId])
@@ -808,6 +906,7 @@ model Order {
   items         OrderItem[]
   kots          Kot[]
   bill          Bill?
+  qrSessions    QrSession[]
 
   @@index([restaurantId])
   @@index([restaurantId, createdAt])
@@ -831,9 +930,10 @@ model OrderItem {
   createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem MenuItem  @relation(fields: [menuItemId], references: [id])
-  kotItems KotItem[]
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem     MenuItem      @relation(fields: [menuItemId], references: [id])
+  kotItems     KotItem[]
+  qrRoundItems QrRoundItem[]
 
   @@index([orderId])
   @@index([menuItemId])
@@ -845,26 +945,36 @@ model OrderItem {
 // ----------------------------------------------------------------------------
 
 model Kot {
-  id              String         @id @default(uuid()) @db.Uuid
-  restaurantId    String         @map("restaurant_id") @db.Uuid
-  orderId         String         @map("order_id") @db.Uuid
-  createdByUserId String         @map("created_by_user_id") @db.Uuid
-  kotNumber       String         @map("kot_number") @db.VarChar(50)
-  destination     KotDestination
-  status          KotStatus      @default(PENDING)
-  completedAt     DateTime?      @map("completed_at") @db.Timestamptz(6)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String         @id @default(uuid()) @db.Uuid
+  restaurantId     String         @map("restaurant_id") @db.Uuid
+  orderId          String         @map("order_id") @db.Uuid
+  createdByUserId  String         @map("created_by_user_id") @db.Uuid
+  kotNumber        String         @map("kot_number") @db.VarChar(50)
+  destination      KotDestination
+  status           KotStatus      @default(PENDING)
+  /// QR tickets carry the round they came from and who approved it ("QR · approved by …").
+  source           KotSource      @default(STAFF)
+  qrRoundId        String?        @map("qr_round_id") @db.Uuid
+  approvedByUserId String?        @map("approved_by_user_id") @db.Uuid
+  /// Set when the chef's Ready reached the guest tracker ("Guest notified · h:mm pm").
+  guestNotifiedAt  DateTime?      @map("guest_notified_at") @db.Timestamptz(6)
+  completedAt      DateTime?      @map("completed_at") @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  restaurant    Restaurant @relation(fields: [restaurantId], references: [id])
-  order         Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  createdByUser User       @relation("KotCreatedBy", fields: [createdByUserId], references: [id])
-  items         KotItem[]
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id])
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdByUser  User       @relation("KotCreatedBy", fields: [createdByUserId], references: [id])
+  approvedByUser User?      @relation("KotApprovedBy", fields: [approvedByUserId], references: [id])
+  qrRound        QrRound?   @relation(fields: [qrRoundId], references: [id])
+  items          KotItem[]
 
   @@unique([restaurantId, kotNumber])
   @@index([restaurantId])
   @@index([orderId])
   @@index([createdByUserId])
+  @@index([qrRoundId])
+  @@index([approvedByUserId])
   @@map("kots")
 }
 
@@ -959,4 +1069,262 @@ model Payment {
   @@index([billId])
   @@index([recordedByUserId])
   @@map("payments")
+}
+
+// ----------------------------------------------------------------------------
+// QR table ordering (REST-88)
+// ----------------------------------------------------------------------------
+
+/// The restaurant's own UPI QR image, uploaded by an owner or manager. Shown to the captain when a
+/// guest pays a share; payment is confirmed manually. Kept out of `restaurants` so ordinary
+/// restaurant reads never load the image bytes.
+model RestaurantUpiQr {
+  restaurantId String   @id @map("restaurant_id") @db.Uuid
+  mimeType     String   @map("mime_type") @db.VarChar(50)
+  data         Bytes
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("restaurant_upi_qrs")
+}
+
+/// One visit at a table, shared by every phone that scans its QR. At most one OPEN session per
+/// table (partial unique index in a raw migration). Linked to the staff `orders` row once the first
+/// round is approved, so billing reuses the existing order/bill model.
+model QrSession {
+  id              String          @id @default(uuid()) @db.Uuid
+  restaurantId    String          @map("restaurant_id") @db.Uuid
+  tableId         String          @map("table_id") @db.Uuid
+  orderId         String?         @map("order_id") @db.Uuid
+  status          QrSessionStatus @default(OPEN)
+  billRequestedAt DateTime?       @map("bill_requested_at") @db.Timestamptz(6)
+  splitMode       QrSplitMode?    @map("split_mode")
+  closedAt        DateTime?       @map("closed_at") @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id])
+  table      RestaurantTable @relation(fields: [tableId], references: [id])
+  order      Order?          @relation(fields: [orderId], references: [id])
+  guests     QrGuest[]
+  cartItems  QrCartItem[]
+  rounds     QrRound[]
+  shares     QrBillShare[]
+
+  @@index([restaurantId, status])
+  @@index([tableId])
+  @@index([orderId])
+  @@map("qr_sessions")
+}
+
+/// A phone at the table. The guest enters name and phone (both required) before ordering; the
+/// phone is upserted into `guests`. The device keeps an opaque secret; only its hash is stored.
+model QrGuest {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  sessionId    String   @map("session_id") @db.Uuid
+  guestId      String   @map("guest_id") @db.Uuid
+  displayName  String   @map("display_name") @db.VarChar(80)
+  secretHash   String   @unique @map("secret_hash") @db.VarChar(64)
+  lastSeenAt   DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant    @relation(fields: [restaurantId], references: [id])
+  session    QrSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guest      Guest         @relation(fields: [guestId], references: [id])
+  cartItems  QrCartItem[]
+  roundItems QrRoundItem[]
+  rounds     QrRound[]
+  shares     QrBillShare[]
+
+  @@index([restaurantId])
+  @@index([sessionId])
+  @@index([guestId])
+  @@map("qr_guests")
+}
+
+/// The table's shared, not-yet-sent cart. Anyone at the table can edit or send it.
+model QrCartItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  sessionId           String   @map("session_id") @db.Uuid
+  menuItemId          String   @map("menu_item_id") @db.Uuid
+  addedByGuestId      String   @map("added_by_guest_id") @db.Uuid
+  quantity            Int
+  specialInstructions String?  @map("special_instructions") @db.VarChar(255)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session  QrSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  menuItem MenuItem  @relation(fields: [menuItemId], references: [id])
+  addedBy  QrGuest   @relation(fields: [addedByGuestId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([menuItemId])
+  @@index([addedByGuestId])
+  @@map("qr_cart_items")
+}
+
+/// One sent cart. Always goes to the table's captain for approval before any KOT exists.
+/// `escalateAt` is computed on submit; a DB-claimed sweep marks `escalatedAt` exactly once.
+model QrRound {
+  id                   String        @id @default(uuid()) @db.Uuid
+  restaurantId         String        @map("restaurant_id") @db.Uuid
+  sessionId            String        @map("session_id") @db.Uuid
+  tableId              String        @map("table_id") @db.Uuid
+  roundNumber          Int           @map("round_number")
+  status               QrRoundStatus @default(AWAITING_APPROVAL)
+  ownerCaptainUserId   String?       @map("owner_captain_user_id") @db.Uuid
+  submittedByGuestId   String        @map("submitted_by_guest_id") @db.Uuid
+  /// Client-supplied key making submit double-tap safe; unique per session.
+  idempotencyKey       String        @map("idempotency_key") @db.Uuid
+  note                 String?       @db.VarChar(255)
+  /// Server-computed at submit from current menu prices; client totals are never trusted.
+  subtotal             Decimal       @db.Decimal(12, 2)
+  submittedAt          DateTime      @map("submitted_at") @db.Timestamptz(6)
+  escalateAt           DateTime?     @map("escalate_at") @db.Timestamptz(6)
+  escalatedAt          DateTime?     @map("escalated_at") @db.Timestamptz(6)
+  onMyWayAt            DateTime?     @map("on_my_way_at") @db.Timestamptz(6)
+  /// Set when the table was handed to another captain while this round waited.
+  reassignedFromUserId String?       @map("reassigned_from_user_id") @db.Uuid
+  reassignedAt         DateTime?     @map("reassigned_at") @db.Timestamptz(6)
+  approvedAt           DateTime?     @map("approved_at") @db.Timestamptz(6)
+  approvedByUserId     String?       @map("approved_by_user_id") @db.Uuid
+  rejectedAt           DateTime?     @map("rejected_at") @db.Timestamptz(6)
+  rejectedByUserId     String?       @map("rejected_by_user_id") @db.Uuid
+  rejectReason         String?       @map("reject_reason") @db.VarChar(255)
+  /// What the captain changed on approval, shown to the guest: [{ name, from, to, outOfStock }].
+  editLog              Json?         @map("edit_log")
+  editNote             String?       @map("edit_note") @db.VarChar(255)
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant  Restaurant      @relation(fields: [restaurantId], references: [id])
+  session     QrSession       @relation(fields: [sessionId], references: [id])
+  table       RestaurantTable @relation(fields: [tableId], references: [id])
+  owner       User?           @relation("QrRoundOwner", fields: [ownerCaptainUserId], references: [id])
+  submittedBy QrGuest         @relation(fields: [submittedByGuestId], references: [id])
+  approvedBy  User?           @relation("QrRoundApprovedBy", fields: [approvedByUserId], references: [id])
+  rejectedBy  User?           @relation("QrRoundRejectedBy", fields: [rejectedByUserId], references: [id])
+  items       QrRoundItem[]
+  kots        Kot[]
+  alerts      QrAlert[]
+
+  @@unique([sessionId, roundNumber])
+  @@unique([sessionId, idempotencyKey])
+  @@index([restaurantId, status])
+  @@index([ownerCaptainUserId, status])
+  @@index([tableId])
+  @@index([submittedByGuestId])
+  @@index([approvedByUserId])
+  @@index([rejectedByUserId])
+  @@index([status, escalateAt])
+  @@map("qr_rounds")
+}
+
+model QrRoundItem {
+  id                  String            @id @default(uuid()) @db.Uuid
+  roundId             String            @map("round_id") @db.Uuid
+  menuItemId          String            @map("menu_item_id") @db.Uuid
+  addedByGuestId      String            @map("added_by_guest_id") @db.Uuid
+  /// Quantity the guest asked for; `quantity` is what was approved.
+  requestedQuantity   Int               @map("requested_quantity")
+  quantity            Int
+  /// Price snapshot taken from the menu at submit time.
+  unitPrice           Decimal           @map("unit_price") @db.Decimal(12, 2)
+  specialInstructions String?           @map("special_instructions") @db.VarChar(255)
+  status              QrRoundItemStatus @default(ACTIVE)
+  /// The staff order line created on approval.
+  orderItemId         String?           @map("order_item_id") @db.Uuid
+
+  round     QrRound    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem   @relation(fields: [menuItemId], references: [id])
+  addedBy   QrGuest    @relation(fields: [addedByGuestId], references: [id])
+  orderItem OrderItem? @relation(fields: [orderItemId], references: [id])
+
+  @@index([roundId])
+  @@index([menuItemId])
+  @@index([addedByGuestId])
+  @@index([orderItemId])
+  @@map("qr_round_items")
+}
+
+/// One person's part of a QR session's bill. Paid only when staff record the payment (manual UPI
+/// confirmation against the uploaded QR, or cash/card at the table); never from a guest's claim.
+/// When paid shares cover the bill, the existing bill is settled with one COMPLETED payment.
+model QrBillShare {
+  id               String         @id @default(uuid()) @db.Uuid
+  restaurantId     String         @map("restaurant_id") @db.Uuid
+  sessionId        String         @map("session_id") @db.Uuid
+  guestId          String?        @map("guest_id") @db.Uuid
+  label            String         @db.VarChar(80)
+  amount           Decimal        @db.Decimal(12, 2)
+  /// BY_ITEM shares: [{ orderItemId, quantity }] the guest claimed.
+  claimedItems     Json?          @map("claimed_items")
+  status           QrShareStatus  @default(UNPAID)
+  requestedMethod  PaymentMethod? @map("requested_method")
+  paymentMethod    PaymentMethod? @map("payment_method")
+  paidAmount       Decimal?       @map("paid_amount") @db.Decimal(12, 2)
+  referenceNumber  String?        @map("reference_number") @db.VarChar(255)
+  recordedByUserId String?        @map("recorded_by_user_id") @db.Uuid
+  paidAt           DateTime?      @map("paid_at") @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  session    QrSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guest      QrGuest?   @relation(fields: [guestId], references: [id])
+  recordedBy User?      @relation("QrShareRecordedBy", fields: [recordedByUserId], references: [id])
+
+  @@index([restaurantId])
+  @@index([sessionId])
+  @@index([guestId])
+  @@index([recordedByUserId])
+  @@map("qr_bill_shares")
+}
+
+/// Manager alerts: a scan of a table with no captain, or an escalated round. At most one OPEN
+/// no-captain alert per table and one escalation alert per round (raw partial unique indexes).
+model QrAlert {
+  id               String        @id @default(uuid()) @db.Uuid
+  restaurantId     String        @map("restaurant_id") @db.Uuid
+  tableId          String        @map("table_id") @db.Uuid
+  roundId          String?       @map("round_id") @db.Uuid
+  kind             QrAlertKind
+  status           QrAlertStatus @default(OPEN)
+  resolvedByUserId String?       @map("resolved_by_user_id") @db.Uuid
+  resolution       String?       @db.VarChar(255)
+  resolvedAt       DateTime?     @map("resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id])
+  table      RestaurantTable @relation(fields: [tableId], references: [id])
+  round      QrRound?        @relation(fields: [roundId], references: [id])
+  resolvedBy User?           @relation("QrAlertResolvedBy", fields: [resolvedByUserId], references: [id])
+
+  @@index([restaurantId, status, createdAt])
+  @@index([tableId])
+  @@index([roundId])
+  @@index([resolvedByUserId])
+  @@map("qr_alerts")
+}
+
+/// Web Push endpoint of a staff device (service worker + VAPID).
+model PushSubscription {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  endpoint     String   @unique @db.VarChar(1000)
+  p256dh       String   @db.VarChar(255)
+  auth         String   @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, userId])
+  @@map("push_subscriptions")
 }

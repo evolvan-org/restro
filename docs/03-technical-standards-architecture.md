@@ -59,6 +59,24 @@ Environment variables are validated at boot via a Zod schema (`src/config/env.va
 
 Transactional email is isolated behind `EmailService`; feature modules use logical template keys and typed variables only. Brevo owns subjects and bodies. Every environment uses the real provider, so a verified sender, API key, and active template IDs are required before starting the API.
 
+## Realtime (REST-88 decision)
+
+Live screens use the existing **Pusher Channels** app, not SSE: it needs no sticky connections or
+shared pub/sub across API instances (there is no Redis), and staff notifications already run on it.
+
+- Private channels only. `private-restaurant-<id>-user-<id>-notifications` (the bell),
+  `private-restaurant-<id>-qr` (QR queue, floor board, kitchen/bar displays; any of `qr-order:read`,
+  `kot:read`, `floor:read`) and `private-qr-session-<id>` (one guest table visit, authorized with the
+  device's guest secret).
+- Events carry ids only, never names, amounts or PII. Clients refetch over HTTPS on receipt.
+- Fallback: every live query also polls (15 s staff, 5 s guest while the socket is down) and
+  resyncs on reconnect, so a dropped socket degrades to slower updates, never stale state.
+- Publishing is best effort after the transaction commits; a Pusher failure never fails a request.
+
+Time-based work (QR escalation) does not use in-memory timers: deadlines are stored
+(`qr_rounds.escalate_at`) and a 15 s sweep claims due rows with one `UPDATE … RETURNING`, so each
+round escalates exactly once across instances and nothing is lost on restart.
+
 ## Testing
 
 - Backend: Jest (`yarn workspace @rms/api test`).

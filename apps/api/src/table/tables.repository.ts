@@ -125,7 +125,7 @@ export type TableActiveContext = {
 
 export class TableNumberConflictError extends Error {
   constructor() {
-    super('Table number is already in use');
+    super('Table number is already in use in this section');
     this.name = TableNumberConflictError.name;
   }
 }
@@ -241,6 +241,27 @@ export class TablesRepository {
     return count === 0 ? null : this.findById(restaurantId, tableId);
   }
 
+  /** Open QR table visits on this table, so their guest phones can be told about changes. */
+  async findOpenQrSessionIds(restaurantId: string, tableId: string): Promise<string[]> {
+    const sessions = await this.prisma.qrSession.findMany({
+      where: { restaurantId, tableId, status: 'OPEN' },
+      select: { id: true },
+    });
+    return sessions.map((session) => session.id);
+  }
+
+  /** Ends every open QR visit on the table (e.g. it was cleaned for the next party). */
+  async closeOpenQrSessions(restaurantId: string, tableId: string): Promise<string[]> {
+    const ids = await this.findOpenQrSessionIds(restaurantId, tableId);
+    if (ids.length) {
+      await this.prisma.qrSession.updateMany({
+        where: { id: { in: ids }, restaurantId, status: 'OPEN' },
+        data: { status: 'CLOSED', closedAt: new Date() },
+      });
+    }
+    return ids;
+  }
+
   findSection(restaurantId: string, sectionId: string): Promise<DiningSectionRecord | null> {
     return this.prisma.diningSection.findFirst({
       where: { id: sectionId, restaurantId },
@@ -302,12 +323,14 @@ export class TablesRepository {
 
   async isTableNumberTaken(
     restaurantId: string,
+    sectionId: string,
     tableNumber: string,
     excludeTableId?: string,
   ): Promise<boolean> {
     const table = await this.prisma.restaurantTable.findFirst({
       where: {
         restaurantId,
+        sectionId,
         tableNumber: { equals: tableNumber, mode: 'insensitive' },
         ...(excludeTableId && { id: { not: excludeTableId } }),
       },

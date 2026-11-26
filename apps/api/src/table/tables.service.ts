@@ -33,6 +33,7 @@ import { buildPageMeta } from '@rms/shared';
 import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { roleCan } from '../common/auth/role-access';
+import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import {
   type TableDetails,
   TableNumberConflictError,
@@ -40,7 +41,7 @@ import {
   TablesRepository,
 } from './tables.repository';
 
-const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use';
+const TABLE_NUMBER_IN_USE_MESSAGE = 'Table number is already in use in this section';
 
 @Injectable()
 export class TablesService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -48,7 +49,23 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   private reconciliationTimer?: NodeJS.Timeout;
   private isReconciling = false;
 
-  constructor(private readonly tablesRepository: TablesRepository) {}
+  constructor(
+    private readonly tablesRepository: TablesRepository,
+    private readonly qrRealtime: QrRealtimePublisher,
+  ) {}
+
+  /**
+   * A table's captain or availability changed: QR floor markers, alerts and the guest phones at
+   * that table depend on it (REST-88). Best effort after the write has committed.
+   */
+  private async announceQrTableChange(restaurantId: string, tableId: string): Promise<void> {
+    try {
+      const sessions = await this.tablesRepository.findOpenQrSessionIds(restaurantId, tableId);
+      await this.qrRealtime.publish(restaurantId, sessions, { kind: 'captain.changed', tableId });
+    } catch (error) {
+      this.logger.warn('Unable to announce a table change to QR screens', error);
+    }
+  }
 
   onApplicationBootstrap(): void {
     this.reconciliationTimer = setInterval(() => void this.reconcileAllStatuses(), 60_000);
@@ -131,7 +148,11 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
   async create(actor: Actor, input: CreateTableRequest): Promise<CreateTableResponse> {
     if (input.captainUserId) this.assertMayAssignCaptain(actor);
     const details = await this.toTableDetails(actor.restaurantId, input);
-    await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber);
+    await this.assertTableNumberAvailable(
+      actor.restaurantId,
+      details.sectionId,
+      details.tableNumber,
+    );
 
     const created = await this.mapTableNumberConflict(() =>
       this.tablesRepository.create(actor.restaurantId, details, (section) =>
@@ -139,6 +160,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       ),
     );
 
+    await this.announceQrTableChange(actor.restaurantId, created.id);
     return toRestaurantTable(created, actor);
   }
 
@@ -170,11 +192,17 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
     const existing = await this.findInRestaurant(actor.restaurantId, tableId);
     const details = await this.toPartialTableDetails(actor.restaurantId, input);
 
-    if (
-      details.tableNumber !== undefined &&
-      details.tableNumber.toLowerCase() !== existing.tableNumber.toLowerCase()
-    ) {
-      await this.assertTableNumberAvailable(actor.restaurantId, details.tableNumber, tableId);
+    const targetNumber = details.tableNumber ?? existing.tableNumber;
+    const targetSectionId = details.sectionId ?? existing.section.id;
+    const numberChanged = targetNumber.toLowerCase() !== existing.tableNumber.toLowerCase();
+    const sectionChanged = targetSectionId !== existing.section.id;
+    if (numberChanged || sectionChanged) {
+      await this.assertTableNumberAvailable(
+        actor.restaurantId,
+        targetSectionId,
+        targetNumber,
+        tableId,
+      );
     }
 
     const updated = await this.mapTableNumberConflict(() =>
@@ -186,6 +214,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new NotFoundException('Table not found');
     }
 
+    await this.announceQrTableChange(actor.restaurantId, tableId);
     return toRestaurantTable(updated, actor);
   }
 
@@ -219,6 +248,7 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new NotFoundException('Table not found');
     }
 
+    await this.announceQrTableChange(actor.restaurantId, tableId);
     return toRestaurantTable(updated, actor);
   }
 
@@ -254,7 +284,22 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new ConflictException('Table status changed; refresh and retry');
     }
 
+    // A cleaned table starts fresh: no QR visit may carry over to the next party.
+    if (table.currentStatus.code === 'NEEDS_CLEANING' && input.statusCode === 'AVAILABLE') {
+      await this.endQrVisits(actor.restaurantId, tableId);
+    }
     return toRestaurantTable(updated, actor);
+  }
+
+  private async endQrVisits(restaurantId: string, tableId: string): Promise<void> {
+    try {
+      const closed = await this.tablesRepository.closeOpenQrSessions(restaurantId, tableId);
+      if (closed.length) {
+        await this.qrRealtime.publish(restaurantId, closed, { kind: 'session.closed', tableId });
+      }
+    } catch (error) {
+      this.logger.warn('Unable to end QR visits on a cleaned table', error);
+    }
   }
 
   private async findInRestaurant(restaurantId: string, tableId: string): Promise<TableRecord> {
@@ -355,10 +400,18 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
 
   private async assertTableNumberAvailable(
     restaurantId: string,
+    sectionId: string,
     tableNumber: string,
     excludeTableId?: string,
   ): Promise<void> {
-    if (await this.tablesRepository.isTableNumberTaken(restaurantId, tableNumber, excludeTableId)) {
+    if (
+      await this.tablesRepository.isTableNumberTaken(
+        restaurantId,
+        sectionId,
+        tableNumber,
+        excludeTableId,
+      )
+    ) {
       throw new ConflictException(TABLE_NUMBER_IN_USE_MESSAGE);
     }
   }

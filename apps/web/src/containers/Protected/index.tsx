@@ -6,7 +6,11 @@ import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
 import AppHeader from '@/components/AppHeader';
 import AppSidebar from '@/components/AppSidebar';
 import EmailVerificationBanner from '@/components/EmailVerificationBanner';
+import QrOrdersWatcher from '@/components/QrOrdersWatcher';
+import useAccessibleHome from '@/hooks/auth/useAccessibleHome';
+import usePermissions from '@/hooks/auth/usePermissions';
 import useAppLayout from '@/hooks/useAppLayout';
+import { getRoutePermissions } from '@/lib/route-access';
 import { useProfile } from '@/services/api/requests/profile';
 import { useAccessToken } from '@/store/hooks/auth';
 
@@ -29,6 +33,8 @@ export default function ProtectedLayout({
   const accessToken = useAccessToken();
   const { variant } = useAppLayout();
   const profile = useProfile();
+  const { canAny } = usePermissions();
+  const home = useAccessibleHome();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -53,6 +59,15 @@ export default function ProtectedLayout({
     if (accessToken && setupRedirect) router.replace(setupRedirect);
   }, [accessToken, setupRedirect, router]);
 
+  // A signed-in user opening a route their role cannot access (typed URL, bookmark, stale link) is
+  // sent to the dashboard instead of seeing the page; routes without a rule are open to everyone.
+  const requiredPermissions = getRoutePermissions(pathname);
+  const accessDenied =
+    !!profile.data && !setupRedirect && !!requiredPermissions && !canAny(requiredPermissions);
+  useEffect(() => {
+    if (accessToken && accessDenied && pathname !== home) router.replace(home);
+  }, [accessToken, accessDenied, pathname, home, router]);
+
   // Close the mobile drawer on any route change, including back-navigation that bypasses link clicks.
   useEffect(() => {
     setMobileNavOpen(false);
@@ -63,11 +78,11 @@ export default function ProtectedLayout({
   }
 
   if (variant === 'bare') {
-    return setupRedirect ? null : <>{children}</>;
+    return setupRedirect || accessDenied ? null : <>{children}</>;
   }
 
   // Wait for the profile so a pending owner never sees the app shell (or its 403 toasts) first.
-  if (setupRedirect || (profile.isPending && !profile.isError)) {
+  if (setupRedirect || accessDenied || (profile.isPending && !profile.isError)) {
     return null;
   }
 
@@ -77,6 +92,7 @@ export default function ProtectedLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader onMenuClick={() => setMobileNavOpen(true)} />
         <EmailVerificationBanner />
+        <QrOrdersWatcher />
         <main className="flex-1">{children}</main>
       </div>
     </div>

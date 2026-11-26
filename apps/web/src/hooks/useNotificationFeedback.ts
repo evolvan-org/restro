@@ -31,10 +31,40 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/**
+ * Chime patterns: `bell` (two short 880 Hz beeps, existing alerts), `order` (rising two-tone for a
+ * new guest QR order) and `escalation` (the order chime played twice, for managers). Vibration
+ * accompanies `order` and `escalation` where the device supports it.
+ */
+export type ChimePattern = 'bell' | 'order' | 'escalation';
+
+const PATTERNS: Record<ChimePattern, { offset: number; frequency: number }[]> = {
+  bell: [
+    { offset: 0, frequency: 880 },
+    { offset: 0.14, frequency: 880 },
+  ],
+  order: [
+    { offset: 0, frequency: 660 },
+    { offset: 0.16, frequency: 990 },
+  ],
+  escalation: [
+    { offset: 0, frequency: 660 },
+    { offset: 0.16, frequency: 990 },
+    { offset: 0.5, frequency: 660 },
+    { offset: 0.66, frequency: 990 },
+  ],
+};
+
+const VIBRATION: Record<ChimePattern, number[] | null> = {
+  bell: null,
+  order: [200, 100, 200],
+  escalation: [200, 100, 200, 100, 400],
+};
+
 export default function useNotificationFeedback(): {
   muted: boolean;
   toggleMuted: () => void;
-  play: () => void;
+  play: (pattern?: ChimePattern) => void;
 } {
   const muted = useSyncExternalStore(subscribe, readMuted, () => false);
   const context = useRef<AudioContext | null>(null);
@@ -70,16 +100,25 @@ export default function useNotificationFeedback(): {
     window.dispatchEvent(new Event(CHANGE_EVENT));
   }, []);
 
-  const play = useCallback((): void => {
+  const play = useCallback((pattern: ChimePattern = 'bell'): void => {
+    if (readMuted()) return;
+    const vibration = VIBRATION[pattern];
+    if (vibration && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(vibration);
+      } catch {
+        // Vibration is best effort.
+      }
+    }
     const audio = context.current;
-    if (readMuted() || !audio || audio.state !== 'running') return;
+    if (!audio || audio.state !== 'running') return;
     try {
-      for (const offset of [0, 0.14]) {
+      for (const { offset, frequency } of PATTERNS[pattern]) {
         const oscillator = audio.createOscillator();
         const gain = audio.createGain();
         oscillator.connect(gain);
         gain.connect(audio.destination);
-        oscillator.frequency.value = 880;
+        oscillator.frequency.value = frequency;
         const start = audio.currentTime + offset;
         gain.gain.setValueAtTime(0.1, start);
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.09);

@@ -18,6 +18,7 @@ const SETTINGS_TAB_LABELS: Record<string, string> = {
   'menu-categories': 'Menu categories',
   'tax-discounts': 'Tax & discounts',
   'cancellation-reasons': 'Cancellation reasons',
+  'qr-ordering': 'QR ordering',
 };
 
 /**

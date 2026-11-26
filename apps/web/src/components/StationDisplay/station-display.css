@@ -1,4 +1,9 @@
 .kds[data-theme='dark'] {
+  /* QR tag + "Guest notified" (REST-88, K1/K2): same hues as the CP1 status system */
+  --qrt-b: #14264f;
+  --qrt-f: #bfdbfe;
+  --qrn-b: #052e26;
+  --qrn-f: #a7f3d0;
   --bg: #0b0d10;
   --surface: #16191e;
   --surface2: #22262d;
@@ -21,6 +26,10 @@
   --warn-fg: #fcd58a;
 }
 .kds[data-theme='light'] {
+  --qrt-b: #dbeafe;
+  --qrt-f: #1e3a8a;
+  --qrn-b: #d1fae5;
+  --qrn-f: #064e3b;
   --bg: #edeff2;
   --surface: #ffffff;
   --surface2: #f1f3f5;
@@ -108,6 +117,28 @@
 @media (prefers-reduced-motion: reduce) {
   .kds-enter,
   .kds-late {
+    animation: none;
+  }
+}
+
+@keyframes kds-pop {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.03);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.kds-pop {
+  animation: kds-pop 0.45s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kds-pop {
     animation: none;
   }
 }

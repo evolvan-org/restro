@@ -1,16 +1,58 @@
 import type { Notification } from '@rms/api-contract';
 
+const CATEGORIES: Record<Notification['type'], string> = {
+  'kot.sent': 'New KOT',
+  'kot.ready': 'Ready to serve',
+  'reservation.created': 'Reservation',
+  'qr.order.submitted': 'QR order',
+  'qr.order.escalated': 'Escalated',
+  'qr.no-captain': 'Needs a captain',
+  'qr.bill.requested': 'Bill requested',
+  'qr.call-server': 'Guest calling',
+  'qr.payment.requested': 'Wants to pay',
+};
+
+/** Where a QR notification opens in the staff app, or null when the viewer can't open it. */
+export function qrNotificationHref(
+  notification: Notification,
+  permissions: { canReadQrOrders: boolean; canManageQrOrders: boolean },
+): string | null {
+  if (notification.type === 'qr.order.escalated' || notification.type === 'qr.no-captain') {
+    return permissions.canManageQrOrders ? '/qr-orders/alerts' : null;
+  }
+  if (!permissions.canReadQrOrders) return null;
+  if (notification.entity === 'qr-round') return `/qr-orders/rounds/${notification.entityId}`;
+  if (notification.entity === 'qr-session') {
+    return notification.type === 'qr.call-server'
+      ? '/qr-orders'
+      : `/qr-orders/sessions/${notification.entityId}/bill`;
+  }
+  return null;
+}
+
 export function notificationView(
   notification: Notification,
-  permissions: { canReadOrders: boolean; canWriteReservations: boolean },
+  permissions: {
+    canReadOrders: boolean;
+    canWriteReservations: boolean;
+    canReadQrOrders?: boolean;
+    canManageQrOrders?: boolean;
+  },
 ): { category: string; tone: string; action: string | null } {
-  const category = {
-    'kot.sent': 'New KOT',
-    'kot.ready': 'Ready to serve',
-    'reservation.created': 'Reservation',
-  }[notification.type];
-  const action =
-    notification.entity === 'order' && notification.tableId && permissions.canReadOrders
+  const category = CATEGORIES[notification.type];
+  const qrHref = qrNotificationHref(notification, {
+    canReadQrOrders: permissions.canReadQrOrders ?? false,
+    canManageQrOrders: permissions.canManageQrOrders ?? false,
+  });
+  const action = notification.type.startsWith('qr.')
+    ? qrHref
+      ? notification.type === 'qr.order.submitted'
+        ? 'Review order'
+        : notification.type === 'qr.bill.requested' || notification.type === 'qr.payment.requested'
+          ? 'Open bill'
+          : 'Open'
+      : null
+    : notification.entity === 'order' && notification.tableId && permissions.canReadOrders
       ? 'View order'
       : notification.entity === 'reservation' && permissions.canWriteReservations
         ? 'View reservation'
