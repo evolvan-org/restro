@@ -1,10 +1,12 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { orderListQuerySchema } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
+import { Permission } from '@rms/permissions';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
-import type { CaptainOrderRecord, OrdersRepository } from './orders.repository';
+import type { CaptainOrderRecord, OrderListRecord, OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 
 const actor = { userId: 'captain-1', restaurantId: 'r1' } as unknown as Actor;
@@ -88,6 +90,114 @@ describe('OrdersService.captainOrders', () => {
     await expect(service.captainOrders(actor, { view: 'open' })).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+describe('OrdersService.list', () => {
+  const OTHER_CAPTAIN = '33333333-3333-4333-8333-333333333333';
+  const query = orderListQuerySchema.parse({ captainId: OTHER_CAPTAIN });
+
+  function listActor(overrides: Partial<Actor>): Actor {
+    return {
+      userId: 'u1',
+      restaurantId: 'r1',
+      roleId: 'role1',
+      role: 'Custom',
+      isOwner: false,
+      permissions: [Permission.ORDER_READ],
+      emailVerifiedAt: null,
+      ...overrides,
+    };
+  }
+
+  function setupList(result: unknown = { items: [], total: 0, currency: 'INR', timezone: 'UTC' }) {
+    const findOrderList = jest.fn().mockResolvedValue(result);
+    const service = new OrdersService(
+      { findOrderList } as unknown as OrdersRepository,
+      {} as NotificationsService,
+      { publish: jest.fn() } as unknown as QrRealtimePublisher,
+    );
+    return { service, findOrderList };
+  }
+
+  it('forces a captain onto their own tables, ignoring the requested captain', async () => {
+    const { service, findOrderList } = setupList();
+    await service.list(
+      listActor({ permissions: [Permission.ORDER_READ, Permission.TABLE_BE_CAPTAIN] }),
+      query,
+    );
+    expect(findOrderList).toHaveBeenCalledWith(
+      'r1',
+      expect.objectContaining({ captainUserId: 'u1' }),
+    );
+  });
+
+  it('lets a captain assigner filter by any captain, or see every order', async () => {
+    const { service, findOrderList } = setupList();
+    const manager = listActor({
+      permissions: [Permission.ORDER_READ, Permission.TABLE_ASSIGN_CAPTAIN],
+    });
+    await service.list(manager, query);
+    expect(findOrderList).toHaveBeenLastCalledWith(
+      'r1',
+      expect.objectContaining({ captainUserId: OTHER_CAPTAIN }),
+    );
+    await service.list(manager, orderListQuerySchema.parse({}));
+    expect(findOrderList.mock.lastCall?.[1]).not.toHaveProperty('captainUserId');
+  });
+
+  it('shows the owner every order', async () => {
+    const { service, findOrderList } = setupList();
+    await service.list(
+      listActor({ isOwner: true, permissions: [] }),
+      orderListQuerySchema.parse({}),
+    );
+    expect(findOrderList.mock.lastCall?.[1]).not.toHaveProperty('captainUserId');
+  });
+
+  it('403s roles that are neither captains nor captain assigners', async () => {
+    const { service, findOrderList } = setupList();
+    await expect(service.list(listActor({}), query)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(findOrderList).not.toHaveBeenCalled();
+  });
+
+  it('maps rows with their captain, page meta, currency and timezone', async () => {
+    const row = {
+      ...record(),
+      table: {
+        id: '22222222-2222-4222-8222-222222222222',
+        tableNumber: 'T2',
+        captain: { id: OTHER_CAPTAIN, name: 'Isha Rao' },
+      },
+    } as OrderListRecord;
+    const { service } = setupList({
+      items: [row],
+      total: 41,
+      currency: 'INR',
+      timezone: 'Asia/Kolkata',
+    });
+    const response = await service.list(
+      listActor({ isOwner: true, permissions: [] }),
+      orderListQuerySchema.parse({ page: 2 }),
+    );
+    expect(response).toMatchObject({
+      meta: { page: 2, pageSize: 20, total: 41, totalPages: 3 },
+      currency: 'INR',
+      timezone: 'Asia/Kolkata',
+    });
+    expect(response.data[0]).toMatchObject({
+      table: { id: '22222222-2222-4222-8222-222222222222', tableNumber: 'T2' },
+      captain: { id: OTHER_CAPTAIN, name: 'Isha Rao' },
+      total: '350.00',
+    });
+    expect(response.data[0]?.table).not.toHaveProperty('captain');
+  });
+
+  it('rejects a start date after the end date', () => {
+    expect(orderListQuerySchema.safeParse({ from: '2026-11-26', to: '2026-11-25' }).success).toBe(
+      false,
+    );
+    expect(orderListQuerySchema.safeParse({ from: '2026-11-25' }).success).toBe(true);
   });
 });
 

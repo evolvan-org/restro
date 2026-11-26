@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,12 +19,16 @@ import {
   type KotQueueQuery,
   type KotQueueResponse,
   type Order,
+  type OrderListQuery,
+  type OrderListResponse,
   type UpdateKotStatusRequest,
   type UpdateKotStatusResponse,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
+import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
+import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
@@ -33,6 +38,7 @@ import {
   toKot,
   toKotQueueItem,
   toOrder,
+  toOrderListItem,
 } from './orders.mapper';
 import { type KotRecord, OrdersRepository } from './orders.repository';
 
@@ -163,6 +169,30 @@ export class OrdersService {
       openCount: result.openCount,
       closedCount: result.closedCount,
       currency: result.currency,
+    };
+  }
+
+  /**
+   * Orders page. Captain assigners (and the owner) see every order and may filter by captain; a
+   * captain is always limited to their own tables, whatever `captainId` the client sends.
+   */
+  async list(actor: Actor, query: OrderListQuery): Promise<OrderListResponse> {
+    const { captainId, ...filters } = query;
+    let captainUserId: string | undefined;
+    if (actorCan(actor, Permission.TABLE_ASSIGN_CAPTAIN)) captainUserId = captainId;
+    else if (actorCan(actor, Permission.TABLE_BE_CAPTAIN)) captainUserId = actor.userId;
+    else throw new ForbiddenException('You do not have permission to view the order list');
+
+    const result = await this.repository.findOrderList(actor.restaurantId, {
+      ...filters,
+      ...(captainUserId && { captainUserId }),
+    });
+    if (!result) throw new NotFoundException('Restaurant not found');
+    return {
+      data: result.items.map(toOrderListItem),
+      meta: buildPageMeta(query.page, query.pageSize, result.total),
+      currency: result.currency,
+      timezone: result.timezone,
     };
   }
 

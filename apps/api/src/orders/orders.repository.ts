@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { CaptainOrderView, KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
+import type {
+  CaptainOrderView,
+  KotDestination,
+  KotQueueQuery,
+  KotStatus,
+  OrderListQuery,
+} from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { createKotTickets } from '../common/database/kot-tickets';
@@ -100,8 +106,24 @@ const captainOrderSelect = {
   },
 } satisfies Prisma.OrderSelect;
 
+const orderListSelect = {
+  ...captainOrderSelect,
+  table: {
+    select: { id: true, tableNumber: true, captain: { select: { id: true, name: true } } },
+  },
+} satisfies Prisma.OrderSelect;
+
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 export type CaptainOrderRecord = Prisma.OrderGetPayload<{ select: typeof captainOrderSelect }>;
+export type OrderListRecord = Prisma.OrderGetPayload<{ select: typeof orderListSelect }>;
+/** List filters after the service resolved the caller's scope (`captainUserId`). */
+export type OrderListFilters = Omit<OrderListQuery, 'captainId'> & { captainUserId?: string };
+export type OrderListResult = {
+  items: OrderListRecord[];
+  total: number;
+  currency: string;
+  timezone: string;
+};
 export type CaptainOrdersResult = {
   items: CaptainOrderRecord[];
   openCount: number;
@@ -349,6 +371,64 @@ export class OrdersRepository {
         ]);
 
         return { items, openCount, closedCount, currency: context.currency };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
+  /**
+   * Orders page, newest first. `from` / `to` are restaurant-local days on `openedAt`; Postgres
+   * turns them into UTC bounds so DST and non-UTC zones resolve correctly ([from 00:00, to+1 00:00)).
+   */
+  async findOrderList(
+    restaurantId: string,
+    filters: OrderListFilters,
+  ): Promise<OrderListResult | null> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const [context] = await tx.$queryRaw<
+          { currency: string; timezone: string; fromStart: Date | null; toEnd: Date | null }[]
+        >`
+          SELECT
+            r.currency,
+            r.timezone,
+            (${filters.from ?? null}::date)::timestamp AT TIME ZONE r.timezone AS "fromStart",
+            (${filters.to ?? null}::date + 1)::timestamp AT TIME ZONE r.timezone AS "toEnd"
+          FROM restaurants r
+          WHERE r.id = ${restaurantId}::uuid
+        `;
+        if (!context) return null;
+
+        const where: Prisma.OrderWhereInput = {
+          restaurantId,
+          ...(filters.status && { status: filters.status }),
+          ...((context.fromStart || context.toEnd) && {
+            openedAt: {
+              ...(context.fromStart && { gte: context.fromStart }),
+              ...(context.toEnd && { lt: context.toEnd }),
+            },
+          }),
+          table: {
+            restaurantId,
+            ...(filters.captainUserId && { captainUserId: filters.captainUserId }),
+            ...(filters.tableNumber && {
+              tableNumber: { contains: filters.tableNumber, mode: 'insensitive' },
+            }),
+          },
+        };
+
+        const [items, total] = await Promise.all([
+          tx.order.findMany({
+            where,
+            select: orderListSelect,
+            orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
+            skip: (filters.page - 1) * filters.pageSize,
+            take: filters.pageSize,
+          }),
+          tx.order.count({ where }),
+        ]);
+
+        return { items, total, currency: context.currency, timezone: context.timezone };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
