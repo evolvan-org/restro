@@ -51,6 +51,38 @@ function isActiveRoute(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** The Restro logo mark, themed through the sidebar colour tokens so it works in light and dark. */
+function BrandMark({ className }: { className?: string }): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      className={cn('size-8 shrink-0', className)}
+      role="img"
+      aria-label="Restro logo"
+    >
+      <rect width="512" height="512" rx="112" className="fill-sidebar-primary" />
+      <circle cx="256" cy="150" r="22" className="fill-sidebar-primary-foreground" />
+      <path d="M108 340a148 148 0 0 1 296 0Z" className="fill-sidebar-primary-foreground" />
+      <path
+        d="M158 300a100 100 0 0 1 56-80"
+        fill="none"
+        className="stroke-sidebar-primary"
+        strokeWidth="14"
+        strokeLinecap="round"
+        opacity=".55"
+      />
+      <rect
+        x="84"
+        y="360"
+        width="344"
+        height="30"
+        rx="15"
+        className="fill-sidebar-primary-foreground"
+      />
+    </svg>
+  );
+}
+
 /** The brand lockup, shared by the desktop rail and the mobile drawer. */
 function SidebarBrand({
   collapsed,
@@ -66,9 +98,7 @@ function SidebarBrand({
       title="Restaurant Management System"
       className="flex items-center gap-2.5 font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/50"
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
-        R
-      </span>
+      <BrandMark />
       {!collapsed && <span className="truncate text-sm font-semibold">Restaurant MS</span>}
     </Link>
   );
@@ -336,9 +366,7 @@ export default function AppSidebar({
               title="Expand sidebar"
               className="group relative size-8 rounded-md p-0 hover:bg-sidebar-accent"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground group-hover:hidden">
-                R
-              </span>
+              <BrandMark className="group-hover:hidden" />
               <PanelLeft
                 className="hidden size-5 text-sidebar-foreground group-hover:block"
                 aria-hidden
