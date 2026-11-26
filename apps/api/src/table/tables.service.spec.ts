@@ -1,3 +1,4 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Permission } from '@rms/permissions';
 
 import type { Actor } from '../common/auth/authenticated-request';
@@ -143,5 +144,128 @@ describe('TablesService table number uniqueness per section', () => {
     const { service, isTableNumberTaken } = setupWrites(() => true);
     await service.update(owner, 't1', { capacity: 6 } as never);
     expect(isTableNumberTaken).not.toHaveBeenCalled();
+  });
+});
+
+describe('TablesService.assignCaptains', () => {
+  const captainRole = {
+    name: 'Captain',
+    isOwner: false,
+    permissions: [{ permissionKey: Permission.TABLE_BE_CAPTAIN }],
+  };
+  const captain = {
+    id: 'c1',
+    restaurantId: 'r1',
+    name: 'Raj K',
+    status: 'ACTIVE',
+    role: captainRole,
+  };
+
+  function record(id: string, captainUserId: string | null) {
+    return {
+      id,
+      tableNumber: id.toUpperCase(),
+      section: { id: 'indoor', name: 'Indoor' },
+      capacity: 4,
+      isActive: true,
+      captainUserId,
+      captain: captainUserId ? { id: captainUserId, name: 'Raj K', role: captainRole } : null,
+      reservations: [],
+      orders: [],
+      currentStatus: { id: 's1', code: 'AVAILABLE', name: 'Available' },
+      statusChangedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  function setupBulk(options: {
+    candidate?: unknown;
+    result?: { appliedIds: string[]; conflictIds: string[] } | null;
+    records?: ReturnType<typeof record>[];
+  }) {
+    const updateCaptainsIfCurrent = jest
+      .fn()
+      .mockResolvedValue(
+        options.result === undefined ? { appliedIds: [], conflictIds: [] } : options.result,
+      );
+    const findOpenQrSessionIds = jest.fn().mockResolvedValue([]);
+    const repository = {
+      findCaptainCandidate: jest
+        .fn()
+        .mockResolvedValue(options.candidate === undefined ? captain : options.candidate),
+      updateCaptainsIfCurrent,
+      findByIds: jest.fn().mockResolvedValue(options.records ?? []),
+      findOpenQrSessionIds,
+    } as unknown as TablesRepository;
+    const qrRealtime = { publish: jest.fn() } as unknown as QrRealtimePublisher;
+    return {
+      service: new TablesService(repository, qrRealtime),
+      updateCaptainsIfCurrent,
+      findOpenQrSessionIds,
+    };
+  }
+
+  const manager = actor({ permissions: [Permission.TABLE_ASSIGN_CAPTAIN] });
+  const input = {
+    assignments: [
+      {
+        captainUserId: 'c1',
+        tables: [
+          { tableId: 't1', expectedCaptainUserId: null },
+          { tableId: 't2', expectedCaptainUserId: null },
+        ],
+      },
+    ],
+  };
+
+  it('returns applied tables as updated and changed-elsewhere tables as conflicts', async () => {
+    const { service, updateCaptainsIfCurrent, findOpenQrSessionIds } = setupBulk({
+      result: { appliedIds: ['t1'], conflictIds: ['t2'] },
+      records: [record('t1', 'c1'), record('t2', 'c2')],
+    });
+
+    const result = await service.assignCaptains(manager, input);
+
+    expect(updateCaptainsIfCurrent).toHaveBeenCalledWith('r1', input.assignments);
+    expect(result.updated.map((t) => t.id)).toEqual(['t1']);
+    expect(result.conflicts.map((t) => [t.id, t.captainUserId])).toEqual([['t2', 'c2']]);
+    // Only applied tables are announced to QR screens.
+    expect(findOpenQrSessionIds).toHaveBeenCalledTimes(1);
+    expect(findOpenQrSessionIds).toHaveBeenCalledWith('r1', 't1');
+  });
+
+  it('clears captains without an eligibility lookup', async () => {
+    const { service, updateCaptainsIfCurrent } = setupBulk({ candidate: null });
+    const clear = {
+      assignments: [
+        { captainUserId: null, tables: [{ tableId: 't1', expectedCaptainUserId: 'c1' }] },
+      ],
+    };
+    await service.assignCaptains(manager, clear);
+    expect(updateCaptainsIfCurrent).toHaveBeenCalledWith('r1', clear.assignments);
+  });
+
+  it('rejects a captain whose role lacks the captain marker, changing nothing', async () => {
+    const { service, updateCaptainsIfCurrent } = setupBulk({
+      candidate: { ...captain, role: { ...captainRole, permissions: [] } },
+    });
+    await expect(service.assignCaptains(manager, input)).rejects.toThrow(BadRequestException);
+    expect(updateCaptainsIfCurrent).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive captain', async () => {
+    const { service } = setupBulk({ candidate: { ...captain, status: 'INACTIVE' } });
+    await expect(service.assignCaptains(manager, input)).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects an unknown captain with 404', async () => {
+    const { service } = setupBulk({ candidate: null });
+    await expect(service.assignCaptains(manager, input)).rejects.toThrow('Captain not found');
+  });
+
+  it('rejects tables outside the restaurant with 404', async () => {
+    const { service } = setupBulk({ result: null });
+    await expect(service.assignCaptains(manager, input)).rejects.toThrow(NotFoundException);
   });
 });

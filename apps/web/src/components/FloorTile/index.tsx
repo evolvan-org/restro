@@ -4,15 +4,22 @@ import { Popover } from '@base-ui/react/popover';
 import { Tooltip } from '@base-ui/react/tooltip';
 import type { RestaurantTable } from '@rms/api-contract';
 import { cn } from 'cn';
-import { Calendar, Clock, TriangleAlert, Users, X } from 'lucide-react';
+import { Calendar, Check, Clock, TriangleAlert, Users, X } from 'lucide-react';
 import Link from 'next/link';
-import { type ReactElement, type ReactNode, useState } from 'react';
+import {
+  type DragEvent,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 
 import TableCaptainAction from '@/components/TableCaptainAction';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import useMediaQuery from '@/hooks/useMediaQuery';
+import { firstNameOf, initialsOf } from '@/lib/qr';
 import { getReservation } from '@/services/api/requests/reservations';
 import { useTransitionTableStatus } from '@/services/api/requests/tables';
 import { useShowSidePane } from '@/store/hooks/sidepane';
@@ -100,9 +107,39 @@ export function formatClockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function firstName(fullName: string): string {
-  return fullName.trim().split(/\s+/)[0] ?? fullName;
+/** Initials avatar for a captain (floor tiles in assign mode, the captains rail). */
+export function CaptainAvatar({
+  name,
+  className,
+}: {
+  name: string;
+  className?: string;
+}): ReactElement {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'grid size-4 shrink-0 place-items-center rounded-full bg-neutral-900 text-[8px] font-bold leading-none text-neutral-50 dark:bg-neutral-100 dark:text-neutral-900',
+        className,
+      )}
+    >
+      {initialsOf(name)}
+    </span>
+  );
 }
+
+/** Assign-captains mode (REST-99): the tile becomes a selectable, draggable checkbox. */
+export type TileAssignState = {
+  selected: boolean;
+  /** Skipped by a bulk assignment because someone else changed its captain. */
+  conflict: boolean;
+  /** Another captain's table while the board is focused on one captain. */
+  dimmed: boolean;
+  onToggle: (event: MouseEvent<HTMLButtonElement>) => void;
+  /** Omitted on touch screens, where tables are tapped and then a captain is tapped. */
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
+  onDragEnd?: () => void;
+};
 
 type FloorTileProps = {
   table: RestaurantTable;
@@ -121,6 +158,8 @@ type FloorTileProps = {
   className?: string;
   /** QR ordering marker (pending guest order, bill request, no captain). */
   qr?: QrTileMarker;
+  /** Set while the floor board is in assign-captains mode; replaces the actions popover. */
+  assign?: TileAssignState;
 };
 
 export default function FloorTile(props: FloorTileProps): ReactElement {
@@ -145,7 +184,7 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     : statusCode === 'AVAILABLE'
       ? 'Free'
       : table.captain
-        ? firstName(table.captain.name)
+        ? firstNameOf(table.captain.name)
         : reservation
           ? `${reservation.guest.guestName} ×${reservation.partySize}`
           : '—';
@@ -156,15 +195,53 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
   const qrLine =
     props.qr && (props.qr.waitingSince || props.qr.noCaptain || props.qr.billRequested);
 
+  const assign = props.assign;
+  const captainLine = table.captain ? (
+    <span className="flex min-w-0 items-center gap-1 text-[11px] xl:text-xs">
+      <CaptainAvatar name={table.captain.name} />
+      <span className="truncate">{firstNameOf(table.captain.name)}</span>
+    </span>
+  ) : (
+    <span className="flex min-w-0 items-center gap-1 text-[11px] font-medium text-amber-700 xl:text-xs dark:text-amber-300">
+      <span
+        aria-hidden
+        className="size-4 shrink-0 rounded-full border border-dashed border-amber-500"
+      />
+      <span className="truncate">No captain</span>
+    </span>
+  );
+
   const tileInner = (
     <>
-      {(hasReadyTickets || Boolean(attention)) && (
+      {assign && (
         <span
           aria-hidden
-          className="absolute -right-[7px] -top-[7px] grid size-5 place-items-center rounded-full border-2 border-white bg-amber-500 text-[11px] font-bold leading-none text-stone-900"
+          className={cn(
+            'absolute -left-[7px] -top-[7px] grid size-5 place-items-center rounded-full border-2',
+            assign.selected
+              ? 'border-neutral-900 bg-neutral-900 text-neutral-50 dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900'
+              : 'border-neutral-400 bg-background',
+          )}
         >
-          {hasReadyTickets ? '✓' : '!'}
+          {assign.selected && <Check className="size-3" strokeWidth={3} />}
         </span>
+      )}
+      {assign?.conflict ? (
+        <span
+          aria-hidden
+          className="absolute -right-[7px] -top-[7px] grid size-5 place-items-center rounded-full border-2 border-white bg-red-500 text-white"
+        >
+          <TriangleAlert className="size-3" />
+        </span>
+      ) : (
+        (hasReadyTickets || Boolean(attention)) && (
+          <span
+            aria-hidden
+            className="absolute -right-[7px] -top-[7px] grid size-5 place-items-center rounded-full border-2 border-white bg-amber-500 text-[11px] font-bold leading-none text-stone-900"
+          >
+            {hasReadyTickets ? '✓' : '!'}
+          </span>
+        )
       )}
       <div className="flex w-full items-start justify-between">
         <span className="max-w-[70%] truncate text-base font-bold leading-none xl:text-lg">
@@ -189,7 +266,9 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
             {tileTime}
           </span>
         )}
-        {qrLine ? (
+        {assign ? (
+          captainLine
+        ) : qrLine ? (
           <QrTileLine marker={props.qr} />
         ) : (
           <span className="block truncate text-[11px] text-neutral-600 xl:text-xs dark:text-neutral-400">
@@ -212,11 +291,41 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
     colorClasses.bg,
     colorClasses.border,
     hasReadyTickets && styles.ready,
-    attention && !hasReadyTickets && 'ring-2 ring-amber-500',
-    props.qr?.waitingSince && 'qr-pulse',
+    assign
+      ? cn(
+          'select-none ring-offset-2',
+          assign.conflict
+            ? 'ring-2 ring-red-500'
+            : assign.selected && 'ring-2 ring-neutral-900 dark:ring-neutral-100',
+          assign.dimmed && 'opacity-40',
+        )
+      : cn(
+          attention && !hasReadyTickets && 'ring-2 ring-amber-500',
+          props.qr?.waitingSince && 'qr-pulse',
+        ),
     props.className,
   );
   const tileStyle = qrTileStyle(props.qr);
+
+  if (assign) {
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={assign.selected}
+        aria-label={`Table ${table.tableNumber}, ${table.capacity} seats, ${table.currentStatus.name}, ${
+          table.captain ? `captain ${table.captain.name}` : 'no captain'
+        }${assign.conflict ? ', not assigned because it was just changed' : ''}`}
+        className={tileClassName}
+        draggable={Boolean(assign.onDragStart)}
+        onDragStart={assign.onDragStart}
+        onDragEnd={assign.onDragEnd}
+        onClick={assign.onToggle}
+      >
+        {tileInner}
+      </button>
+    );
+  }
 
   const popoverBody = (
     <TablePopoverBody

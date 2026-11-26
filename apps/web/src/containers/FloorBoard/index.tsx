@@ -1,21 +1,25 @@
 'use client';
 
+import type { RestaurantTable } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { MAX_PAGE_SIZE } from '@rms/shared';
-import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
-import { buildStatusColorMap } from '@/components/FloorTile';
+import { buildStatusColorMap, type TileAssignState } from '@/components/FloorTile';
 import { getTableAttention } from '@/components/FloorTile/attention';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
+import useMediaQuery from '@/hooks/useMediaQuery';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useReservations } from '@/services/api/requests/reservations';
-import { useTableBoard, useTableOptions } from '@/services/api/requests/tables';
+import { useCaptainOptions, useTableBoard, useTableOptions } from '@/services/api/requests/tables';
 import { useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
+import AssignInfoBar from './AssignInfoBar';
 import AttentionRail, { type AttentionEntry } from './AttentionRail';
+import { buildCaptainCards, CaptainDock, CaptainRail } from './CaptainRail';
 import {
   FloorEmpty,
   FloorError,
@@ -29,12 +33,16 @@ import { type FloorBoardFilters, getFloorBoardFilterDefaults } from './mapper';
 import QrFloorBanner, { useQrTileMarkers } from './QrFloorBanner';
 import { searchTables } from './search';
 import SectionTabs from './SectionTabs';
+import SelectionBar, { DragGhost } from './SelectionBar';
 import StatusFilterChips from './StatusFilterChips';
+import TakeoverDialog from './TakeoverDialog';
+import useCaptainAssignment from './useCaptainAssignment';
 
 const TIMER_TICK_MS = 60_000;
 const UP_NEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
 const STALE_AFTER_MS = 60_000;
 const SEARCH_DEBOUNCE_MS = 250;
+const NO_TABLES: RestaurantTable[] = [];
 
 function formatAgo(ms: number): string {
   if (ms < 10_000) return 'updated just now';
@@ -55,6 +63,9 @@ export default function FloorBoard(): ReactElement | null {
     canAssignCaptain: can(Permission.TABLE_ASSIGN_CAPTAIN),
     canTransitionStatus: can(Permission.TABLE_UPDATE_STATUS),
   };
+  // Captain-eligible callers get a board scoped to their own tables, so bulk assignment (and its
+  // per-captain counts) is offered only to staff who see the whole floor.
+  const canAssignCaptains = permissions.canAssignCaptain && !can(Permission.TABLE_BE_CAPTAIN);
 
   const { control, register, setValue, reset } = useForm<FloorBoardFilters>({
     defaultValues: getFloorBoardFilterDefaults(),
@@ -62,6 +73,7 @@ export default function FloorBoard(): ReactElement | null {
   const sectionId = useWatch({ control, name: 'sectionId' });
   const statusCode = useWatch({ control, name: 'statusCode' });
   const search = useWatch({ control, name: 'search' });
+  const noCaptain = useWatch({ control, name: 'noCaptain' });
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [railOpen, setRailOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -75,6 +87,11 @@ export default function FloorBoard(): ReactElement | null {
   // One complete snapshot keeps local filters, chip counts, and covers consistent.
   const tables = useTableBoard(canRead);
   const qr = useQrTileMarkers(canRead);
+  const rows = tables.data?.data ?? NO_TABLES;
+  const assignment = useCaptainAssignment(rows);
+  const captains = useCaptainOptions(assignment.active);
+  const canDrag = useMediaQuery('(pointer: fine)');
+  const dragGhostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!tables.isFetching) setNowMs(Date.now());
@@ -116,7 +133,6 @@ export default function FloorBoard(): ReactElement | null {
 
   const sections = options.data?.sections ?? [];
   const statuses = options.data?.statuses ?? [];
-  const rows = tables.data?.data ?? [];
   const colorMap = buildStatusColorMap(statuses);
   const hasFilters = Boolean(sectionId || statusCode || search.trim());
 
@@ -138,12 +154,23 @@ export default function FloorBoard(): ReactElement | null {
     }))
     .filter((s) => s.count > 0);
 
+  const assignMode = assignment.active;
+  const unassignedCount = rows.filter((t) => t.captainUserId === null).length;
   const searched = searchTables(rows, debouncedSearch);
-  const afterSection = sectionId ? searched.filter((t) => t.section.id === sectionId) : searched;
+  const afterCaptain =
+    assignMode && noCaptain ? searched.filter((t) => t.captainUserId === null) : searched;
+  const afterSection = sectionId
+    ? afterCaptain.filter((t) => t.section.id === sectionId)
+    : afterCaptain;
   const afterStatus = statusCode
     ? afterSection.filter((t) => t.currentStatus.code === statusCode)
     : afterSection;
   const visibleCount = afterStatus.length;
+  const renderedSections = sectionsWithCounts.filter((s) => !sectionId || s.id === sectionId);
+  // Render order (section by section), for shift-click ranges.
+  const orderedVisibleIds = renderedSections.flatMap((s) =>
+    afterStatus.filter((t) => t.section.id === s.id).map((t) => t.id),
+  );
 
   const statusName = statuses.find((s) => s.code === statusCode)?.name ?? '';
   const sectionName = sections.find((s) => s.id === sectionId)?.name ?? '';
@@ -180,6 +207,7 @@ export default function FloorBoard(): ReactElement | null {
   const noMatchMessage = [
     statusName && `${statusName}`,
     'tables',
+    assignMode && noCaptain && 'without a captain',
     sectionName && `in ${sectionName}`,
     activeQuery && `matching “${activeQuery}”`,
   ]
@@ -198,6 +226,36 @@ export default function FloorBoard(): ReactElement | null {
       canReadReservations={canReadReservations}
     />
   );
+
+  const captainCards = assignMode ? buildCaptainCards(rows, captains.data ?? []) : [];
+  const focusCaptainName =
+    captainCards.find((card) => card.target && card.target.id === assignment.focusCaptainId)?.target
+      ?.name ?? null;
+
+  const toggleAssignMode = (): void => {
+    if (!assignMode) {
+      assignment.enter();
+      return;
+    }
+    assignment.exit();
+    setValue('noCaptain', false);
+  };
+
+  const getTileState = (table: RestaurantTable): TileAssignState => ({
+    selected: assignment.selectedIds.has(table.id),
+    conflict: assignment.conflictIds.has(table.id),
+    dimmed: assignment.focusCaptainId !== null && table.captainUserId !== assignment.focusCaptainId,
+    onToggle: (event) => assignment.toggle(table.id, event.shiftKey, orderedVisibleIds),
+    onDragStart: canDrag
+      ? (event) => {
+          assignment.startDrag(table.id);
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', table.id);
+          if (dragGhostRef.current) event.dataTransfer.setDragImage(dragGhostRef.current, 16, 16);
+        }
+      : undefined,
+    onDragEnd: assignment.endDrag,
+  });
 
   const renderBody = (): ReactElement => {
     if (tables.isError && rows.length === 0) {
@@ -224,29 +282,36 @@ export default function FloorBoard(): ReactElement | null {
     }
     return (
       <div className="space-y-6">
-        {sectionsWithCounts
-          .filter((s) => !sectionId || s.id === sectionId)
-          .map((s) => (
-            <FloorSection
-              key={s.id}
-              name={s.name}
-              tables={searched.filter((t) => t.section.id === s.id)}
-              statusFilterCode={statusCode}
-              statusFilterName={statusName}
-              colorMap={colorMap}
-              nowMs={nowMs}
-              statuses={statuses}
-              permissions={permissions}
-              qrMarkers={qr.markers}
-              onWalkInClick={(table) =>
-                showWalkInForm({
-                  id: table.id,
-                  tableNumber: table.tableNumber,
-                  capacity: table.capacity,
-                })
-              }
-            />
-          ))}
+        {renderedSections.map((s) => (
+          <FloorSection
+            key={s.id}
+            name={s.name}
+            tables={afterCaptain.filter((t) => t.section.id === s.id)}
+            statusFilterCode={statusCode}
+            statusFilterName={statusName}
+            colorMap={colorMap}
+            nowMs={nowMs}
+            statuses={statuses}
+            permissions={permissions}
+            qrMarkers={qr.markers}
+            assign={
+              assignMode
+                ? {
+                    selectedIds: assignment.selectedIds,
+                    getTileState,
+                    onSelectSection: assignment.selectMany,
+                  }
+                : undefined
+            }
+            onWalkInClick={(table) =>
+              showWalkInForm({
+                id: table.id,
+                tableNumber: table.tableNumber,
+                capacity: table.capacity,
+              })
+            }
+          />
+        ))}
         <p className="hidden text-sm text-muted-foreground xl:block">
           Showing {visibleCount} of {rows.length} tables
         </p>
@@ -273,6 +338,9 @@ export default function FloorBoard(): ReactElement | null {
             canReserve={permissions.canReserve}
             attentionCount={attention.length}
             onOpenAttention={() => setRailOpen(true)}
+            canAssignCaptains={canAssignCaptains}
+            assignMode={assignMode}
+            onToggleAssignMode={toggleAssignMode}
           />
           {statuses.length > 0 && (
             <StatusFilterChips
@@ -281,9 +349,27 @@ export default function FloorBoard(): ReactElement | null {
               counts={counts}
               total={rows.length}
               activeCode={statusCode}
-              onChange={(code) => setValue('statusCode', code)}
-              onClear={() => setValue('statusCode', '')}
+              onChange={(code) => {
+                setValue('statusCode', code);
+                setValue('noCaptain', false);
+              }}
+              onClear={() => {
+                setValue('statusCode', '');
+                setValue('noCaptain', false);
+              }}
               coversLabel={`${occupiedCovers}/${totalCapacity}`}
+              noCaptain={
+                assignMode
+                  ? {
+                      count: unassignedCount,
+                      active: noCaptain,
+                      onToggle: () => {
+                        setValue('noCaptain', !noCaptain);
+                        setValue('statusCode', '');
+                      },
+                    }
+                  : undefined
+              }
             />
           )}
           {sectionsWithCounts.length > 0 && (
@@ -296,6 +382,15 @@ export default function FloorBoard(): ReactElement | null {
           )}
         </div>
         <div className="flex-1 px-6 py-[18px] xl:px-8">
+          {assignMode && rows.length > 0 && (
+            <AssignInfoBar
+              assignment={assignment}
+              focusCaptainName={focusCaptainName}
+              visibleUnassignedIds={afterStatus
+                .filter((t) => t.captainUserId === null)
+                .map((t) => t.id)}
+            />
+          )}
           {isReconnecting && rows.length > 0 && (
             <ReconnectingBanner
               lastUpdatedLabel={`Last ${formatAgo(age)}.`}
@@ -310,11 +405,26 @@ export default function FloorBoard(): ReactElement | null {
             />
           )}
           {renderBody()}
+          {assignMode && <SelectionBar cards={captainCards} assignment={assignment} />}
         </div>
+        {assignMode && (
+          <CaptainDock cards={captainCards} totalSeats={totalCapacity} assignment={assignment} />
+        )}
       </div>
 
       <aside className="hidden w-[300px] shrink-0 border-l bg-neutral-50 p-4 lg:block xl:w-[320px] xl:p-5 dark:bg-neutral-900/40">
-        {rail}
+        {assignMode ? (
+          <CaptainRail
+            cards={captainCards}
+            totalSeats={totalCapacity}
+            assignment={assignment}
+            isLoading={captains.isPending}
+            attentionCount={attention.length}
+            activity={rail}
+          />
+        ) : (
+          rail
+        )}
       </aside>
 
       {/* Smaller screens: the rail remains reachable even when no table needs attention. */}
@@ -326,6 +436,13 @@ export default function FloorBoard(): ReactElement | null {
           {rail}
         </SheetContent>
       </Sheet>
+
+      {assignMode && (
+        <>
+          <TakeoverDialog assignment={assignment} />
+          <DragGhost ref={dragGhostRef} count={assignment.dragCount} />
+        </>
+      )}
     </div>
   );
 }

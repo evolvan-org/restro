@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { Plus, Search, TriangleAlert, X } from 'lucide-react';
+import { Check, Plus, Search, TriangleAlert, Users, X } from 'lucide-react';
 import type { ReactElement } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 
@@ -18,6 +18,9 @@ type FloorHeaderProps = {
   canReserve: boolean;
   attentionCount: number;
   onOpenAttention: () => void;
+  canAssignCaptains: boolean;
+  assignMode: boolean;
+  onToggleAssignMode: () => void;
 };
 
 export default function FloorHeader(props: FloorHeaderProps): ReactElement {
@@ -77,6 +80,24 @@ export default function FloorHeader(props: FloorHeaderProps): ReactElement {
           </button>
         )}
       </div>
+
+      {props.canAssignCaptains && (
+        <Button
+          variant={props.assignMode ? 'default' : 'outline'}
+          className="h-11 gap-1.5 xl:h-9"
+          onClick={props.onToggleAssignMode}
+        >
+          {props.assignMode ? (
+            <Check className="size-4" aria-hidden />
+          ) : (
+            <Users className="size-4" aria-hidden />
+          )}
+          <span className="hidden sm:inline">{props.assignMode ? 'Done' : 'Assign captains'}</span>
+          <span className="sr-only sm:hidden">
+            {props.assignMode ? 'Done assigning captains' : 'Assign captains'}
+          </span>
+        </Button>
+      )}
 
       {props.canReserve && (
         <Button className="h-11 gap-1.5 xl:h-9" onClick={props.onSeatWalkIn}>

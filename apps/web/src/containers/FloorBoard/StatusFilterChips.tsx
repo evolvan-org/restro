@@ -16,6 +16,8 @@ type StatusFilterChipsProps = {
   onChange: (code: string) => void;
   onClear: () => void;
   coversLabel: string;
+  /** Assign-captains mode: a "No captain" chip, exclusive with the status chips. */
+  noCaptain?: { count: number; active: boolean; onToggle: () => void };
 };
 
 function Chip({
@@ -60,7 +62,7 @@ function Chip({
 }
 
 export default function StatusFilterChips(props: StatusFilterChipsProps): ReactElement {
-  const hasFilter = props.activeCode !== '';
+  const hasFilter = props.activeCode !== '' || Boolean(props.noCaptain?.active);
   return (
     <div className="flex flex-nowrap items-center gap-2 overflow-x-auto px-6 py-3 xl:flex-wrap xl:overflow-visible xl:px-8">
       <Chip
@@ -79,6 +81,15 @@ export default function StatusFilterChips(props: StatusFilterChipsProps): ReactE
           onClick={() => props.onChange(status.code)}
         />
       ))}
+      {props.noCaptain && (
+        <Chip
+          active={props.noCaptain.active}
+          dot="bg-amber-500"
+          label="No captain"
+          count={props.noCaptain.count}
+          onClick={props.noCaptain.onToggle}
+        />
+      )}
       {hasFilter && (
         <button
           type="button"
