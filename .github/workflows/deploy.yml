@@ -62,3 +62,129 @@ jobs:
       - name: Prune dangling images
         if: success()
         run: docker image prune -f
+
+  # Posts the deploy outcome to n8n, which fetches the Jira tickets and publishes a card to
+  # the "Restro Deployments" Google Chat space (workflow: ops/n8n/README.md).
+  # A separate job on a GitHub-hosted runner, not a step on the VPS job: it can read the
+  # deploy job's failed step from the Actions API, it has gh + jq, and it never needs the VPS.
+  notify:
+    name: Notify n8n
+    needs: deploy
+    # always(): report success, failure and cancellation. `skipped` means the deploy never ran
+    # (e.g. "Run workflow" on a branch other than main), so there is nothing to report.
+    if: always() && needs.deploy.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # compare commits
+      actions: read # find the failed step of the deploy job
+    env:
+      # Only keys of this project count, so strings like "UTF-8" are not mistaken for tickets.
+      JIRA_KEY_PATTERN: '\bREST-[0-9]+\b'
+    steps:
+      - name: Extract Jira keys & notify n8n
+        # Every GitHub value reaches the script through env and the JSON is built with jq,
+        # so a commit message can never inject shell or break the payload.
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_DEPLOY_WEBHOOK_URL }}
+          N8N_SECRET: ${{ secrets.N8N_WEBHOOK_SECRET }}
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ needs.deploy.result }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          DEPLOY_JOB_NAME: Deploy to VPS
+        run: |
+          set -euo pipefail
+
+          if [ -z "$N8N_WEBHOOK_URL" ] || [ -z "$N8N_SECRET" ]; then
+            echo "::warning::N8N_DEPLOY_WEBHOOK_URL / N8N_WEBHOOK_SECRET not set; skipping notification."
+            exit 0
+          fi
+
+          head_json=$(gh api "repos/$REPO/commits/$SHA")
+
+          # Commits shipped by this deploy. A release push to main carries every squashed
+          # "REST-123 ..." commit from development, so collect them all, not just the head
+          # (whose message is only "Merge pull request #N from .../development").
+          commits='[]'
+          if [ "$EVENT" = push ] && [ -n "$BEFORE" ] && [[ ! "$BEFORE" =~ ^0+$ ]]; then
+            commits=$(gh api "repos/$REPO/compare/$BEFORE...$SHA" \
+              --jq '[.commits[] | {sha, message: .commit.message, author: (.author.login // .commit.author.name)}]') \
+              || commits='[]'
+          fi
+          if [ "$(jq length <<<"$commits")" -eq 0 ]; then
+            commits=$(jq -c '[{sha, message: .commit.message, author: (.author.login // .commit.author.name)}]' <<<"$head_json")
+          fi
+
+          # Distinct Jira keys, in order of first appearance, from the ref and every commit message.
+          jira_keys=$(
+            { printf '%s\n' "$REF"; jq -r '.[].message' <<<"$commits"; } \
+              | grep -oP "$JIRA_KEY_PATTERN" | awk '!seen[$0]++' | jq -Rnc '[inputs]'
+          ) || jira_keys='[]'
+
+          # On failure, name the step that broke and link straight to the job's log.
+          failed_step=''
+          job_url=''
+          if [ "$STATUS" != success ]; then
+            jobs=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs") || jobs='{"jobs":[]}'
+            failed_step=$(jq -r --arg n "$DEPLOY_JOB_NAME" \
+              'first(.jobs[] | select(.name == $n) | .steps[] | select(.conclusion == "failure") | .name) // ""' <<<"$jobs")
+            job_url=$(jq -r --arg n "$DEPLOY_JOB_NAME" \
+              'first(.jobs[] | select(.name == $n) | .html_url) // ""' <<<"$jobs")
+          fi
+
+          run_url="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
+
+          jq -n \
+            --arg status "$STATUS" \
+            --arg repository "$REPO" \
+            --arg ref "$REF" \
+            --arg commit_sha "$SHA" \
+            --arg commit_message "$(jq -r '.commit.message' <<<"$head_json")" \
+            --arg author "$(jq -r '.author.login // .commit.author.name' <<<"$head_json")" \
+            --arg triggered_by "$ACTOR" \
+            --argjson jira_ticket_ids "$jira_keys" \
+            --argjson commits "$commits" \
+            --arg run_url "$run_url" \
+            --arg job_url "${job_url:-$run_url}" \
+            --arg failed_step "$failed_step" \
+            --arg run_attempt "$RUN_ATTEMPT" \
+            --arg commit_url "$SERVER_URL/$REPO/commit/$SHA" \
+            --arg compare_url "$( [ "$EVENT" = push ] && [[ ! "$BEFORE" =~ ^0+$ ]] && echo "$SERVER_URL/$REPO/compare/$BEFORE...$SHA" || echo '')" \
+            '{
+              status: $status,
+              environment: "production",
+              repository: $repository,
+              ref: $ref,
+              commit_sha: $commit_sha,
+              commit_message: $commit_message,
+              commit_url: $commit_url,
+              compare_url: $compare_url,
+              author: $author,
+              triggered_by: $triggered_by,
+              jira_ticket_id: ($jira_ticket_ids[0] // ""),
+              jira_ticket_ids: $jira_ticket_ids,
+              commits: [$commits[] | {sha, title: (.message | split("\n")[0]), author}],
+              run_url: $run_url,
+              run_attempt: ($run_attempt | tonumber),
+              job_url: $job_url,
+              failed_step: $failed_step
+            }' > payload.json
+
+          echo "Jira tickets: $(jq -c .jira_ticket_ids payload.json)"
+
+          # A notification outage must not turn a good deploy red: warn instead of failing.
+          if ! curl -fsS --max-time 15 --retry 2 --retry-delay 3 \
+            -X POST "$N8N_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -H "X-Webhook-Secret: $N8N_SECRET" \
+            --data-binary @payload.json; then
+            echo "::warning::Could not reach the n8n deploy webhook; no Google Chat notification was sent."
+          fi

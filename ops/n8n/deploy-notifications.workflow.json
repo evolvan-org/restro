@@ -1,0 +1,287 @@
+{
+  "name": "Restro · Deployment notifications (REST-95)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "restro-deploy",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "879dd58e-5a9e-44d9-8883-86e10df26efe",
+      "name": "GitHub deploy webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "41d9aa78-625f-4019-90d4-bbf60376f678",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Restro deploy webhook secret"
+        }
+      },
+      "notes": "Header Auth credential: name X-Webhook-Secret, value = GitHub secret N8N_WEBHOOK_SECRET. Wrong/missing header → 403."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Config (non-secret; secrets live in n8n credentials) ─────────────────────\nconst CONFIG = {\n  jiraBaseUrl: 'https://YOUR-SITE.atlassian.net',\n  // Jira custom field holding release notes, e.g. 'customfield_10050'. Empty → use description.\n  releaseNotesField: '',\n  // Google Chat space webhook, WITHOUT ?key=&token= (those come from the credential).\n  googleChatUrl: 'https://chat.googleapis.com/v1/spaces/YOUR_SPACE_ID/messages',\n  mentionAllOnFailure: true,\n  maxTickets: 15,\n};\n\n// ── Validate + normalize the GitHub Actions payload ──────────────────────────\nconst body = $input.first().json.body ?? {};\nconst str = (v) => (typeof v === 'string' ? v : '');\nconst status = str(body.status);\nif (!['success', 'failure', 'cancelled'].includes(status)) {\n  throw new Error('Invalid deploy payload: status must be success | failure | cancelled');\n}\nconst KEY = /^[A-Z][A-Z0-9]{1,9}-\\d+$/;\nconst ids = (Array.isArray(body.jira_ticket_ids) ? body.jira_ticket_ids : [body.jira_ticket_id])\n  .filter((k) => typeof k === 'string' && KEY.test(k));\nconst jiraTicketIds = [...new Set(ids)].slice(0, CONFIG.maxTickets);\n\nconst commits = (Array.isArray(body.commits) ? body.commits : [])\n  .filter((c) => c && typeof c === 'object')\n  .map((c) => ({ sha: str(c.sha), title: str(c.title), author: str(c.author) }));\n\nreturn [{\n  json: {\n    config: CONFIG,\n    status,\n    environment: str(body.environment) || 'production',\n    repository: str(body.repository),\n    ref: str(body.ref),\n    commitSha: str(body.commit_sha),\n    commitMessage: str(body.commit_message),\n    commitUrl: str(body.commit_url),\n    compareUrl: str(body.compare_url),\n    author: str(body.author),\n    triggeredBy: str(body.triggered_by),\n    jiraTicketIds,\n    commits,\n    runUrl: str(body.run_url),\n    jobUrl: str(body.job_url) || str(body.run_url),\n    runAttempt: Number(body.run_attempt) || 1,\n    failedStep: str(body.failed_step),\n  },\n}];"
+      },
+      "id": "5d2ac01e-e3a6-4d27-ba1b-569bf6238a73",
+      "name": "Normalize payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "notes": "Edit CONFIG at the top: Jira site, release-notes field, Google Chat space URL."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "4bae06ce-9ec6-4e07-b9fa-f7621af02460",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "245967d4-7f3c-4a72-8d8d-b2a57c96dd2c",
+      "name": "Deployment succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "33a9762a-fc20-48d1-920b-71245f38025b",
+              "leftValue": "={{ $json.jiraTicketIds.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5b30ea18-7acd-4f55-afdc-711b70d3a764",
+      "name": "Has Jira tickets?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Normalize payload').first().json;\nreturn d.jiraTicketIds.map((key) => ({ json: { key, jiraBaseUrl: d.config.jiraBaseUrl } }));"
+      },
+      "id": "0d25483e-f86a-4e53-a58e-0554b2591422",
+      "name": "One item per ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 100]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.jiraBaseUrl }}/rest/api/3/issue/{{ $json.key }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "={{ ['summary','status','assignee','fixVersions','issuetype','description', $('Normalize payload').first().json.config.releaseNotesField].filter(Boolean).join(',') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f47a3805-3783-433b-b23b-047e70e37ab0",
+      "name": "Fetch Jira ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 100],
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "name": "Jira (Restro deploy bot)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Jira SW Cloud API credential (email + API token). Errors (deleted ticket, no access) do not stop the card."
+    },
+    {
+      "parameters": {
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst trunc = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);\nconst shortSha = (s) => String(s || '').slice(0, 7);\nconst link = (url, text) => (url ? '<a href=\"' + esc(url) + '\">' + esc(text) + '</a>' : esc(text));\nconst button = (text, url) => ({ text, onClick: { openLink: { url } } });\nconst repoUrl = (d) => (d.runUrl ? d.runUrl.split('/actions/')[0] : '');\n\n// Jira's description / rich-text custom fields are Atlassian Document Format: flatten to text.\nconst adfToText = (node) => {\n  if (node == null) return '';\n  if (typeof node === 'string') return node;\n  if (Array.isArray(node)) return node.map(adfToText).join('');\n  if (node.type === 'text') return node.text || '';\n  if (node.type === 'hardBreak') return '\\n';\n  const inner = adfToText(node.content || []);\n  const block = ['paragraph', 'heading', 'listItem', 'codeBlock', 'blockquote', 'rule'];\n  return block.includes(node.type) ? (node.type === 'listItem' ? '• ' : '') + inner.trim() + '\\n' : inner;\n};\n\nconst d = $('Normalize payload').first().json;\nconst { jiraBaseUrl, releaseNotesField } = d.config;\nconst sha = shortSha(d.commitSha);\n\n// Items are Jira issues on the \"has tickets\" path, or the payload itself otherwise.\n// Tickets Jira could not return (deleted, no access) arrive as error items and are skipped.\nconst issues = $input.all().map((i) => i.json).filter((j) => j && j.key && j.fields);\nconst missing = d.jiraTicketIds.filter((k) => !issues.some((i) => i.key === k));\n\nconst ticketWidgets = issues.flatMap((issue) => {\n  const f = issue.fields;\n  const url = jiraBaseUrl + '/browse/' + issue.key;\n  const fixVersions = (f.fixVersions || []).map((v) => v.name).join(', ') || '—';\n  const notes = trunc(adfToText(releaseNotesField ? f[releaseNotesField] : f.description).trim(), 300);\n  const widgets = [{\n    decoratedText: {\n      topLabel: issue.key + ' · ' + (f.status?.name || 'Unknown') + ' · ' + (f.issuetype?.name || 'Issue'),\n      text: link(url, f.summary || issue.key),\n      bottomLabel: 'Assignee: ' + (f.assignee?.displayName || 'Unassigned') + ' · Fix version: ' + fixVersions,\n      wrapText: true,\n      startIcon: { knownIcon: 'TICKET' },\n      button: button('Open', url),\n    },\n  }];\n  if (notes) widgets.push({ textParagraph: { text: '<i>' + esc(notes).replace(/\\n/g, '<br>') + '</i>' } });\n  return widgets;\n});\nif (missing.length) {\n  ticketWidgets.push({ textParagraph: { text: '<font color=\"#9e9e9e\">Not found in Jira: ' + esc(missing.join(', ')) + '</font>' } });\n}\n\n// No ticket at all (chore / hotfix): the commit titles are the release notes.\nconst commitLines = d.commits.slice(0, 15).map((c) =>\n  link(repoUrl(d) + '/commit/' + c.sha, shortSha(c.sha)) + ' ' + esc(trunc(c.title, 120)) + (c.author ? ' <font color=\"#9e9e9e\">— ' + esc(c.author) + '</font>' : ''));\nif (d.commits.length > 15) commitLines.push('… and ' + (d.commits.length - 15) + ' more');\n\nconst sections = [{\n  header: 'Deployment',\n  widgets: [\n    { decoratedText: { topLabel: 'Environment', text: esc(d.environment) + ' · ' + esc(d.ref), startIcon: { knownIcon: 'STORE' } } },\n    { decoratedText: { topLabel: 'Commit', text: link(d.commitUrl, sha) + ' ' + esc(trunc(d.commitMessage.split('\\n')[0], 120)), wrapText: true, startIcon: { knownIcon: 'BOOKMARK' } } },\n    { decoratedText: { topLabel: 'Triggered by', text: esc(d.triggeredBy || d.author), startIcon: { knownIcon: 'PERSON' } } },\n  ],\n}];\nif (ticketWidgets.length) {\n  sections.push({ header: 'Release notes · ' + issues.length + ' ticket' + (issues.length === 1 ? '' : 's'), collapsible: ticketWidgets.length > 6, uncollapsibleWidgetsCount: 6, widgets: ticketWidgets });\n}\nif (commitLines.length) {\n  sections.push({ header: issues.length ? 'Commits' : 'Release notes (commits)', collapsible: issues.length > 0, uncollapsibleWidgetsCount: issues.length ? 0 : 1, widgets: [{ textParagraph: { text: commitLines.join('<br>') } }] });\n}\nconst buttons = [button('View GitHub run', d.runUrl)];\nif (issues.length === 1) buttons.unshift(button('Open Jira ticket', jiraBaseUrl + '/browse/' + issues[0].key));\nif (d.compareUrl) buttons.push(button('Compare changes', d.compareUrl));\nsections.push({ widgets: [{ buttonList: { buttons } }] });\n\nreturn [{\n  json: {\n    chat: {\n      text: '🟢 Deployed ' + d.repository + ' to ' + d.environment + ' (' + sha + ')',\n      cardsV2: [{\n        cardId: 'deploy-' + sha,\n        card: {\n          header: { title: '🟢 Deployed to ' + d.environment, subtitle: d.repository + ' · ' + sha },\n          sections,\n        },\n      }],\n    },\n  },\n}];"
+      },
+      "id": "2b58299c-00fe-45aa-aa5e-1de94e54b7c7",
+      "name": "Format release notes card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst trunc = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);\nconst shortSha = (s) => String(s || '').slice(0, 7);\nconst link = (url, text) => (url ? '<a href=\"' + esc(url) + '\">' + esc(text) + '</a>' : esc(text));\nconst button = (text, url) => ({ text, onClick: { openLink: { url } } });\nconst repoUrl = (d) => (d.runUrl ? d.runUrl.split('/actions/')[0] : '');\n\nconst d = $('Normalize payload').first().json;\nconst sha = shortSha(d.commitSha);\nconst cancelled = d.status === 'cancelled';\nconst icon = cancelled ? '⚪' : '🔴';\nconst verb = cancelled ? 'cancelled' : 'FAILED';\nconst jira = d.jiraTicketIds.map((k) => link(d.config.jiraBaseUrl + '/browse/' + k, k)).join(', ');\n\nconst widgets = [\n  { decoratedText: { topLabel: 'Failed step', text: '<b>' + esc(d.failedStep || (cancelled ? 'Run was cancelled' : 'Unknown — see the run log')) + '</b>', wrapText: true, startIcon: { knownIcon: 'DESCRIPTION' } } },\n  { decoratedText: { topLabel: 'Commit', text: link(d.commitUrl, sha) + ' ' + esc(trunc(d.commitMessage.split('\\n')[0], 120)), wrapText: true, startIcon: { knownIcon: 'BOOKMARK' } } },\n  { decoratedText: { topLabel: 'Triggered by', text: esc(d.triggeredBy || d.author) + (d.runAttempt > 1 ? ' · attempt ' + d.runAttempt : ''), startIcon: { knownIcon: 'PERSON' } } },\n];\nif (jira) widgets.push({ decoratedText: { topLabel: 'Tickets in this release', text: jira, wrapText: true, startIcon: { knownIcon: 'TICKET' } } });\nwidgets.push({ buttonList: { buttons: [button('View failed job', d.jobUrl), button('View GitHub run', d.runUrl)] } });\n\nconst alert = !cancelled && d.config.mentionAllOnFailure ? '<users/all> ' : '';\nreturn [{\n  json: {\n    chat: {\n      text: alert + icon + ' Production deploy ' + verb + ' for ' + d.repository + ' (' + sha + ')' + (d.failedStep ? ' at step \"' + d.failedStep + '\"' : '') + '. The live site was not updated by this run.',\n      cardsV2: [{\n        cardId: 'deploy-' + sha,\n        card: {\n          header: { title: icon + ' Deploy ' + verb + ' · ' + d.environment, subtitle: d.repository + ' · ' + d.ref + ' · ' + sha },\n          sections: [{ widgets }],\n        },\n      }],\n    },\n  },\n}];"
+      },
+      "id": "7e2eb81a-8873-4b94-87d4-51459091d9a5",
+      "name": "Format failure card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Normalize payload').first().json.config.googleChatUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.chat) }}",
+        "options": {}
+      },
+      "id": "3f6027e2-47d1-46be-bee0-35511cd1ff79",
+      "name": "Post to Google Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 300],
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Google Chat · Restro Deployments"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "notes": "Custom Auth credential: {\"qs\": {\"key\": \"<key>\", \"token\": \"<token>\"}} from the space incoming-webhook URL."
+    }
+  ],
+  "connections": {
+    "GitHub deploy webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize payload": {
+      "main": [
+        [
+          {
+            "node": "Deployment succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deployment succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Has Jira tickets?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format failure card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Jira tickets?": {
+      "main": [
+        [
+          {
+            "node": "One item per ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format release notes card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One item per ticket": {
+      "main": [
+        [
+          {
+            "node": "Fetch Jira ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Jira ticket": {
+      "main": [
+        [
+          {
+            "node": "Format release notes card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format release notes card": {
+      "main": [
+        [
+          {
+            "node": "Post to Google Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format failure card": {
+      "main": [
+        [
+          {
+            "node": "Post to Google Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
