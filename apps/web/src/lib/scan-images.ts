@@ -1,17 +1,27 @@
 /*
  * Browser-side photo preparation for scans: HEIC → JPEG, PDF → one JPEG per page, downscale to a
- * 2000 px long edge, and a quick quality check (sharpness, brightness, size) BEFORE anything is
- * uploaded, so a blurry photo is caught while the owner can still retake it.
+ * 2000 px long edge, and a quality gate (resolution, text sharpness, brightness) BEFORE anything is
+ * uploaded. Pages too small or too blurry to read are refused here, so they never use a scan or AI
+ * tokens; the owner retakes them while the menu is still in hand.
  */
+
+import { SCAN_MIN_SHORT_EDGE } from '@rms/api-contract';
 
 export const SCAN_LONG_EDGE = 2000;
 const JPEG_QUALITY = 0.85;
-/** Laplacian variance on a 512 px grey copy; below this, text is usually too soft to read. */
-const BLUR_THRESHOLD = 60;
+/**
+ * Text sharpness (see `measure`) below which prices can no longer be told apart (9 vs 8 vs 0).
+ * Calibrated on a printed menu: sharp photos score 600+, slight camera softness ~600–800, a
+ * 2 px blur ~50 (risky), 3 px ~12 (unreadable).
+ */
+const BLUR_THRESHOLD = 100;
 const DARK_THRESHOLD = 60;
-const MIN_SHORT_EDGE = 700;
+const SHARPNESS_TILE = 64;
 
 export type PageWarning = 'blurry' | 'dark' | 'small';
+
+/** Problems that make a page unreadable: it can't be sent until it is retaken or removed. */
+export const BLOCKING_WARNINGS: readonly PageWarning[] = ['blurry', 'small'];
 
 export type ScanPage = {
   id: string;
@@ -25,10 +35,20 @@ export type ScanPage = {
 };
 
 export const PAGE_WARNING_TEXT: Record<PageWarning, string> = {
-  blurry: 'Looks blurry. Hold the phone steady, or retake in better light.',
+  blurry: 'Too blurry to read. Hold the phone steady and retake it in good light.',
   dark: 'Looks dark. Retake near a window or with the lights on.',
-  small: 'Low resolution. Move closer so the page fills the frame.',
+  small: 'Resolution too low to read. Retake it closer so the page fills the frame.',
 };
+
+export function isPageBlocked(page: Pick<ScanPage, 'warnings'>): boolean {
+  return page.warnings.some((warning) => BLOCKING_WARNINGS.includes(warning));
+}
+
+/** Readable reason a page can't be sent, or null when it can. */
+export function pageBlockReason(page: Pick<ScanPage, 'warnings'>): string | null {
+  const blocking = page.warnings.filter((warning) => BLOCKING_WARNINGS.includes(warning));
+  return blocking.length ? blocking.map((warning) => PAGE_WARNING_TEXT[warning]).join(' ') : null;
+}
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) =>
@@ -40,17 +60,15 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-function quality(canvas: HTMLCanvasElement): { sharpness: number; brightness: number } {
-  const size = 512;
-  const scale = size / Math.max(canvas.width, canvas.height);
-  const w = Math.max(1, Math.round(canvas.width * scale));
-  const h = Math.max(1, Math.round(canvas.height * scale));
-  const small = document.createElement('canvas');
-  small.width = w;
-  small.height = h;
-  const context = small.getContext('2d', { willReadFrequently: true });
-  if (!context) return { sharpness: 999, brightness: 128 };
-  context.drawImage(canvas, 0, 0, w, h);
+/**
+ * Sharpness of the page's text, not the page: Laplacian variance per 64 px tile at upload
+ * resolution (what the model sees), averaged over the most detailed 10% of tiles. Blank margins
+ * and plain backgrounds don't drag a sharp menu down, and a blurry one can't hide behind them.
+ */
+function measure(canvas: HTMLCanvasElement): { sharpness: number; brightness: number } {
+  const { width: w, height: h } = canvas;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context || w < 3 || h < 3) return { sharpness: 999, brightness: 128 };
   const { data } = context.getImageData(0, 0, w, h);
   const grey = new Float32Array(w * h);
   let total = 0;
@@ -59,21 +77,29 @@ function quality(canvas: HTMLCanvasElement): { sharpness: number; brightness: nu
     grey[i] = value;
     total += value;
   }
-  let sum = 0;
-  let sumSq = 0;
-  let count = 0;
-  for (let y = 1; y < h - 1; y += 1) {
-    for (let x = 1; x < w - 1; x += 1) {
-      const i = y * w + x;
-      const lap = grey[i - w]! + grey[i + w]! + grey[i - 1]! + grey[i + 1]! - 4 * grey[i]!;
-      sum += lap;
-      sumSq += lap * lap;
-      count += 1;
+  const tile = SHARPNESS_TILE;
+  const variances: number[] = [];
+  for (let top = 0; top < h; top += tile) {
+    for (let left = 0; left < w; left += tile) {
+      let sum = 0;
+      let sumSq = 0;
+      let count = 0;
+      for (let y = Math.max(1, top); y < Math.min(h - 1, top + tile); y += 1) {
+        for (let x = Math.max(1, left); x < Math.min(w - 1, left + tile); x += 1) {
+          const i = y * w + x;
+          const lap = grey[i - w]! + grey[i + w]! + grey[i - 1]! + grey[i + 1]! - 4 * grey[i]!;
+          sum += lap;
+          sumSq += lap * lap;
+          count += 1;
+        }
+      }
+      if (count > tile) variances.push(sumSq / count - (sum / count) ** 2);
     }
   }
-  const mean = count ? sum / count : 0;
+  variances.sort((a, b) => b - a);
+  const top = variances.slice(0, Math.max(1, Math.ceil(variances.length * 0.1)));
   return {
-    sharpness: count ? sumSq / count - mean * mean : 999,
+    sharpness: top.length ? top.reduce((a, b) => a + b, 0) / top.length : 999,
     brightness: total / (w * h),
   };
 }
@@ -88,17 +114,18 @@ async function fromDrawable(
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(width * scale);
   canvas.height = Math.round(height * scale);
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('This browser cannot prepare photos');
   context.fillStyle = '#fff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(drawable, 0, 0, canvas.width, canvas.height);
-  const { sharpness, brightness } = quality(canvas);
+  const { sharpness, brightness } = measure(canvas);
   const blob = await canvasToBlob(canvas);
   const warnings: PageWarning[] = [];
   if (sharpness < BLUR_THRESHOLD) warnings.push('blurry');
   if (brightness < DARK_THRESHOLD) warnings.push('dark');
-  if (Math.min(width, height) < MIN_SHORT_EDGE) warnings.push('small');
+  // The uploaded size, which is what the API checks too.
+  if (Math.min(canvas.width, canvas.height) < SCAN_MIN_SHORT_EDGE) warnings.push('small');
   return {
     id: crypto.randomUUID(),
     blob,

@@ -29,14 +29,14 @@ const COPY: Record<AiFailureKind, Copy> = {
   UNREADABLE: {
     title: () => "We can't read this photo",
     body: (noun) =>
-      `The page is too dark or out of focus, so we found nothing to read. Retake it with the ${noun} flat and well lit. Nothing was added to your draft.`,
+      `The page is out of focus, too dark, or its text is too small or crowded to read every price with certainty, so we stopped before reading it. Retake it closer, flat and well lit, one section per photo if the ${noun} is busy. Nothing was added to your draft.`,
     icon: <Eye aria-hidden />,
     tone: 'bad',
   },
   NOT_A_MENU: {
     title: () => "This doesn't look like a menu",
     body: () =>
-      'We found a receipt-style document with totals but no dishes and prices. If it is a supplier invoice, scan it in the Inventory step instead.',
+      "We didn't find a real menu with dishes and prices. Design templates and sample menus with placeholder text or 0.00 prices aren't read. If it's a supplier invoice, scan it in the Inventory step instead.",
     icon: <FileText aria-hidden />,
     tone: 'warn',
   },

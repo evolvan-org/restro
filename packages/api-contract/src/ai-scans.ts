@@ -43,6 +43,12 @@ export const aiJobErrorCodeSchema = z.enum([
 export const SCAN_MIN_PAGES = 1;
 export const SCAN_MAX_PAGES = 8;
 export const SCAN_MAX_PAGE_BYTES = 6 * 1024 * 1024;
+/**
+ * Shortest side a scan photo may have, after the browser's downscale to a 2000 px long edge.
+ * Below this, menu and invoice text is too small to read, so the page is refused before it uses
+ * a scan or any AI tokens (checked in the browser and again by the API).
+ */
+export const SCAN_MIN_SHORT_EDGE = 700;
 export const SCAN_ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 /** Confidence bands: always shown as icon + number, never colour alone. */
@@ -78,7 +84,7 @@ export const scanPageStatusSchema = z.enum([
   'not_document',
   'failed',
 ]);
-export const scanPageQualitySchema = z.enum(['ok', 'blurry', 'cropped', 'dark']);
+export const scanPageQualitySchema = z.enum(['ok', 'blurry', 'cropped', 'dark', 'cluttered']);
 
 export const scanPageResultSchema = z
   .object({

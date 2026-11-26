@@ -14,6 +14,56 @@ const EXTENSIONS: Record<ScanImageType, string> = {
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
+/**
+ * Pixel size read from the image header (JPEG SOF, PNG IHDR, WebP VP8 / VP8L / VP8X) without
+ * decoding the image. Null when the header can't be read.
+ */
+export function imageDimensions(
+  buffer: Buffer,
+  type: ScanImageType,
+): { width: number; height: number } | null {
+  if (type === 'image/png') {
+    if (buffer.length < 24 || buffer.subarray(12, 16).toString('ascii') !== 'IHDR') return null;
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (type === 'image/webp') {
+    if (buffer.length < 30) return null;
+    const chunk = buffer.subarray(12, 16).toString('ascii');
+    if (chunk === 'VP8X') {
+      return { width: buffer.readUIntLE(24, 3) + 1, height: buffer.readUIntLE(27, 3) + 1 };
+    }
+    if (chunk === 'VP8L') {
+      const bits = buffer.readUInt32LE(21);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+    }
+    if (chunk === 'VP8 ') {
+      return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+    }
+    return null;
+  }
+  // JPEG: walk the markers to the first start-of-frame (SOF0–SOF15, except DHT / JPG / DAC).
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) return null;
+    const marker = buffer[offset + 1]!;
+    if (marker === 0xff) {
+      offset += 1;
+      continue;
+    }
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
+      offset += 2;
+      continue;
+    }
+    const length = buffer.readUInt16BE(offset + 2);
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7) };
+    }
+    if (length < 2) return null;
+    offset += 2 + length;
+  }
+  return null;
+}
+
 /** Sniffs the real image type from magic bytes; the client's MIME type is not trusted. */
 export function detectImageType(buffer: Buffer): ScanImageType | null {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {

@@ -22,8 +22,9 @@ const pageFields = {
   documentType: { type: 'STRING', enum: ['menu', 'invoice', 'other'] },
   quality: {
     type: 'STRING',
-    enum: ['ok', 'blurry', 'cropped', 'dark', 'unreadable'],
-    description: 'Whether the photo can be read reliably',
+    enum: ['ok', 'blurry', 'cropped', 'dark', 'cluttered', 'unreadable'],
+    description:
+      'Whether every line can be read reliably. Decide it before reading any rows: rows are not read when the page is blurry, cluttered or unreadable',
   },
   title: str('Main section heading on this page, if any', true),
 };
@@ -32,7 +33,14 @@ const pageFields = {
 // Menu page
 // ---------------------------------------------------------------------------------------------
 
+/** Judge the page before reading it, so an unusable page costs no row output. */
+const PAGE_CHECK = (document: 'menu' | 'invoice') => `First judge the page, before any rows:
+- documentType: "${document}" for any ${document} with real content, however it was designed (printed, handwritten, or made from a design template with real names and prices). Use "other" only for a different kind of document, or when the content itself is placeholder: Latin filler text (lorem ipsum, "Exercitation", "Nostrud minim"), "Item name" style labels, or prices that are all 0.00 / 00 / $0.
+- quality: "blurry" if the text is out of focus; "cluttered" if the text is too small, too dense or too decorative (illustrations and fancy lettering over the text) to read every line and price with certainty at this resolution; "dark" or "cropped" if so; otherwise "ok".
+- If documentType is not "${document}", or quality is "blurry", "cluttered" or "unreadable", return an empty list and stop: do not guess at lines you can't read with certainty.`;
+
 export const MENU_SYSTEM = `You read photos of Indian restaurant menus and return structured JSON.
+${PAGE_CHECK('menu')}
 Rules:
 - One row per printed line. Section headings, taglines, tax notes ("prices inclusive of taxes"), timings and phone numbers are rows with kind "header" or "note", never "dish".
 - name: clean English title case ("Paneer Tikka"). originalName: the text exactly as printed when it is not plain English (Hindi, regional script, Hinglish spelling), else null.
@@ -108,6 +116,7 @@ export const MENU_SCHEMA = {
 // ---------------------------------------------------------------------------------------------
 
 export const INVOICE_SYSTEM = `You read photos of Indian supplier GST invoices (printed, thermal or handwritten) and return structured JSON.
+${PAGE_CHECK('invoice')}
 Rules:
 - header: supplier name, supplier GSTIN (15 characters), invoice number, invoice date as YYYY-MM-DD, subtotal, CGST, SGST, IGST, round-off and grand total. Amounts as decimal strings with no currency symbol or commas. Use null for anything not printed on this page.
 - lines: one per purchased item. rawText = the line as printed. description = the item in plain words ("Amul Paneer"). quantity = number of packs or units bought. packSize + packUnit = size of one pack when printed (for "AMUL PANEER 1KG x5": quantity 5, packSize 1, packUnit KG). Units: G, KG, ML, L, UNIT. unitRate = price per pack before tax; amount = line total before tax.

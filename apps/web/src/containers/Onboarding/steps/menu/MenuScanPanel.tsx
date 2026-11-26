@@ -14,10 +14,10 @@ import { AiSuggestedChip } from '@/components/AiScan/markers';
 import { mergeScanItems, reviewMenuRows } from '@/components/AiScan/menu/menu-scan-rows';
 import { MenuScanReview } from '@/components/AiScan/menu/MenuScanReview';
 import { MenuScanStreaming } from '@/components/AiScan/menu/MenuScanStreaming';
-import { ScanCapture } from '@/components/AiScan/ScanCapture';
+import { hasBlockedPages, ScanCapture } from '@/components/AiScan/ScanCapture';
 import { isActiveJob, useAiJob } from '@/hooks/useAiJob';
 import { getApiErrorCode, getApiErrorMessage } from '@/lib/api-error';
-import { prepareScanPages, type ScanPage } from '@/lib/scan-images';
+import { pageBlockReason, prepareScanPages, releasePages, type ScanPage } from '@/lib/scan-images';
 import { cancelAiJob, createScan, releaseAiJob, retakeScanPage } from '@/services/api/requests/ai';
 
 import Shell from '../../Shell';
@@ -117,6 +117,13 @@ export function MenuScanStep({
     try {
       const [photo] = await prepareScanPages([file], 1);
       if (!photo) return;
+      // Same gate as a new scan: an unreadable retake isn't sent.
+      const blocked = pageBlockReason(photo);
+      if (blocked) {
+        releasePages([photo]);
+        setUploadError(`Page ${page}: ${blocked}`);
+        return;
+      }
       const pageSeqs = new Set(items.filter((item) => item.page === page).map((item) => item.seq));
       save({
         rows: menu.rows.filter(
@@ -191,7 +198,7 @@ export function MenuScanStep({
             <button
               type="button"
               className={btn('ai')}
-              disabled={pages.length === 0 || uploading}
+              disabled={pages.length === 0 || uploading || hasBlockedPages(pages)}
               onClick={() => void start()}
             >
               <Sparkles aria-hidden />

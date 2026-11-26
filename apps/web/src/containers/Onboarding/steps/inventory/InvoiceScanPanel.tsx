@@ -39,7 +39,7 @@ import { ScanCapture } from '@/components/AiScan/ScanCapture';
 import { ScanPhoto, useScanPageUrl } from '@/components/AiScan/ScanPhoto';
 import { isActiveJob, useAiJob } from '@/hooks/useAiJob';
 import { getApiErrorCode, getApiErrorMessage } from '@/lib/api-error';
-import { prepareScanPages, type ScanPage } from '@/lib/scan-images';
+import { pageBlockReason, prepareScanPages, releasePages, type ScanPage } from '@/lib/scan-images';
 import { cancelAiJob, createScan, releaseAiJob, retakeScanPage } from '@/services/api/requests/ai';
 
 import { ingredientKey, marginSnapshot, recipeTarget } from '../../costing';
@@ -312,6 +312,13 @@ export function useInvoiceScan({
     try {
       const [photo] = await prepareScanPages([file], 1);
       if (!photo) return;
+      // Same gate as a new scan: an unreadable retake isn't sent.
+      const blocked = pageBlockReason(photo);
+      if (blocked) {
+        releasePages([photo]);
+        setUploadError(`Page ${page}: ${blocked}`);
+        return;
+      }
       setInvoice({ ...current, lines: [] });
       await retakeScanPage('invoice', current.jobId, page, photo);
       refetch();

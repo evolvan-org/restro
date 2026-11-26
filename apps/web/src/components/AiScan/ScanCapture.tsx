@@ -21,7 +21,9 @@ import { type DragEvent, type ReactElement, useRef, useState } from 'react';
 
 import { Alert, btn, Card } from '@/containers/Onboarding/ui/kit';
 import {
+  isPageBlocked,
   PAGE_WARNING_TEXT,
+  pageBlockReason,
   prepareScanPages,
   releasePages,
   type ScanPage,
@@ -31,8 +33,10 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.hei
 
 /**
  * Capture tile + page thumbnail strip (board "Menu scan: capture"): drag and drop on desktop, the
- * camera on phones; reorder (drag or arrow buttons), delete and retake; blur / dark warnings before
- * anything is read. Controlled: the step's footer starts the read.
+ * camera on phones; reorder (drag or arrow buttons), delete and retake. Pages too small or blurry
+ * to read are refused before anything is sent (no scan or AI tokens used): the start button stays
+ * off until they are retaken or deleted. Dark pages only warn. Controlled: the step's footer
+ * starts the read (it must check `hasBlockedPages` too).
  */
 export function ScanCapture({
   noun,
@@ -108,7 +112,8 @@ export function ScanCapture({
     void add([...event.dataTransfer.files]);
   }
 
-  const flagged = pages.filter((page) => page.warnings.length > 0);
+  const blocked = pages.filter(isPageBlocked);
+  const flagged = pages.filter((page) => !isPageBlocked(page) && page.warnings.length > 0);
   const hidden = (
     ref: React.RefObject<HTMLInputElement | null>,
     options: { multiple?: boolean; camera?: boolean; replace?: boolean },
@@ -231,7 +236,7 @@ export function ScanCapture({
                     type="button"
                     onClick={() => setSelected(index)}
                     aria-pressed={index === selected}
-                    aria-label={`Page ${index + 1}${page.warnings.length ? ', may need a retake' : ''}`}
+                    aria-label={`Page ${index + 1}${isPageBlocked(page) ? ', needs a retake' : page.warnings.length ? ', may need a retake' : ''}`}
                     className={cn(
                       'relative block h-[84px] w-16 overflow-hidden rounded-md border border-zinc-300 bg-muted dark:border-zinc-700',
                       index === selected && 'outline-2 outline-offset-2 outline-foreground',
@@ -243,7 +248,12 @@ export function ScanCapture({
                       {index + 1}
                     </b>
                     {page.warnings.length > 0 && (
-                      <span className="absolute top-1 right-1 flex size-[18px] items-center justify-center rounded bg-red-700 text-white">
+                      <span
+                        className={cn(
+                          'absolute top-1 right-1 flex size-[18px] items-center justify-center rounded text-white',
+                          isPageBlocked(page) ? 'bg-red-700' : 'bg-amber-600',
+                        )}
+                      >
                         <TriangleAlert className="size-3" aria-hidden />
                       </span>
                     )}
@@ -299,6 +309,19 @@ export function ScanCapture({
               </button>
             </span>
           </div>
+          {blocked.length > 0 && (
+            <Alert tone="bad" role="alert" icon={<TriangleAlert aria-hidden />} className="mt-3">
+              {blocked.map((page) => (
+                <p key={page.id}>
+                  <b>Page {pages.indexOf(page) + 1}:</b> {pageBlockReason(page)}
+                </p>
+              ))}
+              <p className="mt-1 text-xs">
+                Retake or delete {blocked.length === 1 ? 'this page' : 'these pages'} to continue.
+                We won&apos;t send pages we can&apos;t read, so they don&apos;t use up a scan.
+              </p>
+            </Alert>
+          )}
           {flagged.length > 0 && (
             <Alert tone="warn" role="status" icon={<TriangleAlert aria-hidden />} className="mt-3">
               {flagged.map((page) => (
@@ -326,7 +349,7 @@ export function ScanCapture({
           <button
             type="button"
             className={btn('ai')}
-            disabled={pages.length === 0 || inlineStart.busy || preparing}
+            disabled={pages.length === 0 || inlineStart.busy || preparing || blocked.length > 0}
             onClick={inlineStart.onStart}
           >
             <Sparkles aria-hidden />
@@ -336,4 +359,9 @@ export function ScanCapture({
       )}
     </div>
   );
+}
+
+/** True when any page is too small or blurry to send (for start buttons outside the capture). */
+export function hasBlockedPages(pages: readonly ScanPage[]): boolean {
+  return pages.some(isPageBlocked);
 }

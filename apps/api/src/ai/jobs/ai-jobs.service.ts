@@ -21,6 +21,7 @@ import {
   type IngredientPriceLookupResponse,
   SCAN_MAX_PAGE_BYTES,
   SCAN_MAX_PAGES,
+  SCAN_MIN_SHORT_EDGE,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
@@ -29,7 +30,12 @@ import type { Actor } from '../../common/auth/authenticated-request';
 import { errorDiagnostics } from '../../common/logging/error-diagnostics';
 import { IngredientCatalogService } from '../catalog/ingredient-catalog.service';
 import { AI_PROVIDER, type AiProvider } from '../provider/ai-provider';
-import { detectImageType, ScanImageStore, type ScanImageType } from '../storage/scan-image.store';
+import {
+  detectImageType,
+  imageDimensions,
+  ScanImageStore,
+  type ScanImageType,
+} from '../storage/scan-image.store';
 import { AiQuotaService } from '../usage/ai-quota.service';
 import { AiJobRunner } from './ai-job-runner';
 import { type AiJobRecord, AiJobsRepository } from './ai-jobs.repository';
@@ -68,6 +74,14 @@ function checkPages(
     }
     const type = detectImageType(file.buffer);
     if (!type) throw new BadRequestException(`Page ${index + 1} is not a JPG, PNG or WebP image`);
+    // Refused before any quota or AI tokens are used: text this small can't be read reliably.
+    const size = imageDimensions(file.buffer, type);
+    if (!size) throw new BadRequestException(`Page ${index + 1} could not be opened`);
+    if (Math.min(size.width, size.height) < SCAN_MIN_SHORT_EDGE) {
+      throw new BadRequestException(
+        `Page ${index + 1} is too small to read (${size.width}×${size.height}). Retake it closer so the page fills the frame.`,
+      );
+    }
     return { type, data: file.buffer };
   });
 }

@@ -45,6 +45,41 @@ type PageReader = {
   keyFields: readonly string[];
 };
 
+const UNUSABLE_QUALITY = new Set(['blurry', 'cluttered', 'unreadable']);
+
+function pageQuality(value: unknown): ScanPageResult['quality'] {
+  if (value === 'unreadable') return 'blurry';
+  return value === 'blurry' || value === 'cropped' || value === 'dark' || value === 'cluttered'
+    ? value
+    : 'ok';
+}
+
+/**
+ * Reads the page-level fields (`documentType`, `quality`) from the start of a streamed response.
+ * `stop` is set as soon as the page is known to be unusable; `decided` once it is known to be
+ * fine (both fields seen, or rows already started).
+ */
+export function pageVerdict(
+  text: string,
+  expected: 'menu' | 'invoice',
+  arrayKey: string,
+): {
+  stop: 'not_document' | 'unreadable' | null;
+  quality: ScanPageResult['quality'];
+  decided: boolean;
+} {
+  const documentType = /"documentType"\s*:\s*"(\w+)"/.exec(text)?.[1];
+  const quality = /"quality"\s*:\s*"(\w+)"/.exec(text)?.[1];
+  if (documentType && documentType !== expected) {
+    return { stop: 'not_document', quality: quality ? pageQuality(quality) : null, decided: true };
+  }
+  if (quality && UNUSABLE_QUALITY.has(quality)) {
+    return { stop: 'unreadable', quality: pageQuality(quality), decided: true };
+  }
+  const decided = Boolean(documentType && quality) || text.includes(`"${arrayKey}"`);
+  return { stop: null, quality: null, decided };
+}
+
 /** Content key of a raw row: the identifying fields, whitespace- and case-insensitive. */
 export function rowKey(raw: Record<string, unknown>, fields: readonly string[]): string {
   const normalize = (value: unknown): unknown =>
@@ -99,6 +134,10 @@ abstract class PageScanHandler implements AiJobHandler {
   ): Promise<void> {
     const skip = new Map(handled);
     const stream = new JsonArrayStream(reader.arrayKey);
+    const expected = this.task === 'menu-page' ? 'menu' : 'invoice';
+    // Stops the request once the page-level verdict says the page isn't worth reading.
+    const stop = new AbortController();
+    let checking = true;
     for await (const chunk of this.provider.stream({
       task: this.task,
       model: this.model,
@@ -107,13 +146,25 @@ abstract class PageScanHandler implements AiJobHandler {
       prompt: this.prompt(pageResult.page, result.pages.length),
       images: [{ mimeType: image.type, data: image.data }],
       responseSchema: this.schema,
-      signal: context.signal,
+      signal: AbortSignal.any([context.signal, stop.signal]),
     })) {
       if ('usage' in chunk) {
         await context.recordUsage(chunk.usage);
         continue;
       }
-      for (const element of stream.push(chunk.text)) {
+      const elements = stream.push(chunk.text);
+      if (checking) {
+        const verdict = pageVerdict(stream.fullText, expected, reader.arrayKey);
+        if (verdict.stop) {
+          // Unusable page (not a real menu / invoice, blurry, cluttered): no rows are generated.
+          stop.abort();
+          pageResult.status = verdict.stop;
+          pageResult.quality = verdict.quality;
+          return;
+        }
+        checking = !verdict.decided;
+      }
+      for (const element of elements) {
         const raw = element as Record<string, unknown>;
         const key = rowKey(raw, reader.keyFields);
         const pending = skip.get(key) ?? 0;
@@ -138,8 +189,7 @@ abstract class PageScanHandler implements AiJobHandler {
     const full = parseJsonObject(stream.fullText);
     reader.finish(full, result);
     const quality = full?.quality;
-    pageResult.quality =
-      quality === 'blurry' || quality === 'cropped' || quality === 'dark' ? quality : 'ok';
+    pageResult.quality = pageQuality(quality);
     pageResult.title = typeof full?.title === 'string' ? full.title.slice(0, 100) : null;
     if (pageResult.itemCount > 0) pageResult.status = 'done';
     else if (full && full.documentType !== (this.task === 'menu-page' ? 'menu' : 'invoice')) {
