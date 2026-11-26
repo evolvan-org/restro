@@ -1,10 +1,17 @@
-import type { CaptainOrderSummary, Kot, KotQueueItem, Order } from '@rms/api-contract';
+import type {
+  CaptainOrderSummary,
+  Kot,
+  KotQueueItem,
+  Order,
+  OrderListItem,
+} from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import type {
   CaptainOrderRecord,
   KotQueueRecord,
   KotRecord,
+  OrderListRecord,
   OrderRecord,
 } from './orders.repository';
 
@@ -103,5 +110,13 @@ export function toCaptainOrderSummary(record: CaptainOrderRecord): CaptainOrderS
     openedAt: record.openedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
     total: paidTotal ?? lineTotal,
+  };
+}
+
+export function toOrderListItem(record: OrderListRecord): OrderListItem {
+  return {
+    ...toCaptainOrderSummary(record),
+    captain: record.table.captain,
+    createdBy: record.createdByUser.name,
   };
 }

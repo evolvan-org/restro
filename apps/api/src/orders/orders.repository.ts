@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { CaptainOrderView, KotDestination, KotQueueQuery, KotStatus } from '@rms/api-contract';
+import type {
+  CaptainOrderView,
+  KotDestination,
+  KotQueueQuery,
+  KotStatus,
+  OrderListQuery,
+} from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
 import { PrismaService } from '../common/database/prisma.service';
@@ -97,6 +103,22 @@ const captainOrderSelect = {
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   },
 } satisfies Prisma.OrderSelect;
+
+const orderListSelect = {
+  ...captainOrderSelect,
+  table: {
+    select: { id: true, tableNumber: true, captain: { select: { id: true, name: true } } },
+  },
+  createdByUser: { select: { name: true } },
+} satisfies Prisma.OrderSelect;
+
+export type OrderListRecord = Prisma.OrderGetPayload<{ select: typeof orderListSelect }>;
+export type OrderPageFilters = Pick<OrderListQuery, 'status' | 'from' | 'to' | 'table'> & {
+  /** Set for captains: restrict to tables this user captains. */
+  captainUserId?: string;
+  skip: number;
+  take: number;
+};
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 export type CaptainOrderRecord = Prisma.OrderGetPayload<{ select: typeof captainOrderSelect }>;
@@ -387,6 +409,51 @@ export class OrdersRepository {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
+  }
+
+  /** Filtered, paginated orders (newest first). Dates are restaurant-local days on `openedAt`. */
+  async findOrderPage(
+    restaurantId: string,
+    filters: OrderPageFilters,
+  ): Promise<{ items: OrderListRecord[]; total: number; currency: string } | null> {
+    const [context] = await this.prisma.$queryRaw<
+      { currency: string; fromAt: Date | null; toAt: Date | null }[]
+    >`
+      SELECT r.currency,
+        (${filters.from ?? null}::date)::timestamp AT TIME ZONE r.timezone AS "fromAt",
+        ((${filters.to ?? null}::date + 1))::timestamp AT TIME ZONE r.timezone AS "toAt"
+      FROM restaurants r WHERE r.id = ${restaurantId}::uuid
+    `;
+    if (!context) return null;
+
+    const where: Prisma.OrderWhereInput = {
+      restaurantId,
+      ...(filters.status && { status: filters.status }),
+      ...((context.fromAt || context.toAt) && {
+        openedAt: {
+          ...(context.fromAt && { gte: context.fromAt }),
+          ...(context.toAt && { lt: context.toAt }),
+        },
+      }),
+      ...((filters.captainUserId || filters.table) && {
+        table: {
+          restaurantId,
+          ...(filters.captainUserId && { captainUserId: filters.captainUserId }),
+          ...(filters.table && { tableNumber: { contains: filters.table, mode: 'insensitive' } }),
+        },
+      }),
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.order.findMany({
+        where,
+        select: orderListSelect,
+        orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
+        skip: filters.skip,
+        take: filters.take,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+    return { items, total, currency: context.currency };
   }
 
   findActiveKotBoard(

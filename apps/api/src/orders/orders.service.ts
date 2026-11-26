@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,10 +19,13 @@ import {
   type KotQueueQuery,
   type KotQueueResponse,
   type Order,
+  type OrderListQuery,
+  type OrderListResponse,
   type UpdateKotStatusRequest,
   type UpdateKotStatusResponse,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
+import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
@@ -32,6 +36,7 @@ import {
   toKot,
   toKotQueueItem,
   toOrder,
+  toOrderListItem,
 } from './orders.mapper';
 import { type KotRecord, OrdersRepository } from './orders.repository';
 
@@ -133,6 +138,33 @@ export class OrdersService {
       await this.notifications.ticketReady(actor.restaurantId, record.id);
     }
     return toKotQueueItem(record);
+  }
+
+  /**
+   * Owners and users who can assign captains (managers) see every order and may filter by captain.
+   * Captains are forced to their own tables, whatever the client sends; others are refused.
+   */
+  async list(actor: Actor, query: OrderListQuery): Promise<OrderListResponse> {
+    const seesAll = actor.isOwner || actor.permissions.includes(Permission.TABLE_ASSIGN_CAPTAIN);
+    if (!seesAll && !actor.permissions.includes(Permission.TABLE_BE_CAPTAIN)) {
+      throw new ForbiddenException('You can only list orders for tables you captain');
+    }
+    const { page, pageSize, status, from, to, table, captainId } = query;
+    const result = await this.repository.findOrderPage(actor.restaurantId, {
+      status,
+      from,
+      to,
+      table,
+      captainUserId: seesAll ? captainId : actor.userId,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    if (!result) throw new NotFoundException('Restaurant not found');
+    return {
+      data: result.items.map(toOrderListItem),
+      meta: buildPageMeta(page, pageSize, result.total),
+      currency: result.currency,
+    };
   }
 
   /** Scoped on the server to tables the caller captains; never trusts a client-side filter. */

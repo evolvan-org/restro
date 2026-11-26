@@ -48,6 +48,10 @@ import {
   type OrderItemMutationResponse,
   orderItemMutationResponseSchema,
   orderItemSchema,
+  type OrderListQuery,
+  orderListQuerySchema,
+  type OrderListResponse,
+  orderListResponseSchema,
   orderSchema,
   type UpdateOrderItemInstructionsRequest,
   updateOrderItemInstructionsRequestSchema,
@@ -113,6 +117,23 @@ export class OrdersController {
     @Body(new ZodValidationPipe(createOrderRequestSchema)) input: CreateOrderRequest,
   ): Promise<Order> {
     return this.service.create(actor, input);
+  }
+
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.ORDER_READ)
+  @ApiOperation({
+    summary: 'List orders with filters (status, date, captain, table)',
+    description:
+      'Captains only get orders on tables they captain; managers and owners get all orders. Scoping is enforced on the server.',
+  })
+  @ApiZodQuery(orderListQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderListResponseSchema) })
+  list(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(orderListQuerySchema)) query: OrderListQuery,
+  ): Promise<OrderListResponse> {
+    return this.service.list(actor, query);
   }
 
   @Get('mine')
