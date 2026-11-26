@@ -6,6 +6,7 @@ import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
 import AppHeader from '@/components/AppHeader';
 import AppSidebar from '@/components/AppSidebar';
 import EmailVerificationBanner from '@/components/EmailVerificationBanner';
+import QrOrdersWatcher from '@/components/QrOrdersWatcher';
 import useAccessibleHome from '@/hooks/auth/useAccessibleHome';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useAppLayout from '@/hooks/useAppLayout';
@@ -91,6 +92,7 @@ export default function ProtectedLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader onMenuClick={() => setMobileNavOpen(true)} />
         <EmailVerificationBanner />
+        <QrOrdersWatcher />
         <main className="flex-1">{children}</main>
       </div>
     </div>

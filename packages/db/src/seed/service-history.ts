@@ -22,6 +22,7 @@ import type {
 } from '@prisma/client';
 import { Permission, type Role, roleHasPermission } from '@rms/permissions';
 
+import { BILL_CANCELLATION_REASONS } from '../tenant-defaults';
 import { GUESTS, guestPhone } from './catalog';
 import type { SeededMenuItem } from './menu';
 import {
@@ -36,6 +37,7 @@ import {
   roundMoney,
   type Tx,
 } from './support';
+import { fixtureId, type HistoryChunk, serviceSlots, YEAR_DAYS } from './year-config';
 
 const HISTORY_DAYS = 28;
 const RESERVATION_MINUTES = 90;
@@ -78,7 +80,8 @@ type KotPlan = {
 };
 type BillPlan = {
   id: string;
-  status: 'OPEN' | 'PAID';
+  status: 'OPEN' | 'PAID' | 'CANCELLED';
+  cancellationReason?: string;
   generatedAt: Date;
   paidAt: Date | null;
   discountPercent: number;
@@ -90,7 +93,7 @@ type OrderPlan = {
   table: SeedTable;
   reservationId: string;
   captainId: string;
-  status: 'OPEN' | 'SUBMITTED' | 'COMPLETED';
+  status: 'OPEN' | 'SUBMITTED' | 'COMPLETED' | 'CANCELLED';
   openedAt: Date;
   completedAt: Date | null;
   lines: LinePlan[];
@@ -118,26 +121,58 @@ export async function seedServiceHistory(
     statusIds: ReadonlyMap<string, string>;
     gstRate: DecimalValue;
     maxDiscountPercent: DecimalValue;
+    year?: HistoryChunk & { seed: number; now: Date };
   },
 ): Promise<ServiceHistorySummary> {
   const { restaurantId, users, tables, menu } = input;
-  const rng = new Random(20261119);
-  const now = new Date();
+  const { year } = input;
+  const rng = new Random(year ? year.seed + year.start : 20261119);
+  const liveRng = year ? new Random(year.seed ^ 0x907f) : rng;
+  const now = year?.now ?? new Date();
+  const time = (day: number, hour: number, minute = 0) => localTime(day, hour, minute, now);
+  let sequence = 0;
+  const id = () =>
+    year
+      ? fixtureId(
+          `${restaurantId}:year:${year.seed}:${now.toISOString()}:${year.start}:${sequence++}`,
+        )
+      : randomUUID();
+  const guestNames = year
+    ? [...GUESTS, ...Array.from({ length: 440 }, (_, i) => `Demo Guest ${i + 1}`)]
+    : GUESTS;
 
   const guestIds: string[] = [];
-  for (const [index, guestName] of GUESTS.entries()) {
-    const phoneNumber = guestPhone(index);
-    const guest = await tx.guest.upsert({
-      where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
-      create: { restaurantId, guestName, phoneNumber, createdAt: localTime(-HISTORY_DAYS - 7, 10) },
-      update: {},
-      select: { id: true },
-    });
-    guestIds.push(guest.id);
-  }
-  const alreadySeeded = await tx.reservation.count({
-    where: { restaurantId, guestId: { in: guestIds } },
-  });
+  if (year) {
+    const guests = guestNames.map((guestName, index) => ({
+      id: fixtureId(`${restaurantId}:year:guest:${index}`),
+      restaurantId,
+      guestName,
+      phoneNumber: guestPhone(index),
+      createdAt: time(-YEAR_DAYS - 7 + Math.max(0, Math.floor((index - GUESTS.length) / 2)), 10),
+    }));
+    if (year.start === -YEAR_DAYS) await tx.guest.createMany({ data: guests });
+    guestIds.push(...guests.map((guest) => guest.id));
+  } else
+    for (const [index, guestName] of GUESTS.entries()) {
+      const phoneNumber = guestPhone(index);
+      const guest = await tx.guest.upsert({
+        where: { restaurantId_phoneNumber: { restaurantId, phoneNumber } },
+        create: {
+          restaurantId,
+          guestName,
+          phoneNumber,
+          createdAt: localTime(-HISTORY_DAYS - 7, 10),
+        },
+        update: {},
+        select: { id: true },
+      });
+      guestIds.push(guest.id);
+    }
+  const alreadySeeded = year
+    ? 0
+    : await tx.reservation.count({
+        where: { restaurantId, guestId: { in: guestIds } },
+      });
   if (alreadySeeded > 0) {
     return {
       guests: guestIds.length,
@@ -183,7 +218,7 @@ export async function seedServiceHistory(
           ? rng.int(1, Math.max(2, partySize))
           : rng.int(1, Math.max(1, Math.ceil(partySize / 2)));
         lines.push({
-          id: randomUUID(),
+          id: id(),
           menuItem: item,
           quantity,
           status: 'ACTIVE',
@@ -224,7 +259,7 @@ export async function seedServiceHistory(
       .map(([destination, group]) => {
         const kotStatus = status(destination);
         return {
-          id: randomUUID(),
+          id: id(),
           orderId: order.id,
           tableId: order.table.id,
           tableNumber: order.table.tableNumber,
@@ -252,6 +287,19 @@ export async function seedServiceHistory(
     return { method, reference };
   };
 
+  const availableCaptain = (captainId: string | null, at: Date) => {
+    if (!year || !captainId) return captainId;
+    const occupied = (id: string) =>
+      reservations.some(
+        (reservation) =>
+          reservation.captainUserId === id &&
+          Math.abs(new Date(reservation.reservationAt).getTime() - at.getTime()) <
+            RESERVATION_MINUTES * 60_000,
+      );
+    if (!occupied(captainId)) return captainId;
+    return captains.find((id) => !occupied(id)) ?? null;
+  };
+
   const book = (
     table: SeedTable | null,
     guestId: string,
@@ -261,15 +309,15 @@ export async function seedServiceHistory(
     captainId: string | null,
     extra: Partial<Prisma.ReservationCreateManyInput> = {},
   ): string => {
-    const id = randomUUID();
+    const reservationId = id();
     const walkIn = status === 'COMPLETED' || status === 'SEATED' ? rng.chance(0.4) : false;
     const createdAt = walkIn ? addMinutes(at, -1) : addMinutes(at, -rng.int(60, 60 * 72));
     reservations.push({
-      id,
+      id: reservationId,
       restaurantId,
       guestId,
       tableId: table?.id ?? null,
-      captainUserId: captainId,
+      captainUserId: year && status !== 'COMPLETED' ? availableCaptain(captainId, at) : captainId,
       createdByUserId: walkIn ? (captainId ?? manager) : rng.pick([manager, ...captains]),
       reservationAt: at,
       partySize,
@@ -283,22 +331,35 @@ export async function seedServiceHistory(
       updatedAt: at < now ? at : now,
       ...extra,
     });
-    return id;
+    return reservationId;
   };
 
   /** A full completed visit: seated, two possible ordering rounds, billed and paid. */
-  const completedVisit = (table: SeedTable, seatAt: Date, partySize: number): OrderPlan => {
-    const captainId = rng.pick(captains);
+  const completedVisit = (
+    table: SeedTable,
+    seatAt: Date,
+    partySize: number,
+    assigned?: string,
+  ): OrderPlan => {
+    const captainId = assigned ?? rng.pick(captains);
+    const historical = assigned !== undefined;
+    const day = Math.floor((seatAt.getTime() - time(-YEAR_DAYS, 0).getTime()) / 86_400_000);
+    const guestPool = historical
+      ? guestIds.slice(
+          0,
+          rng.chance(0.55) ? GUESTS.length : GUESTS.length + Math.max(0, day - 3) * 2,
+        )
+      : guestIds;
     const reservationId = book(
       table,
-      rng.pick(guestIds),
+      rng.pick(guestPool),
       seatAt,
       partySize,
       'COMPLETED',
       captainId,
     );
     const order: OrderPlan = {
-      id: randomUUID(),
+      id: id(),
       table,
       reservationId,
       captainId,
@@ -318,7 +379,7 @@ export async function seedServiceHistory(
     order.lines.push(...first);
     order.kots.push(...ticket(order, first, firstAt, () => 'COMPLETED'));
     if (rng.chance(0.4)) {
-      const secondAt = addMinutes(firstAt, rng.int(30, 45));
+      const secondAt = addMinutes(firstAt, historical ? rng.int(18, 24) : rng.int(30, 45));
       const second = pickLines(1, secondAt, rng.chance(0.5)).slice(0, 2);
       const fresh = second.filter(
         (line) => !order.lines.some((l) => l.menuItem.id === line.menuItem.id),
@@ -330,237 +391,304 @@ export async function seedServiceHistory(
       (latest, kot) => Math.max(latest, kot.completedAt?.getTime() ?? 0),
       0,
     );
-    const generatedAt = addMinutes(new Date(lastServed), rng.int(20, 40));
+    const generatedAt = addMinutes(
+      new Date(lastServed),
+      historical ? rng.int(12, 18) : rng.int(20, 40),
+    );
     const paidAt = addMinutes(generatedAt, rng.int(3, 9));
     order.bill = {
-      id: randomUUID(),
+      id: id(),
       status: 'PAID',
       generatedAt,
       paidAt,
       discountPercent: rng.chance(0.12) ? Math.min(10, input.maxDiscountPercent.toNumber()) : 0,
       payment: paymentFor(),
     };
+    if (historical && rng.chance(0.025)) {
+      order.bill.status = 'CANCELLED';
+      order.bill.cancellationReason = rng.pick(BILL_CANCELLATION_REASONS).name;
+      order.bill.paidAt = null;
+      order.bill.payment = null;
+      order.status = 'CANCELLED';
+    }
     order.completedAt = paidAt;
     return order;
   };
 
   // --- Four weeks of service ------------------------------------------------
-  for (let day = -HISTORY_DAYS; day <= 0; day += 1) {
-    const weekday = localTime(day, 12).getUTCDay();
-    const weekend = weekday === 0 || weekday === 5 || weekday === 6;
-    const services = [
-      { start: [12, 15] as const, covers: weekend ? rng.int(4, 6) : rng.int(2, 4) },
-      { start: [19, 0] as const, covers: weekend ? rng.int(6, 9) : rng.int(3, 6) },
-    ];
-    for (const service of services) {
-      const available = rng.shuffle(diningTables);
-      for (let i = 0; i < service.covers; i += 1) {
-        const partySize = rng.pick([1, 2, 2, 2, 3, 4, 4, 5, 6]);
-        const index = available.findIndex((table) => table.capacity >= partySize);
-        if (index < 0) break;
-        const [table] = available.splice(index, 1);
-        if (!table) break;
-        const seatAt = localTime(day, service.start[0], service.start[1] + rng.int(0, 150));
-        const order = completedVisit(table, seatAt, partySize);
-        // Today only keeps visits already paid well before now; the live floor is built below.
-        if (order.completedAt && order.completedAt.getTime() > now.getTime() - 30 * 60_000) {
-          reservations.pop();
-          continue;
+  if (year)
+    for (let day = year.start; day <= year.end; day++) {
+      const slots = serviceSlots(day, now, rng);
+      let previous = -1;
+      let available: SeedTable[] = [];
+      let assignedCaptains: string[] = [];
+      for (const at of slots) {
+        if (year.live && at >= addMinutes(now, -240)) continue;
+        if (at.getTime() !== previous) {
+          previous = at.getTime();
+          available = rng.shuffle(tables);
+          assignedCaptains = rng.shuffle(captains);
         }
-        orders.push(order);
+        const partySize = rng.pick([1, 2, 2, 3, 4, 5, 6, 8, 10]);
+        const index = available.findIndex((table) => table.capacity >= partySize);
+        const captain = assignedCaptains.pop();
+        if (!captain || index < 0) continue;
+        const table = available.splice(index, 1)[0]!;
+        orders.push(completedVisit(table, at, partySize, captain));
+      }
+      if (slots.length && day < 0 && rng.chance(0.45)) {
+        const cancelled = rng.chance(0.5);
+        book(
+          null,
+          rng.pick(guestIds.slice(0, GUESTS.length)),
+          time(day, 16),
+          rng.int(2, 5),
+          cancelled ? 'CANCELLED' : 'NO_SHOW',
+          null,
+          cancelled ? { cancellationReason: rng.pick(CANCELLATION_REASONS) } : {},
+        );
       }
     }
-    if (weekend && largeTables.length > 0 && rng.chance(0.5) && day < 0) {
-      orders.push(
-        completedVisit(rng.pick(largeTables), localTime(day, 20, rng.int(0, 45)), rng.int(7, 10)),
-      );
+  else
+    for (let day = -HISTORY_DAYS; day <= 0; day += 1) {
+      const weekday = localTime(day, 12).getUTCDay();
+      const weekend = weekday === 0 || weekday === 5 || weekday === 6;
+      const services = [
+        { start: [12, 15] as const, covers: weekend ? rng.int(4, 6) : rng.int(2, 4) },
+        { start: [19, 0] as const, covers: weekend ? rng.int(6, 9) : rng.int(3, 6) },
+      ];
+      for (const service of services) {
+        const available = rng.shuffle(diningTables);
+        for (let i = 0; i < service.covers; i += 1) {
+          const partySize = rng.pick([1, 2, 2, 2, 3, 4, 4, 5, 6]);
+          const index = available.findIndex((table) => table.capacity >= partySize);
+          if (index < 0) break;
+          const [table] = available.splice(index, 1);
+          if (!table) break;
+          const seatAt = localTime(day, service.start[0], service.start[1] + rng.int(0, 150));
+          const order = completedVisit(table, seatAt, partySize);
+          // Today only keeps visits already paid well before now; the live floor is built below.
+          if (order.completedAt && order.completedAt.getTime() > now.getTime() - 30 * 60_000) {
+            reservations.pop();
+            continue;
+          }
+          orders.push(order);
+        }
+      }
+      if (weekend && largeTables.length > 0 && rng.chance(0.5) && day < 0) {
+        orders.push(
+          completedVisit(rng.pick(largeTables), localTime(day, 20, rng.int(0, 45)), rng.int(7, 10)),
+        );
+      }
+      if (day < 0 && rng.chance(0.35)) {
+        book(
+          rng.pick(diningTables),
+          rng.pick(guestIds),
+          localTime(day, 20, 30),
+          rng.int(2, 4),
+          'NO_SHOW',
+          rng.pick(captains),
+        );
+      }
+      if (day < 0 && rng.chance(0.3)) {
+        book(
+          rng.pick(diningTables),
+          rng.pick(guestIds),
+          localTime(day, 13, 30),
+          rng.int(2, 6),
+          'CANCELLED',
+          null,
+          {
+            cancellationReason: rng.pick(CANCELLATION_REASONS),
+          },
+        );
+      }
     }
-    if (day < 0 && rng.chance(0.35)) {
-      book(
-        rng.pick(diningTables),
-        rng.pick(guestIds),
-        localTime(day, 20, 30),
-        rng.int(2, 4),
-        'NO_SHOW',
-        rng.pick(captains),
-      );
-    }
-    if (day < 0 && rng.chance(0.3)) {
-      book(
-        rng.pick(diningTables),
-        rng.pick(guestIds),
-        localTime(day, 13, 30),
-        rng.int(2, 6),
-        'CANCELLED',
-        null,
-        {
-          cancellationReason: rng.pick(CANCELLATION_REASONS),
-        },
-      );
-    }
-  }
 
   // --- Live floor -----------------------------------------------------------
-  const freeTables = rng.shuffle(tables.filter((table) => table.free && table.capacity <= 6));
+  const freeTables = liveRng.shuffle(tables.filter((table) => table.free && table.capacity <= 6));
   const claim = (minCapacity: number): SeedTable | undefined => {
     const index = freeTables.findIndex((table) => table.capacity >= minCapacity);
     return index < 0 ? undefined : freeTables.splice(index, 1)[0];
   };
   const live: string[] = [];
   const tableStates: { tableId: string; code: string; at: Date; captainId: string | null }[] = [];
-
-  const seatLive = (
-    table: SeedTable,
-    minutesAgo: number,
-    partySize: number,
-    build: (order: OrderPlan) => void,
-  ) => {
-    const seatAt = addMinutes(now, -minutesAgo);
-    const captainId = rng.pick(captains);
-    const order: OrderPlan = {
-      id: randomUUID(),
-      table,
-      reservationId: book(table, rng.pick(guestIds), seatAt, partySize, 'SEATED', captainId),
-      captainId,
-      status: 'SUBMITTED',
-      openedAt: addMinutes(seatAt, 1),
-      completedAt: null,
-      lines: [],
-      kots: [],
-      bill: null,
-    };
-    build(order);
-    orders.push(order);
-    tableStates.push({ tableId: table.id, code: 'OCCUPIED', at: seatAt, captainId });
-  };
-
-  const awaitingFood = claim(4);
-  if (awaitingFood) {
-    seatLive(awaitingFood, 40, 4, (order) => {
-      const at = addMinutes(order.openedAt, 6);
-      order.lines = pickLines(4, at, true);
-      order.kots = ticket(order, order.lines, at, (destination) =>
-        destination === 'KITCHEN' ? 'PREPARING' : 'READY',
-      );
-    });
-    live.push(`${awaitingFood.tableNumber}: kitchen preparing, bar ticket ready`);
-  }
-  const justOrdered = claim(2);
-  if (justOrdered) {
-    seatLive(justOrdered, 12, 2, (order) => {
-      const at = addMinutes(order.openedAt, 5);
-      order.lines = pickLines(2, at, true);
-      order.kots = ticket(order, order.lines, at, () => 'PENDING');
-    });
-    live.push(`${justOrdered.tableNumber}: new tickets pending`);
-  }
-  const awaitingPayment = claim(3);
-  if (awaitingPayment) {
-    seatLive(awaitingPayment, 85, 3, (order) => {
-      const at = addMinutes(order.openedAt, 8);
-      order.lines = pickLines(3, at, true);
-      order.kots = ticket(order, order.lines, at, () => 'COMPLETED');
-      order.bill = {
-        id: randomUUID(),
-        status: 'OPEN',
-        generatedAt: addMinutes(now, -4),
-        paidAt: null,
-        discountPercent: 0,
-        payment: null,
-      };
-    });
-    live.push(`${awaitingPayment.tableNumber}: bill open, awaiting payment`);
-  }
-  const browsing = claim(2);
-  if (browsing) {
-    seatLive(browsing, 5, 2, (order) => {
-      order.status = 'OPEN';
-      order.lines = pickLines(2, addMinutes(order.openedAt, 3), false).slice(0, 2);
-    });
-    live.push(`${browsing.tableNumber}: order open, nothing sent yet`);
-  }
-  const justPaid = claim(2);
-  if (justPaid) {
-    const order = completedVisit(justPaid, addMinutes(now, -200), 2);
-    // Shift the whole visit so payment lands eight minutes ago.
-    const shift = now.getTime() - 8 * 60_000 - (order.completedAt?.getTime() ?? 0);
-    const move = (date: Date) => new Date(date.getTime() + shift);
-    const reservation = reservations[reservations.length - 1];
-    if (reservation) {
-      reservation.reservationAt = move(reservation.reservationAt as Date);
-      reservation.createdAt = move(reservation.createdAt as Date);
-      reservation.updatedAt = move(reservation.updatedAt as Date);
-    }
-    order.openedAt = move(order.openedAt);
-    order.completedAt = order.completedAt && move(order.completedAt);
-    for (const line of order.lines) line.createdAt = move(line.createdAt);
-    for (const kot of order.kots) {
-      kot.createdAt = move(kot.createdAt);
-      kot.completedAt = kot.completedAt && move(kot.completedAt);
-    }
-    if (order.bill) {
-      order.bill.generatedAt = move(order.bill.generatedAt);
-      order.bill.paidAt = order.bill.paidAt && move(order.bill.paidAt);
-    }
-    orders.push(order);
-    tableStates.push({
-      tableId: justPaid.id,
-      code: 'NEEDS_CLEANING',
-      at: order.completedAt ?? now,
-      captainId: null,
-    });
-    live.push(`${justPaid.tableNumber}: paid, needs cleaning`);
-  }
-  const reservedSoon = claim(4);
   const upcomingReservationIds: string[] = [];
-  if (reservedSoon) {
+
+  if (!year || year.live) {
+    const seatLive = (
+      table: SeedTable,
+      minutesAgo: number,
+      partySize: number,
+      build: (order: OrderPlan) => void,
+    ) => {
+      const seatAt = addMinutes(now, -minutesAgo);
+      const captainId = rng.pick(captains);
+      const order: OrderPlan = {
+        id: id(),
+        table,
+        reservationId: book(table, rng.pick(guestIds), seatAt, partySize, 'SEATED', captainId),
+        captainId,
+        status: 'SUBMITTED',
+        openedAt: addMinutes(seatAt, 1),
+        completedAt: null,
+        lines: [],
+        kots: [],
+        bill: null,
+      };
+      build(order);
+      orders.push(order);
+      tableStates.push({ tableId: table.id, code: 'OCCUPIED', at: seatAt, captainId });
+    };
+
+    const awaitingFood = claim(4);
+    if (awaitingFood) {
+      seatLive(awaitingFood, 40, 4, (order) => {
+        const at = addMinutes(order.openedAt, 6);
+        order.lines = pickLines(4, at, true);
+        order.kots = ticket(order, order.lines, at, (destination) =>
+          destination === 'KITCHEN' ? 'PREPARING' : 'READY',
+        );
+      });
+      live.push(`${awaitingFood.tableNumber}: kitchen preparing, bar ticket ready`);
+    }
+    const justOrdered = claim(2);
+    if (justOrdered) {
+      seatLive(justOrdered, 12, 2, (order) => {
+        const at = addMinutes(order.openedAt, 5);
+        order.lines = pickLines(2, at, true);
+        order.kots = ticket(order, order.lines, at, () => 'PENDING');
+      });
+      live.push(`${justOrdered.tableNumber}: new tickets pending`);
+    }
+    const awaitingPayment = claim(3);
+    if (awaitingPayment) {
+      seatLive(awaitingPayment, 85, 3, (order) => {
+        const at = addMinutes(order.openedAt, 8);
+        order.lines = pickLines(3, at, true);
+        order.kots = ticket(order, order.lines, at, () => 'COMPLETED');
+        order.bill = {
+          id: id(),
+          status: 'OPEN',
+          generatedAt: addMinutes(now, -4),
+          paidAt: null,
+          discountPercent: 0,
+          payment: null,
+        };
+      });
+      live.push(`${awaitingPayment.tableNumber}: bill open, awaiting payment`);
+    }
+    const browsing = claim(2);
+    if (browsing) {
+      seatLive(browsing, 5, 2, (order) => {
+        order.status = 'OPEN';
+        order.lines = pickLines(2, addMinutes(order.openedAt, 3), false).slice(0, 2);
+      });
+      live.push(`${browsing.tableNumber}: order open, nothing sent yet`);
+    }
+    const justPaid = claim(2);
+    if (justPaid) {
+      const order = completedVisit(justPaid, addMinutes(now, -200), 2);
+      // Shift the whole visit so payment lands eight minutes ago.
+      const shift = now.getTime() - 8 * 60_000 - (order.completedAt?.getTime() ?? 0);
+      const move = (date: Date) => new Date(date.getTime() + shift);
+      const reservation = reservations[reservations.length - 1];
+      if (reservation) {
+        reservation.reservationAt = move(reservation.reservationAt as Date);
+        reservation.createdAt = move(reservation.createdAt as Date);
+        reservation.updatedAt = move(reservation.updatedAt as Date);
+        if (year) {
+          const captain = reservation.captainUserId ?? null;
+          reservation.captainUserId = null;
+          reservation.captainUserId = availableCaptain(captain, reservation.reservationAt as Date);
+        }
+      }
+      order.openedAt = move(order.openedAt);
+      order.completedAt = order.completedAt && move(order.completedAt);
+      for (const line of order.lines) line.createdAt = move(line.createdAt);
+      for (const kot of order.kots) {
+        kot.createdAt = move(kot.createdAt);
+        kot.completedAt = kot.completedAt && move(kot.completedAt);
+      }
+      if (order.bill) {
+        order.bill.generatedAt = move(order.bill.generatedAt);
+        order.bill.paidAt = order.bill.paidAt && move(order.bill.paidAt);
+      }
+      orders.push(order);
+      tableStates.push({
+        tableId: justPaid.id,
+        code: 'NEEDS_CLEANING',
+        at: order.completedAt ?? now,
+        captainId: null,
+      });
+      live.push(`${justPaid.tableNumber}: paid, needs cleaning`);
+    }
+    const reservedSoon = claim(4);
+    if (reservedSoon) {
+      const captain = rng.pick(captains);
+      upcomingReservationIds.push(
+        book(reservedSoon, rng.pick(guestIds), addMinutes(now, 45), 4, 'BOOKED', captain, {
+          notes: 'Birthday: bring the cake out with dessert',
+        }),
+      );
+      tableStates.push({
+        tableId: reservedSoon.id,
+        code: 'RESERVED',
+        at: now,
+        captainId: year ? captain : null,
+      });
+      live.push(`${reservedSoon.tableNumber}: reserved in 45 minutes`);
+    }
+
+    // Upcoming bookings: later today without a table yet, and the next four days.
     upcomingReservationIds.push(
-      book(reservedSoon, rng.pick(guestIds), addMinutes(now, 45), 4, 'BOOKED', rng.pick(captains), {
-        notes: 'Birthday: bring the cake out with dessert',
+      book(null, rng.pick(guestIds), addMinutes(now, 180), 5, 'BOOKED', null, {
+        notes: 'Prefers terrace',
       }),
     );
-    tableStates.push({ tableId: reservedSoon.id, code: 'RESERVED', at: now, captainId: null });
-    live.push(`${reservedSoon.tableNumber}: reserved in 45 minutes`);
-  }
-
-  // Upcoming bookings: later today without a table yet, and the next four days.
-  upcomingReservationIds.push(
-    book(null, rng.pick(guestIds), addMinutes(now, 180), 5, 'BOOKED', null, {
-      notes: 'Prefers terrace',
-    }),
-  );
-  for (let day = 1; day <= 4; day += 1) {
-    const slots = rng.shuffle(diningTables).slice(0, rng.int(2, 4));
-    for (const [index, table] of slots.entries()) {
-      const at = localTime(day, index % 2 === 0 ? 20 : 13, rng.pick([0, 15, 30, 45]));
-      const assigned = rng.chance(0.75) ? table : null;
+    for (let day = 1; day <= 4; day += 1) {
+      const slots = rng.shuffle(diningTables).slice(0, rng.int(2, 4));
+      for (const [index, table] of slots.entries()) {
+        const at = time(day, index % 2 === 0 ? 20 : 13, rng.pick([0, 15, 30, 45]));
+        const assigned = rng.chance(0.75) ? table : null;
+        upcomingReservationIds.push(
+          book(
+            assigned,
+            rng.pick(guestIds),
+            at,
+            rng.int(2, Math.max(2, table.capacity)),
+            'BOOKED',
+            assigned ? rng.pick(captains) : null,
+          ),
+        );
+      }
+    }
+    if (largeTables[0]) {
       upcomingReservationIds.push(
         book(
-          assigned,
+          largeTables[0],
           rng.pick(guestIds),
-          at,
-          rng.int(2, Math.max(2, table.capacity)),
+          time(3, 19, 30),
+          10,
           'BOOKED',
-          assigned ? rng.pick(captains) : null,
+          rng.pick(captains),
+          { notes: 'Corporate dinner, set menu' },
         ),
       );
     }
-  }
-  if (largeTables[0]) {
-    upcomingReservationIds.push(
-      book(
-        largeTables[0],
-        rng.pick(guestIds),
-        localTime(3, 19, 30),
-        10,
-        'BOOKED',
-        rng.pick(captains),
-        { notes: 'Corporate dinner, set menu' },
-      ),
-    );
+    if (year) {
+      for (const captain of captains) {
+        const table = claim(2);
+        if (!table) break;
+        tableStates.push({ tableId: table.id, code: 'AVAILABLE', at: now, captainId: captain });
+        live.push(`${table.tableNumber}: available on captain's board for a walk-in`);
+      }
+    }
   }
 
   // --- Numbering (chronological, continuing any existing sequences) ---------
+  if (year)
+    await tx.$queryRaw`SELECT id FROM restaurants WHERE id = ${restaurantId}::uuid FOR UPDATE`;
   const allKots = orders
     .flatMap((order) => order.kots)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -589,9 +717,13 @@ export async function seedServiceHistory(
   }
 
   // --- Write ----------------------------------------------------------------
-  await tx.reservation.createMany({ data: reservations });
-  await tx.order.createMany({
-    data: orders.map((order) => ({
+  const insert = async <T>(data: T[], write: (batch: T[]) => Promise<unknown>) => {
+    const size = year ? 1_000 : Math.max(1, data.length);
+    for (let i = 0; i < data.length; i += size) await write(data.slice(i, i + size));
+  };
+  await insert(reservations, (data) => tx.reservation.createMany({ data }));
+  await insert(
+    orders.map((order) => ({
       id: order.id,
       restaurantId,
       tableId: order.table.id,
@@ -603,9 +735,10 @@ export async function seedServiceHistory(
       createdAt: order.openedAt,
       updatedAt: order.completedAt ?? order.lines.at(-1)?.createdAt ?? order.openedAt,
     })),
-  });
-  await tx.orderItem.createMany({
-    data: orders.flatMap((order) =>
+    (data) => tx.order.createMany({ data }),
+  );
+  await insert(
+    orders.flatMap((order) =>
       order.lines.map((line) => ({
         id: line.id,
         orderId: order.id,
@@ -618,9 +751,10 @@ export async function seedServiceHistory(
         updatedAt: line.createdAt,
       })),
     ),
-  });
-  await tx.kot.createMany({
-    data: allKots.map((kot) => ({
+    (data) => tx.orderItem.createMany({ data }),
+  );
+  await insert(
+    allKots.map((kot) => ({
       id: kot.id,
       restaurantId,
       orderId: kot.orderId,
@@ -632,10 +766,12 @@ export async function seedServiceHistory(
       createdAt: kot.createdAt,
       updatedAt: kot.completedAt ?? kot.createdAt,
     })),
-  });
-  await tx.kotItem.createMany({
-    data: allKots.flatMap((kot) =>
+    (data) => tx.kot.createMany({ data }),
+  );
+  await insert(
+    allKots.flatMap((kot) =>
       kot.lines.map((line) => ({
+        id: year ? id() : undefined,
         kotId: kot.id,
         orderItemId: line.id,
         quantity: line.quantity,
@@ -644,7 +780,8 @@ export async function seedServiceHistory(
         updatedAt: kot.completedAt ?? kot.createdAt,
       })),
     ),
-  });
+    (data) => tx.kotItem.createMany({ data }),
+  );
 
   const bills: Prisma.BillCreateManyInput[] = [];
   const payments: Prisma.PaymentCreateManyInput[] = [];
@@ -673,13 +810,16 @@ export async function seedServiceHistory(
       gstAmount,
       totalAmount,
       status: bill.status,
+      cancellationReason: bill.cancellationReason,
       generatedAt: bill.generatedAt,
       paidAt: bill.paidAt,
       createdAt: bill.generatedAt,
-      updatedAt: bill.paidAt ?? bill.generatedAt,
+      updatedAt:
+        bill.paidAt ?? (bill.status === 'CANCELLED' ? order.completedAt : null) ?? bill.generatedAt,
     });
     if (bill.payment && bill.paidAt) {
       payments.push({
+        ...(year ? { id: id() } : {}),
         billId: bill.id,
         recordedByUserId: cashier,
         paymentMethod: bill.payment.method,
@@ -691,8 +831,8 @@ export async function seedServiceHistory(
       });
     }
   }
-  await tx.bill.createMany({ data: bills });
-  await tx.payment.createMany({ data: payments });
+  await insert(bills, (data) => tx.bill.createMany({ data }));
+  await insert(payments, (data) => tx.payment.createMany({ data }));
 
   for (const state of tableStates) {
     const statusId = input.statusIds.get(state.code);
@@ -722,6 +862,7 @@ export async function seedServiceHistory(
   ) => {
     for (const recipientUserId of userIds) {
       notifications.push({
+        ...(year ? { id: id() } : {}),
         restaurantId,
         recipientUserId,
         type,
@@ -736,6 +877,19 @@ export async function seedServiceHistory(
       });
     }
   };
+  if (year)
+    for (const kot of allKots) {
+      if (!kot.completedAt || kot.completedAt > addMinutes(now, -30) || !rng.chance(0.12)) continue;
+      notify(
+        recipients(Permission.KOT_UPDATE_STATUS),
+        'KOT_SENT',
+        'New order',
+        `Ticket ${kot.number} — Table ${kot.tableNumber}`,
+        { kind: 'ORDER', id: kot.orderId, tableId: kot.tableId },
+        kot.createdAt,
+        !rng.chance(0.02),
+      );
+    }
   for (const kot of allKots.filter((k) => k.status !== 'COMPLETED')) {
     const target = { kind: 'ORDER' as const, id: kot.orderId, tableId: kot.tableId };
     const label = kot.destination === 'KITCHEN' ? 'Kitchen' : 'Bar';
@@ -765,7 +919,7 @@ export async function seedServiceHistory(
   for (const id of upcomingReservationIds) {
     const reservation = reservations.find((entry) => entry.id === id);
     if (!reservation) continue;
-    const guestName = GUESTS[guestIds.indexOf(reservation.guestId)] ?? 'Guest';
+    const guestName = guestNames[guestIds.indexOf(reservation.guestId)] ?? 'Guest';
     const at = new Date(reservation.reservationAt);
     const createdAt = new Date(reservation.createdAt ?? now);
     notify(
@@ -780,7 +934,7 @@ export async function seedServiceHistory(
       createdAt.getTime() < now.getTime() - 24 * 60 * 60_000,
     );
   }
-  await tx.notification.createMany({ data: notifications });
+  await insert(notifications, (data) => tx.notification.createMany({ data }));
 
   return {
     guests: guestIds.length,

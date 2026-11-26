@@ -10,12 +10,12 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  // Body parsers are registered by hand to raise the JSON limit: an onboarding draft with scanned
-  // menu rows, drafted recipes and invoices can exceed Express's 100 KB default.
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-  app.useBodyParser('json', { limit: '2mb' });
-  app.useBodyParser('urlencoded', { extended: true, limit: '100kb' });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
+  // Express's 100 KB default is too small for the base64 UPI QR image (≤ 1 MB, REST-88) and for an
+  // onboarding draft with scanned menu rows, drafted recipes and invoices (REST-89); the request
+  // schemas cap each payload, so the global limit only needs headroom above them.
+  app.useBodyParser('json', { limit: '2mb' });
 
   if (config.get<string>('TRUST_PROXY') === 'true') {
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
@@ -46,6 +46,8 @@ async function bootstrap() {
     .addTag('reservations', 'Manage reservation records')
     .addTag('walk-ins', 'Register walk-in guests')
     .addTag('ai', 'AI menu / invoice scans and recipe drafts (results feed drafts only)')
+    .addTag('qr ordering (guest)', 'Public QR table ordering: menu, cart, rounds, bill and split')
+    .addTag('qr ordering (staff)', 'Captain approval queue, escalation, QR payments and settings')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);

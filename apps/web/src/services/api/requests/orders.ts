@@ -314,19 +314,20 @@ export function useCaptainOrders(
   });
 }
 
-/** One filtered page of orders; the API scopes captains to their own tables. */
+/** Orders page list; the API scopes captains to their own tables. */
 export function useOrderList(
-  query: OrderListQuery,
+  query: Partial<OrderListQuery>,
   enabled: boolean,
 ): UseQueryResult<OrderListResponse> {
   return useQuery({
     queryKey: [OrderQueryKey.List, query],
-    queryFn: async ({ signal }): Promise<OrderListResponse> => {
-      const response = await api.get('/orders', { params: query, signal });
+    queryFn: async ({ signal }) => {
+      const response = await api.get('/orders', { params: query, signal, errorDisplay: 'inline' });
       return orderListResponseSchema.parse(response.data);
     },
-    placeholderData: keepPreviousData,
     enabled,
+    retry: false,
     staleTime: 0,
+    placeholderData: keepPreviousData,
   });
 }

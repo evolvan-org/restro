@@ -5,6 +5,7 @@ import { cn } from 'cn';
 import type { ReactElement } from 'react';
 
 import FloorTile, { DEFAULT_STATUS_COLOR, type StatusColorClasses } from '@/components/FloorTile';
+import type { QrTileMarker } from '@/components/FloorTile/qr';
 
 export type TilePermissions = {
   canReserve: boolean;
@@ -30,6 +31,8 @@ type FloorSectionProps = {
   /** Optional layout overrides for the tile container and tiles; the floor board omits them. */
   gridClassName?: string;
   tileClassName?: string;
+  /** QR ordering markers by table id (REST-88). */
+  qrMarkers?: ReadonlyMap<string, QrTileMarker>;
 };
 
 export default function FloorSection(props: FloorSectionProps): ReactElement | null {
@@ -64,6 +67,7 @@ export default function FloorSection(props: FloorSectionProps): ReactElement | n
             statuses={props.statuses}
             onWalkInClick={props.onWalkInClick}
             className={props.tileClassName}
+            qr={props.qrMarkers?.get(table.id)}
             {...props.permissions}
           />
         ))}

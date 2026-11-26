@@ -4,7 +4,7 @@ import Orders from '@/containers/Orders';
 
 export const metadata: Metadata = {
   title: 'Orders | Restaurant Management System',
-  description: 'Review and filter restaurant orders.',
+  description: 'Browse and filter orders across service.',
 };
 
 export default Orders;

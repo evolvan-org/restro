@@ -28,8 +28,10 @@ import { Prisma } from '@rms/db';
 import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
 
+import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { NotificationsService } from '../notifications/notifications.service';
+import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import {
   sentQuantity,
   toCaptainOrderSummary,
@@ -45,6 +47,7 @@ export class OrdersService {
   constructor(
     private readonly repository: OrdersRepository,
     private readonly notifications: NotificationsService,
+    private readonly qrRealtime: QrRealtimePublisher,
   ) {}
 
   async create(actor: Actor, input: CreateOrderRequest): Promise<Order> {
@@ -137,34 +140,17 @@ export class OrdersService {
     if (input.status === 'READY') {
       await this.notifications.ticketReady(actor.restaurantId, record.id);
     }
-    return toKotQueueItem(record);
-  }
-
-  /**
-   * Owners and users who can assign captains (managers) see every order and may filter by captain.
-   * Captains are forced to their own tables, whatever the client sends; others are refused.
-   */
-  async list(actor: Actor, query: OrderListQuery): Promise<OrderListResponse> {
-    const seesAll = actor.isOwner || actor.permissions.includes(Permission.TABLE_ASSIGN_CAPTAIN);
-    if (!seesAll && !actor.permissions.includes(Permission.TABLE_BE_CAPTAIN)) {
-      throw new ForbiddenException('You can only list orders for tables you captain');
+    if (record.qrRound) {
+      // Push kitchen progress to the guest tracker within seconds instead of its next refresh.
+      // "round.ready" fires once the whole round is Ready (tickets were stamped together).
+      const roundReady = input.status === 'READY' && record.guestNotifiedAt !== null;
+      await this.qrRealtime.publish(actor.restaurantId, [record.qrRound.sessionId], {
+        kind: roundReady ? 'round.ready' : 'round.kitchen',
+        tableId: record.qrRound.tableId,
+        ...(record.qrRoundId && { roundId: record.qrRoundId }),
+      });
     }
-    const { page, pageSize, status, from, to, table, captainId } = query;
-    const result = await this.repository.findOrderPage(actor.restaurantId, {
-      status,
-      from,
-      to,
-      table,
-      captainUserId: seesAll ? captainId : actor.userId,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    });
-    if (!result) throw new NotFoundException('Restaurant not found');
-    return {
-      data: result.items.map(toOrderListItem),
-      meta: buildPageMeta(page, pageSize, result.total),
-      currency: result.currency,
-    };
+    return toKotQueueItem(record);
   }
 
   /** Scoped on the server to tables the caller captains; never trusts a client-side filter. */
@@ -183,6 +169,30 @@ export class OrdersService {
       openCount: result.openCount,
       closedCount: result.closedCount,
       currency: result.currency,
+    };
+  }
+
+  /**
+   * Orders page. Captain assigners (and the owner) see every order and may filter by captain; a
+   * captain is always limited to their own tables, whatever `captainId` the client sends.
+   */
+  async list(actor: Actor, query: OrderListQuery): Promise<OrderListResponse> {
+    const { captainId, ...filters } = query;
+    let captainUserId: string | undefined;
+    if (actorCan(actor, Permission.TABLE_ASSIGN_CAPTAIN)) captainUserId = captainId;
+    else if (actorCan(actor, Permission.TABLE_BE_CAPTAIN)) captainUserId = actor.userId;
+    else throw new ForbiddenException('You do not have permission to view the order list');
+
+    const result = await this.repository.findOrderList(actor.restaurantId, {
+      ...filters,
+      ...(captainUserId && { captainUserId }),
+    });
+    if (!result) throw new NotFoundException('Restaurant not found');
+    return {
+      data: result.items.map(toOrderListItem),
+      meta: buildPageMeta(query.page, query.pageSize, result.total),
+      currency: result.currency,
+      timezone: result.timezone,
     };
   }
 

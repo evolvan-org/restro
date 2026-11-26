@@ -179,6 +179,16 @@ export const kotQueueItemSchema = kotSchema.extend({
       section: z.object({ id: z.string().uuid(), name: z.string() }).strict(),
     })
     .strict(),
+  /** Present on tickets from an approved guest QR round: "QR · approved by <name>". */
+  qr: z
+    .object({
+      approvedBy: z.string(),
+      /** When the chef's Ready reached the guest's tracker. */
+      guestNotifiedAt: z.string().datetime().nullable(),
+    })
+    .strict()
+    .nullable()
+    .default(null),
 });
 
 /** A complete active station snapshot, without pagination. */
@@ -285,27 +295,54 @@ export type CaptainOrderListQuery = z.infer<typeof captainOrderListQuerySchema>;
 export type CaptainOrderSummary = z.infer<typeof captainOrderSummarySchema>;
 export type CaptainOrderListResponse = z.infer<typeof captainOrderListResponseSchema>;
 
-/** Full orders list (`GET /orders`): captains see only their tables' orders, managers/owners all. */
-export const orderListQuerySchema = paginationQuerySchema
+/**
+ * Orders page: every order (owner / `table:assign-captain`) or only orders on the caller's own
+ * tables (`table:be-captain`). The server decides the scope; a captain's `captainId` is ignored.
+ */
+export const orderListQueryParamsSchema = paginationQuerySchema
   .extend({
     status: orderStatusSchema.optional(),
-    from: dateOnlySchema.optional().describe('Opened on/after this restaurant-local date'),
-    to: dateOnlySchema.optional().describe('Opened on/before this restaurant-local date'),
-    captainId: z.string().uuid().optional().describe('Table captain; ignored for captains'),
-    table: z.string().trim().min(1).max(20).optional().describe('Table number contains'),
+    from: dateOnlySchema
+      .optional()
+      .describe('Inclusive restaurant-local start date (YYYY-MM-DD) on openedAt'),
+    to: dateOnlySchema
+      .optional()
+      .describe('Inclusive restaurant-local end date (YYYY-MM-DD) on openedAt'),
+    captainId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe('Current table captain; ignored for callers scoped to their own tables'),
+    tableNumber: z.string().trim().min(1).max(20).optional().describe('Partial table number'),
   })
   .strict();
+
+export const orderListQuerySchema = orderListQueryParamsSchema.superRefine(
+  ({ from, to }, context) => {
+    if (from !== undefined && to !== undefined && from > to) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['to'],
+        message: 'End date must be on or after the start date',
+      });
+    }
+  },
+);
 
 export const orderListItemSchema = captainOrderSummarySchema
   .extend({
-    captain: z.object({ id: z.string().uuid(), name: z.string() }).strict().nullable(),
-    createdBy: z.string(),
+    captain: z
+      .object({ id: z.string().uuid(), name: z.string() })
+      .strict()
+      .nullable()
+      .describe("The table's current captain"),
   })
   .strict();
 
-export const orderListResponseSchema = paginatedResponseSchema(orderListItemSchema)
-  .extend({ currency: z.string().min(1) })
-  .strict();
+export const orderListResponseSchema = paginatedResponseSchema(orderListItemSchema).extend({
+  currency: z.string().min(1),
+  timezone: z.string().min(1),
+});
 
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 export type OrderListItem = z.infer<typeof orderListItemSchema>;

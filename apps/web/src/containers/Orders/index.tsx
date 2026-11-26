@@ -3,12 +3,15 @@
 import type { OrderListQuery } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
+import { cn } from 'cn';
 import { X } from 'lucide-react';
 import Link from 'next/link';
-import { type ReactElement, useState } from 'react';
+import type { ReactElement } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Field, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import {
@@ -19,28 +22,41 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  formatAmount,
+  getOrderStatus,
+  ORDER_TONE_CLASS,
+  summariseItems,
+} from '@/containers/CaptainDashboard/mappers';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
 import { useOrderList } from '@/services/api/requests/orders';
 import { useCaptainOptions } from '@/services/api/requests/tables';
 
-import { formatAmount, getOrderStatus, summariseItems } from '../CaptainDashboard/mappers';
+const TABLE_SEARCH_DEBOUNCE_MS = 300;
 
-type OrderStatus = NonNullable<OrderListQuery['status']>;
+type OrderStatusFilter = NonNullable<OrderListQuery['status']>;
 
-type Filters = {
-  status: OrderStatus | '';
+type OrderFilters = {
+  status: OrderStatusFilter | '';
   from: string;
   to: string;
   captainId: string;
-  table: string;
+  tableNumber: string;
   page: number;
 };
 
-const EMPTY: Filters = { status: '', from: '', to: '', captainId: '', table: '', page: 1 };
+const DEFAULT_FILTERS: OrderFilters = {
+  status: '',
+  from: '',
+  to: '',
+  captainId: '',
+  tableNumber: '',
+  page: 1,
+};
 
-const STATUS_OPTIONS: { value: OrderStatus | ''; label: string }[] = [
+const STATUS_FILTERS: { value: OrderStatusFilter | ''; label: string }[] = [
   { value: '', label: 'All statuses' },
   { value: 'OPEN', label: 'Open' },
   { value: 'SUBMITTED', label: 'Sent to kitchen' },
@@ -48,45 +64,67 @@ const STATUS_OPTIONS: { value: OrderStatus | ''; label: string }[] = [
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
 
-const TONE_CLASS = {
-  neutral: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200',
-  progress: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-  sent: 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
-  ready: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
-  done: 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300',
-} as const;
+const labelClassName = 'text-xs leading-4 text-muted-foreground';
 
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+function formatOpenedAt(iso: string, timeZone: string): string {
+  const options: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  };
+  try {
+    return new Intl.DateTimeFormat(undefined, { ...options, timeZone }).format(new Date(iso));
+  } catch {
+    // An unrecognised zone must not blank the row; fall back to the browser's zone.
+    return new Intl.DateTimeFormat(undefined, options).format(new Date(iso));
+  }
+}
 
 export default function Orders(): ReactElement | null {
   const isAllowed = usePermissionGuard([Permission.ORDER_READ]);
   const { can } = usePermissions();
-  // Managers/owners can assign captains, so they see every order and get the captain filter.
-  // Captains are scoped to their own tables by the API, so the filter is hidden for them.
-  const seesAll = can(Permission.TABLE_ASSIGN_CAPTAIN);
-  const [filters, setFilters] = useState<Filters>(EMPTY);
-  const rangeInvalid = Boolean(filters.from && filters.to && filters.from > filters.to);
-  const table = useDebouncedValue(filters.table.trim(), 300);
+  // Captain assigners (and the owner) see every order; captains only their own tables.
+  const canSeeAll = can(Permission.TABLE_ASSIGN_CAPTAIN);
+  const canList = canSeeAll || can(Permission.TABLE_BE_CAPTAIN);
 
-  const query: OrderListQuery = {
-    page: filters.page,
-    pageSize: DEFAULT_PAGE_SIZE,
-    status: filters.status || undefined,
-    from: filters.from || undefined,
-    to: filters.to || undefined,
-    captainId: seesAll ? filters.captainId || undefined : undefined,
-    table: table || undefined,
-  };
-  const orders = useOrderList(query, isAllowed && !rangeInvalid);
-  const captains = useCaptainOptions(seesAll);
+  const filters = useForm<OrderFilters>({ defaultValues: DEFAULT_FILTERS });
+  const {
+    status = '',
+    from = '',
+    to = '',
+    captainId = '',
+    tableNumber = '',
+    page = 1,
+  } = useWatch({ control: filters.control });
+  const debouncedTable = useDebouncedValue(tableNumber.trim(), TABLE_SEARCH_DEBOUNCE_MS);
+  const rangeInvalid = Boolean(from && to && from > to);
 
-  if (!isAllowed) return null;
+  const orders = useOrderList(
+    {
+      page,
+      pageSize: DEFAULT_PAGE_SIZE,
+      ...(status && { status }),
+      ...(from && { from }),
+      ...(to && { to }),
+      ...(canSeeAll && captainId && { captainId }),
+      ...(debouncedTable && { tableNumber: debouncedTable }),
+    },
+    isAllowed && canList && !rangeInvalid,
+  );
+  const captains = useCaptainOptions(isAllowed && canSeeAll);
 
-  const set = (patch: Partial<Filters>): void => setFilters((f) => ({ ...f, page: 1, ...patch }));
-  const rows = orders.data?.data ?? [];
+  // The guard redirects users without `order:read`; render nothing until allowed.
+  if (!isAllowed) {
+    return null;
+  }
+
+  const resetPage = { onChange: () => filters.setValue('page', 1) };
   const meta = orders.data?.meta;
-  const currency = orders.data?.currency ?? '';
-  const dirty = JSON.stringify({ ...filters, page: 1 }) !== JSON.stringify(EMPTY);
+  const rows = orders.data?.data ?? [];
+  const hasFilters = Boolean(status || from || to || captainId || debouncedTable);
+  const columnCount = canSeeAll ? 7 : 6;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
@@ -94,186 +132,230 @@ export default function Orders(): ReactElement | null {
         <p className="text-sm font-medium text-muted-foreground">Service flow</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Orders</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {seesAll ? 'Every order across the restaurant.' : 'Orders on the tables assigned to you.'}
+          {canSeeAll
+            ? 'Every order across the restaurant.'
+            : 'Orders on the tables assigned to you.'}
         </p>
       </div>
 
-      <form
-        aria-label="Order filters"
-        onSubmit={(event) => event.preventDefault()}
-        className="mb-4 flex flex-wrap items-end gap-3"
-      >
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-          Status
-          <NativeSelect
-            aria-label="Filter by status"
-            value={filters.status}
-            onChange={(e) => set({ status: e.target.value as Filters['status'] })}
-          >
-            {STATUS_OPTIONS.map((o) => (
-              <NativeSelectOption key={o.value} value={o.value}>
-                {o.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-          From
-          <Input
-            type="date"
-            aria-label="Opened from"
-            value={filters.from}
-            max={filters.to || undefined}
-            onChange={(e) => set({ from: e.target.value })}
-          />
-        </label>
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-          To
-          <Input
-            type="date"
-            aria-label="Opened to"
-            value={filters.to}
-            min={filters.from || undefined}
-            onChange={(e) => set({ to: e.target.value })}
-          />
-        </label>
-        {seesAll && (
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-            Captain
-            <NativeSelect
-              aria-label="Filter by captain"
-              value={filters.captainId}
-              onChange={(e) => set({ captainId: e.target.value })}
-            >
-              <NativeSelectOption value="">All captains</NativeSelectOption>
-              {(captains.data ?? []).map((c) => (
-                <NativeSelectOption key={c.id} value={c.id}>
-                  {c.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </label>
-        )}
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-          Table
-          <Input
-            aria-label="Filter by table number"
-            placeholder="e.g. 12"
-            className="w-28"
-            value={filters.table}
-            onChange={(e) => set({ table: e.target.value })}
-          />
-        </label>
-        {dirty && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setFilters(EMPTY)}>
-            <X aria-hidden />
-            Clear
-          </Button>
-        )}
-      </form>
-      {rangeInvalid && (
-        <p role="alert" className="mb-3 text-sm text-destructive">
-          “From” must be on or before “To”.
+      {!canList ? (
+        <p role="alert" className="rounded-md border px-4 py-6 text-center text-sm">
+          You don&apos;t have access to the order list.
         </p>
-      )}
-
-      {orders.isError ? (
-        <div className="space-y-3 rounded-md border px-4 py-6 text-center">
-          <p role="alert" className="text-sm text-destructive">
-            Unable to load orders.
-          </p>
-          <Button type="button" variant="outline" onClick={() => orders.refetch()}>
-            Try again
-          </Button>
-        </div>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Table</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Items</TableHead>
-                {seesAll && <TableHead>Captain</TableHead>}
-                <TableHead>Opened</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Bill</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((order) => {
-                const status = getOrderStatus(order);
-                return (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/orders/tables/${order.table.id}`}
-                        className="underline-offset-4 hover:underline"
-                      >
-                        Table {order.table.tableNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={TONE_CLASS[status.tone]}>{status.label}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-64 truncate text-muted-foreground">
-                      {order.itemCount} · {summariseItems(order)}
-                    </TableCell>
-                    {seesAll && <TableCell>{order.captain?.name ?? 'Unassigned'}</TableCell>}
-                    <TableCell>{dateTime.format(new Date(order.openedAt))}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatAmount(order.total, currency)}
-                    </TableCell>
-                    <TableCell>{order.bill?.billNumber ?? '-'}</TableCell>
-                  </TableRow>
-                );
-              })}
-              {rows.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={seesAll ? 7 : 6}
-                    className="py-10 text-center text-muted-foreground"
-                  >
-                    {orders.isPending
-                      ? 'Loading orders...'
-                      : dirty
-                        ? 'No orders match these filters.'
-                        : 'No orders yet.'}
-                  </TableCell>
-                </TableRow>
+        <>
+          <form
+            aria-label="Order filters"
+            onSubmit={(event) => event.preventDefault()}
+            className="mb-4 flex flex-wrap items-start gap-3"
+          >
+            <Field className="w-auto gap-1.5">
+              <FieldLabel htmlFor="orders-status" className={labelClassName}>
+                Status
+              </FieldLabel>
+              <NativeSelect
+                id="orders-status"
+                className="min-w-40"
+                {...filters.register('status', resetPage)}
+              >
+                {STATUS_FILTERS.map((filter) => (
+                  <NativeSelectOption key={filter.value} value={filter.value}>
+                    {filter.label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field className="w-auto gap-1.5">
+              <FieldLabel htmlFor="orders-from" className={labelClassName}>
+                From
+              </FieldLabel>
+              <Input
+                id="orders-from"
+                type="date"
+                max={to || undefined}
+                {...filters.register('from', resetPage)}
+              />
+            </Field>
+            <Field className="w-auto gap-1.5" data-invalid={rangeInvalid || undefined}>
+              <FieldLabel htmlFor="orders-to" className={labelClassName}>
+                To
+              </FieldLabel>
+              <Input
+                id="orders-to"
+                type="date"
+                min={from || undefined}
+                aria-invalid={rangeInvalid || undefined}
+                aria-describedby={rangeInvalid ? 'orders-to-error' : undefined}
+                {...filters.register('to', resetPage)}
+              />
+              {rangeInvalid && (
+                <FieldError id="orders-to-error" className="max-w-48 text-xs">
+                  End date must be on or after the start date
+                </FieldError>
               )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+            </Field>
+            {canSeeAll && (
+              <Field className="w-auto gap-1.5">
+                <FieldLabel htmlFor="orders-captain" className={labelClassName}>
+                  Captain
+                </FieldLabel>
+                <NativeSelect
+                  id="orders-captain"
+                  className="min-w-40"
+                  {...filters.register('captainId', resetPage)}
+                >
+                  <NativeSelectOption value="">All captains</NativeSelectOption>
+                  {(captains.data ?? []).map((captain) => (
+                    <NativeSelectOption key={captain.id} value={captain.id}>
+                      {captain.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            )}
+            <Field className="w-auto gap-1.5">
+              <FieldLabel htmlFor="orders-table" className={labelClassName}>
+                Table
+              </FieldLabel>
+              <Input
+                id="orders-table"
+                className="w-28"
+                placeholder="e.g. 12"
+                maxLength={20}
+                {...filters.register('tableNumber', resetPage)}
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="ghost"
+              className="mt-5.5 text-muted-foreground"
+              disabled={!hasFilters && !tableNumber}
+              onClick={() => filters.reset(DEFAULT_FILTERS)}
+            >
+              <X aria-hidden />
+              Clear
+            </Button>
+          </form>
 
-      {meta && meta.total > 0 && (
-        <div className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
-          <p>
-            {meta.total} {meta.total === 1 ? 'order' : 'orders'} · Page {meta.page} of{' '}
-            {meta.totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={meta.page <= 1 || orders.isFetching}
-              onClick={() => setFilters((f) => ({ ...f, page: f.page - 1 }))}
-            >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={meta.page >= meta.totalPages || orders.isFetching}
-              onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+          {orders.isError ? (
+            <div className="space-y-3 rounded-md border px-4 py-6 text-center">
+              <p role="alert" className="text-sm text-destructive">
+                Unable to load orders.
+              </p>
+              <Button type="button" variant="outline" onClick={() => orders.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Table</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Items</TableHead>
+                    {canSeeAll && <TableHead>Captain</TableHead>}
+                    <TableHead>Opened</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Bill</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.data &&
+                    rows.map((order) => {
+                      const orderStatus = getOrderStatus(order);
+                      return (
+                        <TableRow key={order.id}>
+                          <TableCell className="font-medium">
+                            <Link
+                              href={`/orders/tables/${order.table.id}`}
+                              className="underline-offset-4 hover:underline"
+                            >
+                              Table {order.table.tableNumber}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'rounded-full border-transparent',
+                                ORDER_TONE_CLASS[orderStatus.tone],
+                              )}
+                            >
+                              {orderStatus.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-72 truncate text-muted-foreground">
+                            {summariseItems(order)}
+                          </TableCell>
+                          {canSeeAll && (
+                            <TableCell className={cn(!order.captain && 'text-muted-foreground')}>
+                              {order.captain?.name ?? 'Unassigned'}
+                            </TableCell>
+                          )}
+                          <TableCell className="whitespace-nowrap">
+                            {formatOpenedAt(order.openedAt, orders.data.timezone)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatAmount(order.total, orders.data.currency)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {order.bill?.billNumber ?? '—'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                  {rows.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columnCount}
+                        className="py-10 text-center text-muted-foreground"
+                      >
+                        {rangeInvalid
+                          ? 'Fix the date range to see orders.'
+                          : orders.isPending
+                            ? 'Loading orders…'
+                            : hasFilters
+                              ? 'No orders match these filters.'
+                              : 'No orders yet.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {meta && meta.total > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-sm text-muted-foreground">
+              <p>
+                {meta.total} {meta.total === 1 ? 'order' : 'orders'} · Page {meta.page} of{' '}
+                {meta.totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={meta.page <= 1 || orders.isFetching}
+                  onClick={() => filters.setValue('page', page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={meta.page >= meta.totalPages || orders.isFetching}
+                  onClick={() => filters.setValue('page', page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </main>
   );

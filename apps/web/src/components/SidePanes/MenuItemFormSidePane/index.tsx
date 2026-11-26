@@ -81,13 +81,14 @@ export default function MenuItemFormSidePane({
           itemType: item.itemType,
           isAvailable: item.isAvailable,
           recipeRequired: item.recipeRequired,
-          dietType: item.dietType,
+          dietType: item.dietType ?? (item.isVeg === null ? null : item.isVeg ? 'VEG' : 'NON_VEG'),
           variants: item.variants.map((variant) => ({
             id: variant.id,
             name: variant.name,
             price: variant.price,
             portionFactor: variant.portionFactor,
           })),
+          isVeg: item.isVeg,
           // Items imported during setup have no recipe yet; start one so the owner can add it.
           recipe:
             item.recipe.length || !item.recipeRequired
@@ -107,6 +108,7 @@ export default function MenuItemFormSidePane({
           recipeRequired: true,
           dietType: null,
           variants: [],
+          isVeg: null,
           recipe: [{ ...EMPTY_ROW }],
         },
   });
@@ -250,9 +252,16 @@ export default function MenuItemFormSidePane({
                 <NativeSelect
                   id="item-diet"
                   value={field.value ?? ''}
-                  onChange={(event) => field.onChange(event.target.value || null)}
+                  onChange={(event) => {
+                    const diet = (event.target.value || null) as typeof field.value;
+                    field.onChange(diet);
+                    // One control for both markers: egg shows as non-veg on the guest menu.
+                    form.setValue('isVeg', diet === null ? null : diet === 'VEG', {
+                      shouldDirty: true,
+                    });
+                  }}
                 >
-                  <option value="">Not set</option>
+                  <option value="">Not marked</option>
                   {DIET_TYPES.map((diet) => (
                     <option key={diet} value={diet}>
                       {DIET_TYPE_LABELS[diet]}
@@ -261,6 +270,9 @@ export default function MenuItemFormSidePane({
                 </NativeSelect>
               )}
             />
+            <span className="text-xs text-muted-foreground">
+              Shown as the green / red marker on the guest QR menu (egg shows as non-veg).
+            </span>
           </Field>
 
           <fieldset className="space-y-2">

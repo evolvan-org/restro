@@ -23,6 +23,7 @@ import { buildPageMeta } from '@rms/shared';
 
 import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
+import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import { billingSubtotal, calculateBill, financialYear, roundMoney } from './billing-calc';
 import { toBill, toPayment } from './bills.mapper';
 import {
@@ -36,7 +37,10 @@ import {
 export class BillsService {
   private readonly logger = new Logger(BillsService.name);
 
-  constructor(private readonly repository: BillsRepository) {}
+  constructor(
+    private readonly repository: BillsRepository,
+    private readonly qrRealtime: QrRealtimePublisher,
+  ) {}
 
   cancellationReasons(actor: Actor): Promise<BillCancellationReasonsResponse> {
     return this.repository.cancellationReasons(actor.restaurantId);
@@ -112,11 +116,27 @@ export class BillsService {
     });
   }
 
-  recordPayment(
+  async recordPayment(
     actor: Actor,
     billId: string,
     input: RecordPaymentRequest,
   ): Promise<RecordPaymentResponse> {
+    const { response, closedSessions } = await this.settle(actor, billId, input);
+    if (closedSessions.length) {
+      // Guest phones at a QR table move to "All paid"; the table session is over.
+      await this.qrRealtime.publish(actor.restaurantId, closedSessions, {
+        kind: 'session.closed',
+        tableId: response.bill.table.id,
+      });
+    }
+    return response;
+  }
+
+  private settle(
+    actor: Actor,
+    billId: string,
+    input: RecordPaymentRequest,
+  ): Promise<{ response: RecordPaymentResponse; closedSessions: string[] }> {
     return this.repository.withLockedOrder(actor.restaurantId, { billId }, async (context) => {
       const bill = this.requireBill(context.bill);
       if (bill.status === 'PAID') throw new ConflictException('Bill is already paid');
@@ -158,10 +178,14 @@ export class BillsService {
       }
       if (order.reservationId) await context.completeReservation(order.reservationId, 'SEATED');
       await this.markTableForCleaning(context, order.table.id);
+      const closedSessions = await context.closeQrSessions(completedAt);
       return {
-        payment,
-        bill: toBill(updated),
-        order: { id: order.id, status: 'COMPLETED', completedAt: completedAt.toISOString() },
+        response: {
+          payment,
+          bill: toBill(updated),
+          order: { id: order.id, status: 'COMPLETED', completedAt: completedAt.toISOString() },
+        },
+        closedSessions,
       };
     });
   }

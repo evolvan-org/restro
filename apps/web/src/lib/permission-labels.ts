@@ -47,6 +47,18 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
     ],
   },
   {
+    label: 'QR ordering',
+    items: [
+      { permission: Permission.QR_ORDER_READ, label: 'View guest QR orders' },
+      { permission: Permission.QR_ORDER_APPROVE, label: 'Approve or reject orders on own tables' },
+      {
+        permission: Permission.QR_ORDER_MANAGE,
+        label: 'Handle escalations and reassign captains',
+      },
+      { permission: Permission.QR_SETTINGS_WRITE, label: 'Edit QR ordering settings and cards' },
+    ],
+  },
+  {
     label: 'Kitchen & bar (KOT)',
     items: [
       { permission: Permission.KOT_READ, label: 'View kitchen tickets' },

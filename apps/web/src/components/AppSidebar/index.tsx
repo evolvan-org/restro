@@ -13,6 +13,7 @@ import usePermissions from '@/hooks/auth/usePermissions';
 import { formatRoleLabel } from '@/lib/utils';
 import { useSetupChecklist } from '@/services/api/requests/onboarding';
 import { useProfile } from '@/services/api/requests/profile';
+import { useQrSummary } from '@/services/api/requests/qr-orders';
 
 import { NAV_GROUPS, type NavItem } from './navigation';
 
@@ -51,6 +52,38 @@ function isActiveRoute(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** The Restro logo mark, themed through the sidebar colour tokens so it works in light and dark. */
+function BrandMark({ className }: { className?: string }): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      className={cn('size-8 shrink-0', className)}
+      role="img"
+      aria-label="Restro logo"
+    >
+      <rect width="512" height="512" rx="112" className="fill-sidebar-primary" />
+      <circle cx="256" cy="150" r="22" className="fill-sidebar-primary-foreground" />
+      <path d="M108 340a148 148 0 0 1 296 0Z" className="fill-sidebar-primary-foreground" />
+      <path
+        d="M158 300a100 100 0 0 1 56-80"
+        fill="none"
+        className="stroke-sidebar-primary"
+        strokeWidth="14"
+        strokeLinecap="round"
+        opacity=".55"
+      />
+      <rect
+        x="84"
+        y="360"
+        width="344"
+        height="30"
+        rx="15"
+        className="fill-sidebar-primary-foreground"
+      />
+    </svg>
+  );
+}
+
 /** The brand lockup, shared by the desktop rail and the mobile drawer. */
 function SidebarBrand({
   collapsed,
@@ -66,9 +99,7 @@ function SidebarBrand({
       title="Restaurant Management System"
       className="flex items-center gap-2.5 font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/50"
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
-        R
-      </span>
+      <BrandMark />
       {!collapsed && <span className="truncate text-sm font-semibold">Restaurant MS</span>}
     </Link>
   );
@@ -89,6 +120,7 @@ function SidebarNav({
   const { can } = usePermissions();
   const missingRecipes =
     useSetupChecklist(can(Permission.MENU_WRITE)).data?.missingRecipeCount ?? 0;
+  const qrWaiting = useQrSummary(can(Permission.QR_ORDER_READ)).data?.myWaitingCount ?? 0;
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
@@ -115,7 +147,12 @@ function SidebarNav({
             ) : null}
             <div className="flex flex-col gap-1">
               {group.items.map(({ label, icon: Icon, href, activePaths, badge }) => {
-                const count = badge === 'missing-recipes' ? missingRecipes : 0;
+                const count =
+                  badge === 'missing-recipes'
+                    ? missingRecipes
+                    : badge === 'qr-waiting'
+                      ? qrWaiting
+                      : 0;
                 const active =
                   isActiveRoute(pathname, href) ||
                   Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
@@ -134,8 +171,33 @@ function SidebarNav({
                         : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     )}
                   >
-                    <Icon className="size-5 shrink-0" aria-hidden />
-                    <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+                    <span className="relative shrink-0">
+                      <Icon className="size-5" aria-hidden />
+                      {badge === 'qr-waiting' && count > 0 && collapsed && (
+                        <span
+                          className="absolute -top-1.5 -right-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white"
+                          style={{ background: 'var(--qs-es)' }}
+                          aria-hidden
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </span>
+                    <span className={cn('truncate', collapsed && 'sr-only')}>
+                      {label}
+                      {badge === 'qr-waiting' && count > 0 && (
+                        <span className="sr-only">, {count} waiting</span>
+                      )}
+                    </span>
+                    {badge === 'qr-waiting' && count > 0 && !collapsed && (
+                      <span
+                        className="ml-auto flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-2 text-[11px] font-semibold text-white"
+                        style={{ background: 'var(--qs-es)' }}
+                        aria-hidden
+                      >
+                        {count}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -336,9 +398,7 @@ export default function AppSidebar({
               title="Expand sidebar"
               className="group relative size-8 rounded-md p-0 hover:bg-sidebar-accent"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground group-hover:hidden">
-                R
-              </span>
+              <BrandMark className="group-hover:hidden" />
               <PanelLeft
                 className="hidden size-5 text-sidebar-foreground group-hover:block"
                 aria-hidden

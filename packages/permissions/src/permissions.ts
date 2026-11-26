@@ -76,6 +76,16 @@ export const Permission = {
   // Payments
   PAYMENT_READ: 'payment:read',
   PAYMENT_WRITE: 'payment:write',
+
+  // QR table ordering (guest orders that go through captain approval)
+  /** See the QR orders queue (all guest orders are visible; notifications stay targeted). */
+  QR_ORDER_READ: 'qr-order:read',
+  /** Approve, edit, reject or acknowledge guest rounds on the tables you captain. */
+  QR_ORDER_APPROVE: 'qr-order:approve',
+  /** Act on any table: approve escalated rounds, assign/reassign captains, handle alerts. */
+  QR_ORDER_MANAGE: 'qr-order:manage',
+  /** QR ordering settings, the UPI QR image, table cards and token rotation. */
+  QR_SETTINGS_WRITE: 'qr-settings:write',
 } as const;
 
 export type Permission = (typeof Permission)[keyof typeof Permission];

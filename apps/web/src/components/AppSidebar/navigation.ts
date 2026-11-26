@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   type LucideIcon,
   PieChart,
+  QrCode,
   Receipt,
   Soup,
 } from 'lucide-react';
@@ -20,8 +21,11 @@ export type NavItem = {
   activePaths?: readonly string[];
   /** Shown only when the role holds this permission. Omit for items everyone can see. */
   permission?: Permission;
-  /** A count badge fed by the setup checklist (owners and managers only). */
-  badge?: 'missing-recipes';
+  /**
+   * A count badge: `missing-recipes` from the setup checklist (owners and managers);
+   * `qr-waiting` = guest QR orders awaiting the viewer's approval (live).
+   */
+  badge?: 'missing-recipes' | 'qr-waiting';
 };
 
 export type NavGroup = {
@@ -52,6 +56,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ClipboardList,
         href: '/orders',
         permission: Permission.ORDER_READ,
+      },
+      {
+        label: 'QR orders',
+        icon: QrCode,
+        href: '/qr-orders',
+        permission: Permission.QR_ORDER_READ,
+        badge: 'qr-waiting',
       },
       {
         label: 'Reservations',

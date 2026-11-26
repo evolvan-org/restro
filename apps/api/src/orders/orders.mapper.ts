@@ -60,8 +60,24 @@ export function toKot(record: KotRecord): Kot {
   };
 }
 
-export function toKotQueueItem({ order, ...record }: KotQueueRecord): KotQueueItem {
-  return { ...toKot(record), table: order.table };
+export function toKotQueueItem(record: KotQueueRecord): KotQueueItem {
+  const { order, source, guestNotifiedAt, approvedByUser } = record;
+  return {
+    ...toKot(record),
+    table: order.table,
+    qr:
+      source === 'QR'
+        ? {
+            approvedBy: firstName(approvedByUser?.name ?? ''),
+            guestNotifiedAt: guestNotifiedAt?.toISOString() ?? null,
+          }
+        : null,
+  };
+}
+
+/** Staff are shown to guests and on tickets by first name only ("Arjun"). */
+export function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
 }
 
 export function sentQuantity(kotItems: { quantity: number }[]): number {
@@ -113,10 +129,8 @@ export function toCaptainOrderSummary(record: CaptainOrderRecord): CaptainOrderS
   };
 }
 
+/** Orders page row: the captain summary plus the table's current captain. */
 export function toOrderListItem(record: OrderListRecord): OrderListItem {
-  return {
-    ...toCaptainOrderSummary(record),
-    captain: record.table.captain,
-    createdBy: record.createdByUser.name,
-  };
+  const { captain, ...table } = record.table;
+  return { ...toCaptainOrderSummary({ ...record, table }), captain };
 }

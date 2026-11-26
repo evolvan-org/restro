@@ -92,5 +92,8 @@ not healthy. Pending migrations apply on api startup.
   `sudo -iu deploy bash -c 'cd /opt/restro && docker compose ps'`.
 - **Runner service:** `cd /home/deploy/actions-runner && sudo ./svc.sh status`
   (also `start` / `stop`); logs with `journalctl -u 'actions.runner.*' -f`.
+- **Notifications:** after every deploy (success, failure or cancel) a `notify` job posts to
+  n8n, which sends a card with the shipped Jira tickets to the _Restro Deployments_ Google
+  Chat space. Setup: `ops/n8n/README.md`.
 - **Security:** only `deploy.yml` may use `runs-on: [self-hosted, vps-prod]`.
   Never target this runner from a `pull_request` workflow.

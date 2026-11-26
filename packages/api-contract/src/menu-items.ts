@@ -147,6 +147,8 @@ export const menuItemSchema = z
     isActive: z.boolean(),
     /** False marks "No recipe needed": the item is never listed as missing a recipe. */
     recipeRequired: z.boolean(),
+    /** Veg / non-veg marker on the guest QR menu; null shows no marker. */
+    isVeg: z.boolean().nullable(),
     recipe: z.array(recipeItemSchema),
     dietType: dietTypeSchema.nullable(),
     variants: z.array(menuItemVariantSchema),
@@ -221,6 +223,7 @@ export const createMenuItemRequestSchema = z
     itemType: servingTypeSchema,
     isAvailable: z.boolean().optional().default(true),
     recipeRequired: z.boolean().optional().default(true),
+    isVeg: z.boolean().nullable().optional(),
     recipe: recipeSchema,
     dietType: dietTypeSchema.nullable().optional(),
     variants: menuItemVariantsInputSchema.optional(),
@@ -243,6 +246,7 @@ export const updateMenuItemRequestSchema = z
     isAvailable: z.boolean().optional(),
     isActive: z.boolean().optional(),
     recipeRequired: z.boolean().optional(),
+    isVeg: z.boolean().nullable().optional(),
     recipe: recipeSchema.optional(),
     dietType: dietTypeSchema.nullable().optional(),
     /** Replaces the item's portions; an empty list removes them. */

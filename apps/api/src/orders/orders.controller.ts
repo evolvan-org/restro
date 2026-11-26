@@ -49,6 +49,7 @@ import {
   orderItemMutationResponseSchema,
   orderItemSchema,
   type OrderListQuery,
+  orderListQueryParamsSchema,
   orderListQuerySchema,
   type OrderListResponse,
   orderListResponseSchema,
@@ -123,12 +124,15 @@ export class OrdersController {
   @Header('Cache-Control', 'no-store')
   @RequirePermissions(Permission.ORDER_READ)
   @ApiOperation({
-    summary: 'List orders with filters (status, date, captain, table)',
+    summary: 'List orders, newest first, with filters',
     description:
-      'Captains only get orders on tables they captain; managers and owners get all orders. Scoping is enforced on the server.',
+      'The owner and roles with `table:assign-captain` see every order and may filter by captain. Roles with `table:be-captain` only see orders on tables they captain (`captainId` is ignored). Any other role gets 403. `from` / `to` are inclusive restaurant-local days on `openedAt`.',
   })
-  @ApiZodQuery(orderListQuerySchema)
+  @ApiZodQuery(orderListQueryParamsSchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(orderListResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid filters, or the start date is after the end date'))
+  @ApiForbiddenResponse(apiError('Not allowed to view the order list'))
+  @ApiNotFoundResponse(apiError('The restaurant no longer exists'))
   list(
     @CurrentActor() actor: Actor,
     @Query(new ZodValidationPipe(orderListQuerySchema)) query: OrderListQuery,

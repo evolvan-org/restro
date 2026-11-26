@@ -19,6 +19,13 @@ export const envSchema = z.object({
   PUSHER_KEY: z.string().min(1),
   PUSHER_SECRET: z.string().min(1),
   PUSHER_CLUSTER: z.string().regex(/^[a-z0-9-]+$/),
+  /** Web Push (VAPID). All three unset disables push; the in-app alerts still work. */
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_SUBJECT: z
+    .string()
+    .regex(/^(mailto:|https:\/\/)/, 'VAPID_SUBJECT must be a mailto: or https:// URL')
+    .optional(),
   NEXT_PUBLIC_API_URL: z.string().url().optional(),
   WEB_ORIGIN: z.string().optional(),
 
@@ -45,8 +52,14 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+const VAPID_KEYS = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'] as const;
+
 export function validateEnv(config: Record<string, unknown>): Env {
-  const parsed = envSchema.safeParse(config);
+  const parsed = envSchema
+    .refine((env) => VAPID_KEYS.every((key) => env[key]) || VAPID_KEYS.every((key) => !env[key]), {
+      message: 'Set all of VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT, or none',
+    })
+    .safeParse(config);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)

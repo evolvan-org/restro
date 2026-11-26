@@ -8,6 +8,7 @@ import type {
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import { createKotTickets } from '../common/database/kot-tickets';
 import { PrismaService } from '../common/database/prisma.service';
 import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
 
@@ -71,6 +72,11 @@ const kotSelect = {
 
 const kotQueueSelect = {
   ...kotSelect,
+  source: true,
+  guestNotifiedAt: true,
+  approvedByUser: { select: { name: true } },
+  qrRoundId: true,
+  qrRound: { select: { sessionId: true, tableId: true } },
   order: {
     select: {
       table: {
@@ -109,19 +115,19 @@ const orderListSelect = {
   table: {
     select: { id: true, tableNumber: true, captain: { select: { id: true, name: true } } },
   },
-  createdByUser: { select: { name: true } },
 } satisfies Prisma.OrderSelect;
-
-export type OrderListRecord = Prisma.OrderGetPayload<{ select: typeof orderListSelect }>;
-export type OrderPageFilters = Pick<OrderListQuery, 'status' | 'from' | 'to' | 'table'> & {
-  /** Set for captains: restrict to tables this user captains. */
-  captainUserId?: string;
-  skip: number;
-  take: number;
-};
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 export type CaptainOrderRecord = Prisma.OrderGetPayload<{ select: typeof captainOrderSelect }>;
+export type OrderListRecord = Prisma.OrderGetPayload<{ select: typeof orderListSelect }>;
+/** List filters after the service resolved the caller's scope (`captainUserId`). */
+export type OrderListFilters = Omit<OrderListQuery, 'captainId'> & { captainUserId?: string };
+export type OrderListResult = {
+  items: OrderListRecord[];
+  total: number;
+  currency: string;
+  timezone: string;
+};
 export type CaptainOrdersResult = {
   items: CaptainOrderRecord[];
   openCount: number;
@@ -299,36 +305,14 @@ export class OrdersRepository {
               },
               orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             }),
-          createKots: async (createdByUserId, groups) => {
-            // Serialize the restaurant-wide human-readable sequence without adding a
-            // duplicate counter table. The existing unique constraint remains the backstop.
-            await tx.$queryRaw`SELECT id FROM restaurants WHERE id = ${restaurantId}::uuid FOR UPDATE`;
-            const rows = await tx.$queryRaw<{ currentNumber: bigint }[]>`
-              SELECT COALESCE(MAX(SUBSTRING(kot_number FROM 5)::bigint), 0) AS "currentNumber"
-              FROM kots
-              WHERE restaurant_id = ${restaurantId}::uuid
-                AND kot_number ~ '^KOT-[0-9]+$'
-            `;
-            const firstNumber = Number(rows[0]?.currentNumber ?? 0n) + 1;
-            return Promise.all(
-              groups.map((group, index) =>
-                tx.kot.create({
-                  data: {
-                    restaurantId,
-                    orderId,
-                    createdByUserId,
-                    kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
-                    destination: group.destination,
-                    status: 'PENDING',
-                    items: {
-                      create: group.items.map((item) => ({ ...item, status: 'PENDING' })),
-                    },
-                  },
-                  select: kotSelect,
-                }),
-              ),
-            );
-          },
+          createKots: (createdByUserId, groups) =>
+            createKotTickets(tx, {
+              restaurantId,
+              orderId,
+              createdByUserId,
+              groups,
+              select: kotSelect,
+            }),
           submit: async () => {
             await tx.order.update({
               where: { id: orderId, restaurantId },
@@ -411,49 +395,62 @@ export class OrdersRepository {
     );
   }
 
-  /** Filtered, paginated orders (newest first). Dates are restaurant-local days on `openedAt`. */
-  async findOrderPage(
+  /**
+   * Orders page, newest first. `from` / `to` are restaurant-local days on `openedAt`; Postgres
+   * turns them into UTC bounds so DST and non-UTC zones resolve correctly ([from 00:00, to+1 00:00)).
+   */
+  async findOrderList(
     restaurantId: string,
-    filters: OrderPageFilters,
-  ): Promise<{ items: OrderListRecord[]; total: number; currency: string } | null> {
-    const [context] = await this.prisma.$queryRaw<
-      { currency: string; fromAt: Date | null; toAt: Date | null }[]
-    >`
-      SELECT r.currency,
-        (${filters.from ?? null}::date)::timestamp AT TIME ZONE r.timezone AS "fromAt",
-        ((${filters.to ?? null}::date + 1))::timestamp AT TIME ZONE r.timezone AS "toAt"
-      FROM restaurants r WHERE r.id = ${restaurantId}::uuid
-    `;
-    if (!context) return null;
+    filters: OrderListFilters,
+  ): Promise<OrderListResult | null> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const [context] = await tx.$queryRaw<
+          { currency: string; timezone: string; fromStart: Date | null; toEnd: Date | null }[]
+        >`
+          SELECT
+            r.currency,
+            r.timezone,
+            (${filters.from ?? null}::date)::timestamp AT TIME ZONE r.timezone AS "fromStart",
+            (${filters.to ?? null}::date + 1)::timestamp AT TIME ZONE r.timezone AS "toEnd"
+          FROM restaurants r
+          WHERE r.id = ${restaurantId}::uuid
+        `;
+        if (!context) return null;
 
-    const where: Prisma.OrderWhereInput = {
-      restaurantId,
-      ...(filters.status && { status: filters.status }),
-      ...((context.fromAt || context.toAt) && {
-        openedAt: {
-          ...(context.fromAt && { gte: context.fromAt }),
-          ...(context.toAt && { lt: context.toAt }),
-        },
-      }),
-      ...((filters.captainUserId || filters.table) && {
-        table: {
+        const where: Prisma.OrderWhereInput = {
           restaurantId,
-          ...(filters.captainUserId && { captainUserId: filters.captainUserId }),
-          ...(filters.table && { tableNumber: { contains: filters.table, mode: 'insensitive' } }),
-        },
-      }),
-    };
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.order.findMany({
-        where,
-        select: orderListSelect,
-        orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
-        skip: filters.skip,
-        take: filters.take,
-      }),
-      this.prisma.order.count({ where }),
-    ]);
-    return { items, total, currency: context.currency };
+          ...(filters.status && { status: filters.status }),
+          ...((context.fromStart || context.toEnd) && {
+            openedAt: {
+              ...(context.fromStart && { gte: context.fromStart }),
+              ...(context.toEnd && { lt: context.toEnd }),
+            },
+          }),
+          table: {
+            restaurantId,
+            ...(filters.captainUserId && { captainUserId: filters.captainUserId }),
+            ...(filters.tableNumber && {
+              tableNumber: { contains: filters.tableNumber, mode: 'insensitive' },
+            }),
+          },
+        };
+
+        const [items, total] = await Promise.all([
+          tx.order.findMany({
+            where,
+            select: orderListSelect,
+            orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
+            skip: (filters.page - 1) * filters.pageSize,
+            take: filters.pageSize,
+          }),
+          tx.order.count({ where }),
+        ]);
+
+        return { items, total, currency: context.currency, timezone: context.timezone };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   findActiveKotBoard(
@@ -523,6 +520,20 @@ export class OrdersRepository {
             where: { kotId: id, kot: { restaurantId } },
             data: { status },
           });
+          // The guest hears "Your food is on its way" only when every ticket of the round is
+          // Ready, so "Guest notified · h:mm pm" is stamped on all of them at that moment.
+          const roundId = ticket?.qrRound ? ticket.qrRoundId : null;
+          if (status === 'READY' && roundId) {
+            const waiting = await tx.kot.count({
+              where: { restaurantId, qrRoundId: roundId, status: { in: ['PENDING', 'PREPARING'] } },
+            });
+            if (waiting === 0) {
+              await tx.kot.updateMany({
+                where: { restaurantId, qrRoundId: roundId, guestNotifiedAt: null },
+                data: { guestNotifiedAt: new Date() },
+              });
+            }
+          }
           return tx.kot.findFirstOrThrow({ where: { id, restaurantId }, select: kotQueueSelect });
         },
       });
