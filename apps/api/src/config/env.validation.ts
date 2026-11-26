@@ -37,9 +37,9 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value || undefined),
-  AI_MODEL_MENU: z.string().min(1).default('gemini-2.5-flash-lite'),
-  AI_MODEL_INVOICE: z.string().min(1).default('gemini-2.5-flash'),
-  AI_MODEL_RECIPES: z.string().min(1).default('gemini-2.5-flash-lite'),
+  AI_MODEL_MENU: z.string().min(1).default('gemini-3.5-flash-lite'),
+  AI_MODEL_INVOICE: z.string().min(1).default('gemini-3.8-flash'),
+  AI_MODEL_RECIPES: z.string().min(1).default('gemini-3.5-flash-lite'),
   AI_UPLOAD_DIR: z.string().min(1).default('./data/ai-uploads'),
   AI_IMAGE_TTL_HOURS: z.coerce.number().int().positive().default(72),
   AI_DAILY_MENU_SCANS: z.coerce.number().int().nonnegative().default(10),

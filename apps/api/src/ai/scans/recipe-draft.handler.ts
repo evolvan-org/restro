@@ -69,7 +69,7 @@ export class RecipeDraftHandler implements AiJobHandler {
     private readonly templates: RecipeTemplateRepository,
     config: ConfigService,
   ) {
-    this.model = config.get<string>('AI_MODEL_RECIPES') ?? 'gemini-2.5-flash-lite';
+    this.model = config.get<string>('AI_MODEL_RECIPES') ?? 'gemini-3.5-flash-lite';
   }
 
   async run(context: JobRunContext): Promise<JobOutcome> {

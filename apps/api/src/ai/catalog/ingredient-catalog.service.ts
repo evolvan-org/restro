@@ -127,7 +127,7 @@ export class IngredientCatalogService {
       try {
         const response = await this.provider.generate({
           task: 'ingredient-prices',
-          model: this.config.get<string>('AI_MODEL_RECIPES') ?? 'gemini-2.5-flash-lite',
+          model: this.config.get<string>('AI_MODEL_RECIPES') ?? 'gemini-3.5-flash-lite',
           system: PRICE_SYSTEM,
           prompt: pricePrompt(unknown),
           responseSchema: PRICE_SCHEMA,

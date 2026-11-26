@@ -65,9 +65,9 @@ services:
       # AI scans (REST-89). Photos live on the ai-uploads volume until the scan is used.
       AI_PROVIDER: ${AI_PROVIDER:-fake}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      AI_MODEL_MENU: ${AI_MODEL_MENU:-gemini-2.5-flash-lite}
-      AI_MODEL_INVOICE: ${AI_MODEL_INVOICE:-gemini-2.5-flash}
-      AI_MODEL_RECIPES: ${AI_MODEL_RECIPES:-gemini-2.5-flash-lite}
+      AI_MODEL_MENU: ${AI_MODEL_MENU:-gemini-3.5-flash-lite}
+      AI_MODEL_INVOICE: ${AI_MODEL_INVOICE:-gemini-3.8-flash}
+      AI_MODEL_RECIPES: ${AI_MODEL_RECIPES:-gemini-3.5-flash-lite}
       AI_UPLOAD_DIR: /app/data/ai-uploads
       AI_DAILY_MENU_SCANS: ${AI_DAILY_MENU_SCANS:-10}
       AI_DAILY_INVOICE_SCANS: ${AI_DAILY_INVOICE_SCANS:-20}

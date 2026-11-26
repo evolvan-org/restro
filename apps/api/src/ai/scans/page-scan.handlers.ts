@@ -165,7 +165,7 @@ export class MenuScanHandler extends PageScanHandler {
     config: ConfigService,
   ) {
     super(provider, images, repository);
-    this.model = config.get<string>('AI_MODEL_MENU') ?? 'gemini-2.5-flash-lite';
+    this.model = config.get<string>('AI_MODEL_MENU') ?? 'gemini-3.5-flash-lite';
   }
 
   protected prompt(page: number, pages: number): string {
@@ -203,7 +203,7 @@ export class InvoiceScanHandler extends PageScanHandler {
     config: ConfigService,
   ) {
     super(provider, images, repository);
-    this.model = config.get<string>('AI_MODEL_INVOICE') ?? 'gemini-2.5-flash';
+    this.model = config.get<string>('AI_MODEL_INVOICE') ?? 'gemini-3.8-flash';
   }
 
   protected prompt(page: number, pages: number): string {

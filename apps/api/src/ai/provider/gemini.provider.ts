@@ -19,6 +19,30 @@ function isRetryable(error: unknown): boolean {
   return status === 429 || status >= 500;
 }
 
+/**
+ * Google's own explanation of a failed call ("model ... is no longer available", "API key not
+ * valid"). The SDK wraps the JSON error body in `message`, sometimes twice; this unwraps it. These
+ * messages never echo prompt or image content, so they are safe to log.
+ */
+export function geminiErrorMessage(error: unknown): string {
+  let message = error instanceof Error ? error.message : String(error);
+  for (let depth = 0; depth < 3; depth += 1) {
+    try {
+      const parsed = JSON.parse(message) as { error?: { message?: unknown } };
+      if (typeof parsed.error?.message !== 'string') break;
+      message = parsed.error.message;
+    } catch {
+      break;
+    }
+  }
+  message = message.replace(/\s+/g, ' ').trim();
+  if (!message || message === '{}') {
+    const { name, code } = (error ?? {}) as { name?: unknown; code?: unknown };
+    message = [name, code].filter((part) => typeof part === 'string').join(' ') || 'unknown error';
+  }
+  return message.slice(0, 500);
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -95,6 +119,9 @@ export class GeminiProvider implements AiProvider {
       }
     }
     const status = (lastError as { status?: number } | null)?.status;
+    this.logger.error(
+      `task=${request.task} model=${request.model} failed${status ? ` (${status})` : ''}: ${geminiErrorMessage(lastError)}`,
+    );
     throw new AiUnavailableError(`Gemini request failed${status ? ` (${status})` : ''}`, lastError);
   }
 
