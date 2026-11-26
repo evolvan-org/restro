@@ -3,6 +3,7 @@ import { Prisma } from '@rms/db';
 
 import type { Actor } from '../common/auth/authenticated-request';
 import type { NotificationsService } from '../notifications/notifications.service';
+import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
 import type { CaptainOrderRecord, OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 
@@ -30,7 +31,11 @@ function record(overrides: Partial<CaptainOrderRecord> = {}): CaptainOrderRecord
 function setup(result: unknown) {
   const findCaptainOrders = jest.fn().mockResolvedValue(result);
   const repository = { findCaptainOrders } as unknown as OrdersRepository;
-  const service = new OrdersService(repository, {} as NotificationsService);
+  const service = new OrdersService(
+    repository,
+    {} as NotificationsService,
+    { publish: jest.fn() } as unknown as QrRealtimePublisher,
+  );
   return { service, findCaptainOrders };
 }
 
@@ -83,5 +88,69 @@ describe('OrdersService.captainOrders', () => {
     await expect(service.captainOrders(actor, { view: 'open' })).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+describe('OrdersService.updateKotStatus · QR tickets (REST-88)', () => {
+  const actor = { userId: 'chef', restaurantId: 'r1' } as unknown as Actor;
+  function setupKot(ticket: Record<string, unknown>) {
+    const record = {
+      id: 'k1',
+      orderId: 'o1',
+      kotNumber: 'KOT-000001',
+      destination: 'KITCHEN',
+      status: 'PREPARING',
+      createdAt: new Date(),
+      items: [],
+      order: { table: { id: 't7', tableNumber: '7', section: { id: 's', name: 'Main' } } },
+      source: 'QR',
+      guestNotifiedAt: null,
+      approvedByUser: { name: 'Arjun Mehta' },
+      qrRoundId: 'round-1',
+      qrRound: { sessionId: 'visit-1', tableId: 't7' },
+      ...ticket,
+    };
+    const repository = {
+      withLockedKot: (_r: string, _id: string, run: (c: unknown) => unknown) =>
+        run({ kot: { ...record, status: 'PREPARING' }, setStatus: async () => record }),
+    } as unknown as OrdersRepository;
+    const publish = jest.fn().mockResolvedValue(undefined);
+    const service = new OrdersService(
+      repository,
+      { ticketReady: jest.fn() } as unknown as NotificationsService,
+      { publish } as unknown as QrRealtimePublisher,
+    );
+    return { service, publish };
+  }
+
+  it('tells the guest "on its way" once the whole round is ready', async () => {
+    const { service, publish } = setupKot({ status: 'READY', guestNotifiedAt: new Date() });
+    await service.updateKotStatus(actor, 'k1', { status: 'READY', expectedStatus: 'PREPARING' });
+    expect(publish).toHaveBeenCalledWith('r1', ['visit-1'], {
+      kind: 'round.ready',
+      tableId: 't7',
+      roundId: 'round-1',
+    });
+  });
+
+  it('sends plain kitchen progress while another ticket of the round is still cooking', async () => {
+    const { service, publish } = setupKot({ status: 'READY', guestNotifiedAt: null });
+    await service.updateKotStatus(actor, 'k1', { status: 'READY', expectedStatus: 'PREPARING' });
+    expect(publish).toHaveBeenCalledWith(
+      'r1',
+      ['visit-1'],
+      expect.objectContaining({ kind: 'round.kitchen' }),
+    );
+  });
+
+  it('publishes nothing for staff-entered tickets', async () => {
+    const { service, publish } = setupKot({
+      source: 'STAFF',
+      qrRound: null,
+      qrRoundId: null,
+      status: 'READY',
+    });
+    await service.updateKotStatus(actor, 'k1', { status: 'READY', expectedStatus: 'PREPARING' });
+    expect(publish).not.toHaveBeenCalled();
   });
 });

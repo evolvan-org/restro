@@ -66,6 +66,7 @@ const kotQueueSelect = {
   source: true,
   guestNotifiedAt: true,
   approvedByUser: { select: { name: true } },
+  qrRoundId: true,
   qrRound: { select: { sessionId: true, tableId: true } },
   order: {
     select: {
@@ -414,18 +415,26 @@ export class OrdersRepository {
         setStatus: async (status) => {
           await tx.kot.update({
             where: { id, restaurantId },
-            data: {
-              status,
-              completedAt: status === 'COMPLETED' ? new Date() : null,
-              // A QR ticket's Ready goes straight to the guest's tracker; stamp it for the
-              // "Guest notified · h:mm pm" confirmation on the ticket.
-              ...(status === 'READY' && ticket?.source === 'QR' && { guestNotifiedAt: new Date() }),
-            },
+            data: { status, completedAt: status === 'COMPLETED' ? new Date() : null },
           });
           await tx.kotItem.updateMany({
             where: { kotId: id, kot: { restaurantId } },
             data: { status },
           });
+          // The guest hears "Your food is on its way" only when every ticket of the round is
+          // Ready, so "Guest notified · h:mm pm" is stamped on all of them at that moment.
+          const roundId = ticket?.qrRound ? ticket.qrRoundId : null;
+          if (status === 'READY' && roundId) {
+            const waiting = await tx.kot.count({
+              where: { restaurantId, qrRoundId: roundId, status: { in: ['PENDING', 'PREPARING'] } },
+            });
+            if (waiting === 0) {
+              await tx.kot.updateMany({
+                where: { restaurantId, qrRoundId: roundId, guestNotifiedAt: null },
+                data: { guestNotifiedAt: new Date() },
+              });
+            }
+          }
           return tx.kot.findFirstOrThrow({ where: { id, restaurantId }, select: kotQueueSelect });
         },
       });
