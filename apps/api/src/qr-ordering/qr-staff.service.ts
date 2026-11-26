@@ -571,6 +571,12 @@ export class QrStaffService {
         )})`.slice(0, 255),
       });
     } catch (error) {
+      // Two captains confirming the last shares at once: the other request already settled the
+      // bill. That is success, not an error to retry.
+      const latest = await this.guests.findSessionView(actor.restaurantId, sessionId);
+      if (latest && computeSessionBill(latest, restaurant.defaultGstRate).settled) {
+        return this.bill(actor, sessionId);
+      }
       this.logger.warn('QR bill could not be settled automatically', errorDiagnostics(error));
       const reason = error instanceof HttpException ? error.message : 'Try again from Billing.';
       throw new ConflictException(`Payment recorded, but the bill couldn’t be closed: ${reason}`);

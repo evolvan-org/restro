@@ -244,4 +244,23 @@ describe('QrStaffService payments', () => {
     ).rejects.toThrow(BadRequestException);
     expect(repository.createPaidShare).not.toHaveBeenCalled();
   });
+
+  it('treats a bill another captain just settled as success, not a retry-worthy error', async () => {
+    const recordPayment = jest
+      .fn()
+      .mockRejectedValue(new ConflictException('Bill is already paid'));
+    const { service, guests } = paymentSetup(billView(null), recordPayment);
+    // Under the lock: ₹399 still owed. After recording: fully paid, so settlement is attempted.
+    // The other captain's request settles first; the re-read then sees the visit closed.
+    guests.findSessionView
+      .mockResolvedValueOnce(billView(null))
+      .mockResolvedValueOnce(billView('399'))
+      .mockResolvedValue({ ...billView('399'), status: 'CLOSED' });
+    const finalBill = { settled: true } as Awaited<ReturnType<QrStaffService['bill']>>;
+    jest.spyOn(service, 'bill').mockResolvedValue(finalBill);
+    await expect(
+      service.collectAtTable(captain('arjun'), 's1', { method: 'CASH', amount: '399.00' }),
+    ).resolves.toBe(finalBill);
+    expect(recordPayment).toHaveBeenCalledTimes(1);
+  });
 });
