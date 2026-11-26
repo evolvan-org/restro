@@ -17,6 +17,9 @@ import {
   type OrderItemMutationResponse,
   orderItemMutationResponseSchema,
   orderItemSchema,
+  type OrderListQuery,
+  type OrderListResponse,
+  orderListResponseSchema,
   orderSchema,
   type Reservation,
   reservationListResponseSchema,
@@ -29,6 +32,7 @@ import {
 } from '@rms/api-contract';
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import {
+  keepPreviousData,
   useMutation,
   type UseMutationResult,
   useQuery,
@@ -307,5 +311,22 @@ export function useCaptainOrders(
     enabled,
     staleTime: 0,
     refetchInterval: BOARD_REFRESH_MS,
+  });
+}
+
+/** One filtered page of orders; the API scopes captains to their own tables. */
+export function useOrderList(
+  query: OrderListQuery,
+  enabled: boolean,
+): UseQueryResult<OrderListResponse> {
+  return useQuery({
+    queryKey: [OrderQueryKey.List, query],
+    queryFn: async ({ signal }): Promise<OrderListResponse> => {
+      const response = await api.get('/orders', { params: query, signal });
+      return orderListResponseSchema.parse(response.data);
+    },
+    placeholderData: keepPreviousData,
+    enabled,
+    staleTime: 0,
   });
 }
