@@ -284,7 +284,22 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new ConflictException('Table status changed; refresh and retry');
     }
 
+    // A cleaned table starts fresh: no QR visit may carry over to the next party.
+    if (table.currentStatus.code === 'NEEDS_CLEANING' && input.statusCode === 'AVAILABLE') {
+      await this.endQrVisits(actor.restaurantId, tableId);
+    }
     return toRestaurantTable(updated, actor);
+  }
+
+  private async endQrVisits(restaurantId: string, tableId: string): Promise<void> {
+    try {
+      const closed = await this.tablesRepository.closeOpenQrSessions(restaurantId, tableId);
+      if (closed.length) {
+        await this.qrRealtime.publish(restaurantId, closed, { kind: 'session.closed', tableId });
+      }
+    } catch (error) {
+      this.logger.warn('Unable to end QR visits on a cleaned table', error);
+    }
   }
 
   private async findInRestaurant(restaurantId: string, tableId: string): Promise<TableRecord> {

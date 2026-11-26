@@ -250,6 +250,18 @@ export class TablesRepository {
     return sessions.map((session) => session.id);
   }
 
+  /** Ends every open QR visit on the table (e.g. it was cleaned for the next party). */
+  async closeOpenQrSessions(restaurantId: string, tableId: string): Promise<string[]> {
+    const ids = await this.findOpenQrSessionIds(restaurantId, tableId);
+    if (ids.length) {
+      await this.prisma.qrSession.updateMany({
+        where: { id: { in: ids }, restaurantId, status: 'OPEN' },
+        data: { status: 'CLOSED', closedAt: new Date() },
+      });
+    }
+    return ids;
+  }
+
   findSection(restaurantId: string, sectionId: string): Promise<DiningSectionRecord | null> {
     return this.prisma.diningSection.findFirst({
       where: { id: sectionId, restaurantId },

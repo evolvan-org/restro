@@ -81,7 +81,7 @@ export type LockedBillingContext = {
   getTableStatus: () => Promise<{ id: string; code: string } | null>;
   updateTableStatus: (expectedStatusId: string, targetStatusCode: string) => Promise<boolean>;
   withTableStatusSavepoint: (change: () => Promise<void>) => Promise<{ error: unknown } | null>;
-  /** Ends the QR table sessions feeding this order (bill paid). Returns their ids. */
+  /** Ends the QR visits on this order's table (bill paid). Returns their ids. */
   closeQrSessions: (closedAt: Date) => Promise<string[]>;
   order: OrderRecord | null;
   bill: BillRecord | null;
@@ -204,8 +204,15 @@ export class BillsRepository {
           },
           withTableStatusSavepoint: (change) => this.withTableStatusSavepoint(tx, change),
           closeQrSessions: async (closedAt) => {
+            // Every open QR visit on the table ends with the bill, including guests who only
+            // joined while staff took the order (their visit is never linked to it); otherwise the
+            // next party would join the same visit and see the previous guests.
             const sessions = await tx.qrSession.findMany({
-              where: { orderId: orderId!, restaurantId, status: 'OPEN' },
+              where: {
+                restaurantId,
+                status: 'OPEN',
+                OR: [{ orderId: orderId! }, { tableId: lockedOrder!.tableId }],
+              },
               select: { id: true },
             });
             if (sessions.length) {
