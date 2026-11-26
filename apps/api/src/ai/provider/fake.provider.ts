@@ -2,6 +2,7 @@ import {
   type AiProvider,
   type AiRequest,
   type AiStreamChunk,
+  AiStreamInterruptedError,
   AiUnavailableError,
   type AiUsage,
   collectStream,
@@ -13,7 +14,7 @@ import {
  * GSTINs and numbers are fictional demo data.
  */
 
-export type FakeScenario = 'ok' | 'unreadable' | 'partial' | 'unavailable';
+export type FakeScenario = 'ok' | 'unreadable' | 'partial' | 'unavailable' | 'flaky';
 
 type FakeRow = [
   name: string,
@@ -429,7 +430,13 @@ function prices(prompt: string): Record<string, unknown> {
 export class FakeProvider implements AiProvider {
   readonly name = 'fake';
 
-  constructor(private readonly scenario: FakeScenario = 'ok') {}
+  /** `flaky`: streams started per task; every other one is dropped. */
+  private readonly streams = new Map<string, number>();
+
+  constructor(
+    private readonly scenario: FakeScenario = 'ok',
+    private readonly chunkDelayMs = 110,
+  ) {}
 
   isAvailable(): boolean {
     return true;
@@ -449,15 +456,30 @@ export class FakeProvider implements AiProvider {
     const text = JSON.stringify(body);
     // Roughly one row per ~400 ms, like a real streamed read.
     const chunkSize = 90;
+    // `flaky` drops every other stream of a task halfway, like Gemini closing it mid-event, so
+    // each drop is followed by one clean read (the resume).
+    const started = (this.streams.get(request.task) ?? 0) + 1;
+    this.streams.set(request.task, started);
+    const dropAt =
+      this.scenario === 'flaky' && started % 2 === 1 ? Math.floor(text.length / 2) : Infinity;
     for (let index = 0; index < text.length; index += chunkSize) {
-      await sleep(request.task === 'ingredient-prices' ? 0 : 110, request.signal);
+      if (index >= dropAt) {
+        throw new AiStreamInterruptedError('Fake provider dropped the stream');
+      }
+      await sleep(request.task === 'ingredient-prices' ? 0 : this.chunkDelayMs, request.signal);
       yield { text: text.slice(index, index + chunkSize) };
     }
     const usage: AiUsage = { inputTokens: 1200, outputTokens: Math.ceil(text.length / 4) };
     yield { usage };
   }
 
-  generate(request: AiRequest): Promise<{ text: string; usage: AiUsage }> {
-    return collectStream(this.stream(request));
+  async generate(request: AiRequest): Promise<{ text: string; usage: AiUsage }> {
+    try {
+      return await collectStream(this.stream(request));
+    } catch (error) {
+      // Same contract as Gemini: an interrupted whole-response request is simply asked again.
+      if (!(error instanceof AiStreamInterruptedError)) throw error;
+      return collectStream(this.stream(request));
+    }
   }
 }

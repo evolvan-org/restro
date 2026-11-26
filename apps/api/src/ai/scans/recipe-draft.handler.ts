@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   type CreateRecipeDraftRequest,
@@ -17,7 +17,14 @@ import {
 import type { AiJobHandler, JobOutcome, JobRunContext } from '../jobs/ai-job-runner';
 import { AiJobsRepository } from '../jobs/ai-jobs.repository';
 import { RECIPE_SCHEMA, recipePrompt, recipeSystem } from '../prompts/prompts';
-import { AI_PROVIDER, type AiProvider, AiUnavailableError } from '../provider/ai-provider';
+import {
+  AI_PROVIDER,
+  AI_STREAM_RESUME_ATTEMPTS,
+  type AiProvider,
+  AiStreamInterruptedError,
+  AiUnavailableError,
+  resumeDelay,
+} from '../provider/ai-provider';
 import { JsonArrayStream } from '../streaming/json-array-stream';
 import { decimalOrNull } from './row-mapping';
 
@@ -61,6 +68,8 @@ function mapLines(raw: unknown): RecipeDraftLine[] {
 export class RecipeDraftHandler implements AiJobHandler {
   readonly kind = 'RECIPE_DRAFT' as const;
   private readonly model: string;
+  private readonly fallbackModel: string | undefined;
+  private readonly logger = new Logger(RecipeDraftHandler.name);
 
   constructor(
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
@@ -70,6 +79,7 @@ export class RecipeDraftHandler implements AiJobHandler {
     config: ConfigService,
   ) {
     this.model = config.get<string>('AI_MODEL_RECIPES') ?? 'gemini-3.5-flash-lite';
+    this.fallbackModel = config.get<string>('AI_MODEL_RECIPES_FALLBACK');
   }
 
   async run(context: JobRunContext): Promise<JobOutcome> {
@@ -110,12 +120,35 @@ export class RecipeDraftHandler implements AiJobHandler {
     for (let index = 0; index < pending.length && !unavailable; index += BATCH_SIZE) {
       if (context.signal.aborted) break;
       const batch = pending.slice(index, index + BATCH_SIZE);
-      try {
-        await this.draftBatch(context, input.portionStyle, batch, ingredientNames, emit, done);
-      } catch (error) {
-        if (context.signal.aborted) break;
-        if (error instanceof AiUnavailableError) unavailable = true;
+      for (let attempt = 1; ; attempt += 1) {
+        // A resumed batch only asks for the dishes the interrupted stream didn't reach.
+        const remaining = batch.filter((dish) => !done.has(dish.ref));
+        if (!remaining.length) break;
+        try {
+          await this.draftBatch(
+            context,
+            input.portionStyle,
+            remaining,
+            ingredientNames,
+            emit,
+            done,
+          );
+          break;
+        } catch (error) {
+          if (context.signal.aborted) break;
+          if (error instanceof AiStreamInterruptedError && attempt < AI_STREAM_RESUME_ATTEMPTS) {
+            const left = batch.filter((dish) => !done.has(dish.ref)).length;
+            this.logger.warn(
+              `job=${context.job.id} recipe stream interrupted with ${left} dish(es) left in the batch; resuming (attempt ${attempt + 1})`,
+            );
+            await resumeDelay(attempt);
+            continue;
+          }
+          if (error instanceof AiUnavailableError) unavailable = true;
+          break;
+        }
       }
+      if (context.signal.aborted) break;
       // Dishes the model skipped get an empty draft the owner fills in by hand.
       for (const dish of batch) {
         if (done.has(dish.ref) || unavailable) continue;
@@ -150,6 +183,7 @@ export class RecipeDraftHandler implements AiJobHandler {
     for await (const chunk of this.provider.stream({
       task: 'recipes',
       model: this.model,
+      fallbackModel: this.fallbackModel,
       system: recipeSystem(portionStyle, ingredientNames),
       prompt: recipePrompt(
         batch.map((dish) => ({
