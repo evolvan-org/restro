@@ -56,6 +56,16 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     ],
   },
   {
+    label: 'ORDERING',
+    items: [
+      {
+        label: 'QR ordering',
+        href: '/restaurant/settings/qr-ordering',
+        permission: Permission.SETTINGS_READ,
+      },
+    ],
+  },
+  {
     label: 'BILLING',
     items: [
       {

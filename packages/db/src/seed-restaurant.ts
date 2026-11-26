@@ -115,14 +115,21 @@ async function seedRoles(
   const roleIds = new Map<RoleName, string>();
 
   for (const name of ALL_ROLES) {
+    // The Account Owner is the bypass role (as signup creates it): `is_owner` and no permission
+    // rows, so new permissions apply to owners without a migration.
+    const isOwner = name === Role.OWNER;
     const role = await tx.role.upsert({
       where: { restaurantId_name: { restaurantId, name } },
-      create: { restaurantId, name, isSystem: true },
-      update: { isSystem: true },
+      create: { restaurantId, name, isSystem: true, isOwner },
+      update: { isSystem: true, isOwner },
       select: { id: true },
     });
     roleIds.set(name, role.id);
 
+    if (isOwner) {
+      await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
+      continue;
+    }
     const permissions = ROLE_PERMISSIONS[name];
     if (permissions.length > 0) {
       await tx.rolePermission.createMany({

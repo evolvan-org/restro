@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   CheckCheck,
   ChefHat,
+  QrCode,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -34,13 +35,17 @@ import {
   notificationPanelDescription,
   notificationTimeAgo,
   notificationView,
+  qrNotificationHref,
 } from './mapper';
 import styles from './notifications.module.css';
 
 export default function NotificationBell(): ReactElement {
   const notifications = useNotifications();
   const { muted, toggleMuted, play } = useNotificationFeedback();
-  const realtime = useNotificationSubscription(play);
+  const realtime = useNotificationSubscription(({ silent }) => {
+    // Low-key alerts (e.g. a no-captain scan) land in the bell without a chime.
+    if (!silent) play();
+  });
   const { mutateAsync: markRead, isPending: markingRead } = useMarkNotificationsRead();
   const {
     mutateAsync: openReservation,
@@ -67,6 +72,8 @@ export default function NotificationBell(): ReactElement {
   const presentationPermissions = {
     canReadOrders: can(Permission.ORDER_READ),
     canWriteReservations: can(Permission.RESERVATION_WRITE),
+    canReadQrOrders: can(Permission.QR_ORDER_READ),
+    canManageQrOrders: can(Permission.QR_ORDER_MANAGE),
   };
   const panelDescription = notificationPanelDescription({
     canManageRestaurant: can(Permission.RESTAURANT_WRITE),
@@ -100,6 +107,13 @@ export default function NotificationBell(): ReactElement {
 
   const handleSelect = async (notification: Notification): Promise<void> => {
     try {
+      const qrHref = qrNotificationHref(notification, presentationPermissions);
+      if (qrHref) {
+        setOpen(false);
+        router.push(qrHref);
+        if (!notification.readAt) await markRead(notification.id);
+        return;
+      }
       if (notification.entity === 'order' && notification.tableId && can(Permission.ORDER_READ)) {
         await openOrder({ tableId: notification.tableId, orderId: notification.entityId });
       } else if (notification.entity === 'reservation' && can(Permission.RESERVATION_WRITE)) {
@@ -204,8 +218,9 @@ export default function NotificationBell(): ReactElement {
             <ul className="max-h-96 overflow-y-auto" aria-label="Recent notifications">
               {entries.map((notification) => {
                 const view = notificationView(notification, presentationPermissions);
-                const Icon =
-                  notification.type === 'kot.ready'
+                const Icon = notification.type.startsWith('qr.')
+                  ? QrCode
+                  : notification.type === 'kot.ready'
                     ? BellRing
                     : notification.type === 'kot.sent'
                       ? ChefHat

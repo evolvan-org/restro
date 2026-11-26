@@ -1,16 +1,19 @@
 'use client';
 
 import type { RestaurantTable, TableSection, TableStatusSummary } from '@rms/api-contract';
+import { Permission } from '@rms/permissions';
 import { cn } from 'cn';
 import { UserRound } from 'lucide-react';
 import { type ReactElement, type ReactNode, useState } from 'react';
 
 import { DEFAULT_STATUS_COLOR, type StatusColorClasses } from '@/components/FloorTile';
+import usePermissions from '@/hooks/auth/usePermissions';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
 import { FloorError, FloorLoading, FloorNoMatch, StateShell } from '../FloorBoard/FloorBoardStates';
 import FloorSection, { type TilePermissions } from '../FloorBoard/FloorSection';
+import { useQrTileMarkers } from '../FloorBoard/QrFloorBanner';
 
 type CaptainFloorProps = {
   tables: readonly RestaurantTable[];
@@ -101,6 +104,8 @@ export default function CaptainFloor(props: CaptainFloorProps): ReactElement {
   const [sectionId, setSectionId] = useState('');
   const showWalkInForm = useShowWalkInFormSidePane();
   const { tables, statuses, colorMap } = props;
+  const { can } = usePermissions();
+  const { markers: qrMarkers } = useQrTileMarkers(can(Permission.FLOOR_READ));
 
   if (props.error && tables.length === 0) {
     return (
@@ -212,6 +217,7 @@ export default function CaptainFloor(props: CaptainFloorProps): ReactElement {
                 permissions={props.permissions}
                 gridClassName={GRID_CLASS}
                 tileClassName={TILE_CLASS}
+                qrMarkers={qrMarkers}
                 onWalkInClick={(table) =>
                   showWalkInForm({
                     id: table.id,

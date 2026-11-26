@@ -3,6 +3,7 @@ import {
   type ExecutionContext,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,7 +13,8 @@ import { Permission } from '@rms/permissions';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
-import { type ActorRecord, ActorRepository } from './actor.repository';
+import { errorDiagnostics } from '../logging/error-diagnostics';
+import { type ActorRecord, ActorRepository, LAST_SEEN_THROTTLE_MS } from './actor.repository';
 import { ALLOW_DURING_SETUP_KEY } from './allow-during-setup.decorator';
 import type { AuthenticatedRequest } from './authenticated-request';
 import { effectivePermissions, roleCan } from './role-access';
@@ -24,6 +26,8 @@ const jwtClaimsSchema = z.object({
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(JwtAuthGuard.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly actors: ActorRepository,
@@ -46,6 +50,7 @@ export class JwtAuthGuard implements CanActivate {
       throw invalidToken();
     }
     this.assertSetUp(context, user);
+    this.recordPresence(claims.userId, user.lastSeenAt);
 
     request.auth = { userId: claims.userId, authVersion: claims.authVersion };
     request.actor = {
@@ -89,6 +94,18 @@ export class JwtAuthGuard implements CanActivate {
           error: 'Forbidden',
           code: API_ERROR_CODES.PASSWORD_CHANGE_REQUIRED,
         });
+  }
+
+  /**
+   * Captain availability for QR ordering is "seen recently": refreshed in the background, at most
+   * once a minute, and never allowed to fail or slow down the request.
+   */
+  private recordPresence(userId: string, lastSeenAt: Date | null): void {
+    const now = new Date();
+    if (lastSeenAt && now.getTime() - lastSeenAt.getTime() < LAST_SEEN_THROTTLE_MS) return;
+    this.actors.touchLastSeen(userId, now).catch((error: unknown) => {
+      this.logger.warn('Unable to record staff presence', errorDiagnostics(error));
+    });
   }
 
   private verifyClaims(token: string): z.infer<typeof jwtClaimsSchema> {

@@ -15,6 +15,9 @@ import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { NotificationPublisher } from './notification-publisher.service';
 import { toNotification } from './notifications.mapper';
 import { type NewNotification, NotificationsRepository } from './notifications.repository';
+import { type PushMessage, PushService } from './push.service';
+
+export type { NewNotification } from './notifications.repository';
 
 @Injectable()
 export class NotificationsService {
@@ -23,7 +26,43 @@ export class NotificationsService {
   constructor(
     private readonly repository: NotificationsRepository,
     private readonly publisher: NotificationPublisher,
+    private readonly push: PushService,
   ) {}
+
+  /**
+   * Targeted delivery used by QR ordering: saved alert (bell), live Pusher event and Web Push, to
+   * exactly `recipientIds` — never broadcast. Best effort after the business write has committed.
+   */
+  async deliver(
+    restaurantId: string,
+    recipientIds: readonly string[],
+    payload: NewNotification,
+    push: Omit<PushMessage, 'title' | 'body'>,
+  ): Promise<void> {
+    const ids = [...new Set(recipientIds)];
+    if (ids.length === 0) return;
+    await this.bestEffort(async () => {
+      await this.repository.createForUsers(restaurantId, ids, payload);
+      await this.publisher.publish(restaurantId, ids, {
+        kind: 'created',
+        ...(push.silent && { silent: true }),
+      });
+    });
+    await this.push.send(restaurantId, ids, {
+      ...push,
+      title: payload.title,
+      body: payload.body,
+    });
+  }
+
+  /** Active users whose role holds `permission` (and `eligibility`, when given). */
+  async usersWith(
+    restaurantId: string,
+    permission: Permission,
+    eligibility?: Permission,
+  ): Promise<string[]> {
+    return this.recipients(restaurantId, permission, undefined, eligibility);
+  }
 
   async list(actor: Actor, query: NotificationListQuery): Promise<NotificationListResponse> {
     const { data, total, unreadCount } = await this.repository.list(actor, query);
