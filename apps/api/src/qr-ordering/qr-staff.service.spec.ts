@@ -173,3 +173,75 @@ describe('QrStaffService alerts', () => {
     expect(captainSetup.repository.resolveStaleAlerts).not.toHaveBeenCalled();
   });
 });
+
+describe('QrStaffService payments', () => {
+  const billView = (paid: string | null, total = '399') => ({
+    status: 'OPEN',
+    order: {
+      id: 'o1',
+      items: [
+        {
+          id: 'oi1',
+          quantity: 1,
+          unitPrice: new Prisma.Decimal(380),
+          menuItem: { name: 'Dish' },
+          qrRoundItems: [],
+        },
+      ],
+      bill: null,
+    },
+    shares: paid
+      ? [
+          {
+            id: 'sh0',
+            status: 'PAID',
+            paidAmount: new Prisma.Decimal(paid),
+            amount: new Prisma.Decimal(paid),
+          },
+        ]
+      : [],
+    total,
+  });
+
+  function paymentSetup(view: unknown, recordPayment = jest.fn().mockResolvedValue({})) {
+    const base = setup({ status: 'AWAITING_APPROVAL', ownerCaptainUserId: 'arjun' });
+    const repository = {
+      ...base.repository,
+      findSessionTable: jest.fn().mockResolvedValue({
+        id: 's1',
+        status: 'OPEN',
+        table: { id: 't7', tableNumber: '7', captainUserId: 'arjun' },
+      }),
+      withLockedSession: jest.fn(
+        (_r: string, _s: string, run: (tx: unknown, found: boolean) => unknown) => run({}, true),
+      ),
+      createPaidShare: jest.fn(),
+      findPaidShares: jest
+        .fn()
+        .mockResolvedValue([{ paymentMethod: 'CASH', paidAmount: new Prisma.Decimal(399) }]),
+      hasUpiQr: jest.fn().mockResolvedValue(false),
+    };
+    const guests = { findSessionView: jest.fn().mockResolvedValue(view) };
+    const bills = {
+      generate: jest.fn().mockResolvedValue({ id: 'b1', totalAmount: '399.00' }),
+      recordPayment,
+    };
+    const service = new QrStaffService(
+      repository as unknown as QrStaffRepository,
+      guests as unknown as QrGuestRepository,
+      { live: jest.fn() } as unknown as QrNotifier,
+      {} as QrRealtimePublisher,
+      bills as unknown as BillsService,
+      {} as NotificationsService,
+    );
+    return { service, repository, guests, bills };
+  }
+
+  it('rejects a collection above what is still owed (₹399 payable)', async () => {
+    const { service, repository } = paymentSetup(billView(null));
+    await expect(
+      service.collectAtTable(captain('arjun'), 's1', { method: 'CASH', amount: '424.00' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(repository.createPaidShare).not.toHaveBeenCalled();
+  });
+});

@@ -277,6 +277,7 @@ export class QrStaffService {
     await this.requireSessionActor(actor, share.sessionId);
     const amount = this.positiveAmount(input.amount);
     await this.repository.withLockedSession(actor.restaurantId, share.sessionId, async (tx) => {
+      await this.assertWithinRemaining(actor, share.sessionId, amount);
       const count = await this.repository.markSharePaid(tx, shareId, {
         method: input.method,
         amount,
@@ -299,6 +300,7 @@ export class QrStaffService {
     const amount = this.positiveAmount(input.amount);
     await this.repository.withLockedSession(actor.restaurantId, sessionId, async (tx, found) => {
       if (!found) throw new NotFoundException('Bill not found');
+      await this.assertWithinRemaining(actor, sessionId, amount);
       await this.repository.createPaidShare(tx, {
         restaurantId: actor.restaurantId,
         sessionId,
@@ -574,6 +576,27 @@ export class QrStaffService {
       throw new ConflictException(`Payment recorded, but the bill couldn’t be closed: ${reason}`);
     }
     return this.bill(actor, sessionId);
+  }
+
+  /**
+   * No collection may exceed what is still owed (tips are out of scope), so guest and staff totals
+   * always agree. Runs under the session lock, after any concurrent payment has committed.
+   */
+  private async assertWithinRemaining(
+    actor: Actor,
+    sessionId: string,
+    amount: Prisma.Decimal,
+  ): Promise<void> {
+    const restaurant = await this.restaurant(actor);
+    const session = await this.guests.findSessionView(actor.restaurantId, sessionId);
+    if (!session) throw new NotFoundException('Bill not found');
+    const { remaining, settled } = computeSessionBill(session, restaurant.defaultGstRate);
+    if (settled || remaining.lte(0)) throw new ConflictException('This bill is already paid');
+    if (amount.gt(remaining)) {
+      throw new BadRequestException({
+        message: [`amount: Only ${formatRupees(remaining.toFixed(2))} is left to pay`],
+      });
+    }
   }
 
   private async restaurant(actor: Actor): Promise<{

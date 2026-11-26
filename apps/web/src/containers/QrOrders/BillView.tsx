@@ -245,7 +245,10 @@ function CollectSheet({
     setReference('');
   }
   const pending = record.isPending || collect.isPending;
-  const valid = /^\d{1,10}(\.\d{1,2})?$/.test(amount) && Number(amount) > 0;
+  const formatOk = /^\d{1,10}(\.\d{1,2})?$/.test(amount) && Number(amount) > 0;
+  // Never more than is still owed: tips are out of scope and totals must match the bill.
+  const tooMuch = formatOk && Number(amount) > Number(bill.remaining);
+  const valid = formatOk && !tooMuch;
 
   async function confirm(): Promise<void> {
     const input = {
@@ -328,7 +331,14 @@ function CollectSheet({
             value={amount}
             onChange={(event) => setAmount(event.target.value.replace(/[^\d.]/g, ''))}
             className="h-11 rounded-md border bg-background px-3 text-base"
+            aria-invalid={tooMuch}
+            aria-describedby={tooMuch ? 'collect-amount-error' : undefined}
           />
+          {tooMuch && (
+            <span id="collect-amount-error" className="text-xs font-normal text-destructive">
+              Only {formatRupees(bill.remaining)} is left to pay.
+            </span>
+          )}
         </label>
         {method !== 'CASH' && (
           <label className="flex flex-col gap-1.5 text-sm font-medium">
