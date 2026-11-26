@@ -24,6 +24,7 @@ function table(overrides: Partial<QrTableContext> = {}): QrTableContext {
     isActive: true,
     captainUserId: 'arjun',
     currentStatus: { code: 'AVAILABLE' },
+    onHold: false,
     captain: { id: 'arjun', name: 'Arjun Mehta', status: 'ACTIVE', lastSeenAt: new Date() },
     restaurant: {
       id: 'r1',
@@ -121,12 +122,19 @@ describe('QrGuestService.state', () => {
 
 describe('QrGuestService reserved and cleaning tables (option B)', () => {
   it('blocks new guests at a table held for a booking or waiting to be cleaned', () => {
-    expect(QrGuestService.state(table({ currentStatus: { code: 'RESERVED' } }))).toBe(
-      'TABLE_RESERVED',
-    );
+    expect(QrGuestService.state(table({ onHold: true }))).toBe('TABLE_RESERVED');
     expect(QrGuestService.state(table({ currentStatus: { code: 'NEEDS_CLEANING' } }))).toBe(
       'TABLE_CLEANING',
     );
+  });
+
+  it('decides the hold live, not from the stored status the minute sweep updates', () => {
+    // Stored status still says Reserved but the booking moved: the guest can order.
+    expect(
+      QrGuestService.state(table({ currentStatus: { code: 'RESERVED' }, onHold: false })),
+    ).toBe('OPEN');
+    // The sweep hasn't flipped the status yet, but the booking is inside the 90-minute window.
+    expect(QrGuestService.state(table({ onHold: true }))).toBe('TABLE_RESERVED');
   });
 
   it('lets guests already eating keep ordering (an open order keeps the table Occupied)', () => {
@@ -135,7 +143,7 @@ describe('QrGuestService reserved and cleaning tables (option B)', () => {
 
   it('shows reserved rather than no-captain, so managers are not alerted needlessly', async () => {
     const { service, repository, notifier } = setup(
-      table({ currentStatus: { code: 'RESERVED' }, captain: null, captainUserId: null }),
+      table({ onHold: true, captain: null, captainUserId: null }),
     );
     const result = await service.resolve(TOKEN, 'ip');
     expect(result.state).toBe('TABLE_RESERVED');
@@ -144,7 +152,7 @@ describe('QrGuestService reserved and cleaning tables (option B)', () => {
   });
 
   it('refuses to join or send an order at a reserved table', async () => {
-    const { service, repository } = setup(table({ currentStatus: { code: 'RESERVED' } }));
+    const { service, repository } = setup(table({ onHold: true }));
     await expect(service.join(TOKEN, { name: 'Riya', phone: '9876543210' }, 'ip')).rejects.toThrow(
       'This table is reserved',
     );

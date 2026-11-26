@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@rms/db';
+import { RESERVATION_DURATION_MINUTES } from '@rms/shared';
 
 import { PrismaService } from '../common/database/prisma.service';
 
@@ -28,7 +29,13 @@ const tableContextSelect = {
 
 export type QrTableContext = Prisma.RestaurantTableGetPayload<{
   select: typeof tableContextSelect;
-}>;
+}> & {
+  /**
+   * Held for a booking right now, decided live (not from the minute-by-minute status sweep): a
+   * BOOKED reservation starts within RESERVATION_DURATION_MINUTES and nobody is eating there.
+   */
+  onHold: boolean;
+};
 
 const menuSelect = {
   id: true,
@@ -175,11 +182,39 @@ type Tx = Prisma.TransactionClient;
 export class QrGuestRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findTableByToken(token: string): Promise<QrTableContext | null> {
-    return this.prisma.restaurantTable.findUnique({
+  async findTableByToken(token: string): Promise<QrTableContext | null> {
+    const table = await this.prisma.restaurantTable.findUnique({
       where: { qrToken: token },
       select: tableContextSelect,
     });
+    if (!table) return null;
+    return { ...table, onHold: await this.isOnHold(table.restaurantId, table.id) };
+  }
+
+  /** Same rule as the floor's table reconciliation, evaluated at scan time. */
+  private async isOnHold(restaurantId: string, tableId: string): Promise<boolean> {
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + RESERVATION_DURATION_MINUTES * 60_000);
+    const [booking, activeOrder, seated] = await Promise.all([
+      this.prisma.reservation.findFirst({
+        where: {
+          restaurantId,
+          tableId,
+          status: 'BOOKED',
+          reservationAt: { gte: now, lte: windowEnd },
+        },
+        select: { id: true },
+      }),
+      this.prisma.order.findFirst({
+        where: { restaurantId, tableId, status: { in: ['OPEN', 'SUBMITTED'] } },
+        select: { id: true },
+      }),
+      this.prisma.reservation.findFirst({
+        where: { restaurantId, tableId, status: 'SEATED' },
+        select: { id: true },
+      }),
+    ]);
+    return booking !== null && activeOrder === null && seated === null;
   }
 
   findMenu(restaurantId: string): Promise<QrMenuRecord> {

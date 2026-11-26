@@ -80,10 +80,11 @@ export class QrGuestService {
     if (table.restaurant.status !== 'ACTIVE' || !table.restaurant.qrOrderingEnabled)
       return 'CLOSED';
     if (!table.isActive) return 'TABLE_INACTIVE';
-    // Same rule as the floor board: a table is Reserved from RESERVATION_DURATION_MINUTES (90)
-    // before a booking, unless someone is already eating there (an open order keeps it Occupied).
-    if (table.currentStatus.code === 'RESERVED') return 'TABLE_RESERVED';
     if (table.currentStatus.code === 'NEEDS_CLEANING') return 'TABLE_CLEANING';
+    // Same rule as the floor board — Reserved from RESERVATION_DURATION_MINUTES (90) before a
+    // booking unless someone is already eating there — but checked live, so there is no gap while
+    // the minute-by-minute status sweep catches up. It also outranks NO_CAPTAIN.
+    if (table.onHold) return 'TABLE_RESERVED';
     if (!table.captain || table.captain.status !== 'ACTIVE') return 'NO_CAPTAIN';
     return 'OPEN';
   }
