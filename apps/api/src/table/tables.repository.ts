@@ -125,7 +125,7 @@ export type TableActiveContext = {
 
 export class TableNumberConflictError extends Error {
   constructor() {
-    super('Table number is already in use');
+    super('Table number is already in use in this section');
     this.name = TableNumberConflictError.name;
   }
 }
@@ -311,12 +311,14 @@ export class TablesRepository {
 
   async isTableNumberTaken(
     restaurantId: string,
+    sectionId: string,
     tableNumber: string,
     excludeTableId?: string,
   ): Promise<boolean> {
     const table = await this.prisma.restaurantTable.findFirst({
       where: {
         restaurantId,
+        sectionId,
         tableNumber: { equals: tableNumber, mode: 'insensitive' },
         ...(excludeTableId && { id: { not: excludeTableId } }),
       },
