@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { errorResponseSchema, paginatedResponseSchema, paginationQuerySchema } from './common';
+import {
+  dateOnlySchema,
+  errorResponseSchema,
+  paginatedResponseSchema,
+  paginationQuerySchema,
+} from './common';
 import { servingTypeSchema } from './serving-types';
 
 export const orderStatusSchema = z.enum(['OPEN', 'SUBMITTED', 'COMPLETED', 'CANCELLED']);
@@ -279,3 +284,29 @@ export type CaptainOrderView = z.infer<typeof captainOrderViewSchema>;
 export type CaptainOrderListQuery = z.infer<typeof captainOrderListQuerySchema>;
 export type CaptainOrderSummary = z.infer<typeof captainOrderSummarySchema>;
 export type CaptainOrderListResponse = z.infer<typeof captainOrderListResponseSchema>;
+
+/** Full orders list (`GET /orders`): captains see only their tables' orders, managers/owners all. */
+export const orderListQuerySchema = paginationQuerySchema
+  .extend({
+    status: orderStatusSchema.optional(),
+    from: dateOnlySchema.optional().describe('Opened on/after this restaurant-local date'),
+    to: dateOnlySchema.optional().describe('Opened on/before this restaurant-local date'),
+    captainId: z.string().uuid().optional().describe('Table captain; ignored for captains'),
+    table: z.string().trim().min(1).max(20).optional().describe('Table number contains'),
+  })
+  .strict();
+
+export const orderListItemSchema = captainOrderSummarySchema
+  .extend({
+    captain: z.object({ id: z.string().uuid(), name: z.string() }).strict().nullable(),
+    createdBy: z.string(),
+  })
+  .strict();
+
+export const orderListResponseSchema = paginatedResponseSchema(orderListItemSchema)
+  .extend({ currency: z.string().min(1) })
+  .strict();
+
+export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
+export type OrderListItem = z.infer<typeof orderListItemSchema>;
+export type OrderListResponse = z.infer<typeof orderListResponseSchema>;
