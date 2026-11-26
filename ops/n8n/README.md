@@ -19,9 +19,9 @@ deploy.yml ─ deploy job (VPS) ─► notify job (always) ──POST + X-Webhoo
 ```
 
 - **Success 🟢**: environment, commit, who deployed, then one row per Jira ticket (title link,
-  status, type, assignee, fix version, release notes / description excerpt) and the commit list.
-  With no ticket (chore / hotfix) the commit titles are the release notes. Tickets Jira can't
-  return are listed as "Not found" instead of breaking the card.
+  status, type, assignee, fix version; titles only, no description). Commits with no Jira key in
+  their title (chores, hotfixes) are listed briefly under **Untracked**; merge commits are skipped.
+  Tickets Jira can't return are listed as "Not found" instead of breaking the card.
 - **Failure 🔴**: the failed step, links to the failed job log and the run, the tickets that
   didn't ship, and an `@all` mention. **Cancelled ⚪**: same card, no mention.
 
@@ -62,18 +62,17 @@ underneath it. Only `REST-<n>` matches (`JIRA_KEY_PATTERN` in the workflow), so 
 1. **Import** `deploy-notifications.workflow.json` (Workflows → Import from file).
 2. **Create credentials** (Credentials → New), then select them on the matching nodes:
 
-   | Node                  | Credential type   | Value                                                                                                     |
-   | --------------------- | ----------------- | --------------------------------------------------------------------------------------------------------- |
-   | GitHub deploy webhook | Header Auth       | Name `X-Webhook-Secret`, Value = a long random string (`openssl rand -hex 32`)                        |
+   | Node                  | Credential type   | Value                                                                                                      |
+   | --------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+   | GitHub deploy webhook | Header Auth       | Name `X-Webhook-Secret`, Value = a long random string (`openssl rand -hex 32`)                             |
    | Fetch Jira ticket     | Jira SW Cloud API | Email + [API token](https://id.atlassian.com/manage-profile/security/api-tokens) of a bot user (read-only) |
-   | Post to Google Chat   | Custom Auth       | `{"qs": {"key": "<key>", "token": "<token>"}}` from the space's incoming-webhook URL                    |
+   | Post to Google Chat   | Custom Auth       | `{"qs": {"key": "<key>", "token": "<token>"}}` from the space's incoming-webhook URL                       |
 
    In Google Chat: **Restro Deployments** → Apps & integrations → Webhooks → Add. The URL is
    `https://chat.googleapis.com/v1/spaces/<SPACE_ID>/messages?key=<key>&token=<token>`.
+
 3. **Edit `CONFIG`** at the top of the _Normalize payload_ node: `jiraBaseUrl`,
-   `googleChatUrl` (the URL above **without** `?key=…&token=…`), and optionally
-   `releaseNotesField` (e.g. `customfield_10050`; find the id under Jira → Settings → Issues →
-   Custom fields) — empty uses the description.
+   and `googleChatUrl` (the URL above **without** `?key=…&token=…`).
 4. **Activate** the workflow and copy the **Production** webhook URL
    (`https://<n8n-host>/webhook/restro-deploy`).
 
@@ -84,8 +83,8 @@ Secrets live only in n8n credentials; the workflow JSON in git holds none.
 Repo → Settings → Secrets and variables → Actions → **Repository secrets** (not the
 `production` environment — the `notify` job doesn't run in it):
 
-| Secret                     | Value                                        |
-| -------------------------- | -------------------------------------------- |
+| Secret                   | Value                                        |
+| ------------------------ | -------------------------------------------- |
 | `N8N_DEPLOY_WEBHOOK_URL` | the n8n Production webhook URL               |
 | `N8N_WEBHOOK_SECRET`     | the same value as the Header Auth credential |
 
