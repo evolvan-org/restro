@@ -86,6 +86,7 @@ export class MenuImportService {
             price: new Prisma.Decimal(prices.length ? String(Math.max(...prices)) : row.price),
             itemType: row.itemType,
             dietType: row.dietType ?? null,
+            isVeg: row.dietType ? row.dietType === 'VEG' : null,
           });
           row.variants?.forEach((variant, sortOrder) =>
             variants.push({

@@ -350,6 +350,8 @@ export class OnboardingCompletionWriter {
           itemType: row.type.trim().toUpperCase() as ServingType,
           isAvailable: row.available,
           dietType: row.dietType ?? null,
+          // The guest QR menu's veg flag (egg shows as non-veg).
+          isVeg: row.dietType ? row.dietType === 'VEG' : null,
         };
       }),
     });

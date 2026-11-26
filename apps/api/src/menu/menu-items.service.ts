@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type {
   CreateMenuItemRequest,
+  DietType,
   MenuItem,
   MenuItemListQuery,
   MenuItemSearchQuery,
@@ -64,7 +65,7 @@ export class MenuItemsService {
 
     const { recipe, variants, ...fields } = input;
     const created = await this.repository
-      .create(restaurantId, withVariantPrice(fields, variants), recipe, variants)
+      .create(restaurantId, withVegMarkers(withVariantPrice(fields, variants)), recipe, variants)
       .catch(translateRecipeError);
     return toMenuItem(created);
   }
@@ -90,7 +91,7 @@ export class MenuItemsService {
       .update(
         restaurantId,
         id,
-        { ...withVariantPrice(fields, variants), ...reviewed },
+        { ...withVegMarkers(withVariantPrice(fields, variants), existing), ...reviewed },
         recipe,
         variants,
       )
@@ -180,6 +181,27 @@ function translateRecipeError(error: unknown): never {
     );
   }
   throw error;
+}
+
+/**
+ * Keeps the two veg markers in step: the veg / non-veg / egg type (REST-89) and the guest menu's
+ * veg flag (REST-88). Whichever the caller sends decides the other; egg counts as non-veg.
+ */
+export function withVegMarkers<T extends { dietType?: DietType | null; isVeg?: boolean | null }>(
+  fields: T,
+  current?: { dietType: DietType | null },
+): T {
+  if (fields.dietType !== undefined && fields.isVeg === undefined) {
+    return { ...fields, isVeg: fields.dietType === null ? null : fields.dietType === 'VEG' };
+  }
+  if (fields.isVeg !== undefined && fields.dietType === undefined) {
+    const keepEgg = fields.isVeg === false && current?.dietType === 'EGG';
+    return {
+      ...fields,
+      dietType: fields.isVeg === null ? null : fields.isVeg ? 'VEG' : keepEgg ? 'EGG' : 'NON_VEG',
+    };
+  }
+  return fields;
 }
 
 /** An item with portions shows its most expensive portion as its own price. */
