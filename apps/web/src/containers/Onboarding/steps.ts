@@ -34,9 +34,9 @@ export const STEPS: readonly StepMeta[] = [
   {
     step: 'recipes',
     number: 4,
-    label: 'Recipes & costs',
+    label: 'Recipes',
     tag: 'Optional',
-    need: 'AI drafts a recipe and food cost for every dish. You review them.',
+    need: 'AI drafts the ingredients for every dish. You review and rename them.',
   },
   {
     step: 'inventory',

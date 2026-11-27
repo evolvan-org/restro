@@ -1,8 +1,6 @@
 'use client';
 
 import {
-  type CostTarget,
-  formatInr,
   type OnboardingMenuRow,
   type OnboardingRecipeDishDraft,
   type OnboardingRecipeLineDraft,
@@ -16,22 +14,18 @@ import { type KeyboardEvent, type ReactElement, useMemo, useRef, useState } from
 import {
   AiSuggestedChip,
   ApprovedChip,
-  CostBandBadge,
-  CostMeter,
   DietMarker,
   EditedChip,
   LowConfidenceChip,
-  PriceSourceChip,
 } from '@/components/AiScan/markers';
 
-import {
-  costDish,
-  costLine,
-  type DishCosting,
-  type IngredientPrice,
-  pricePerDisplayUnit,
-} from '../../costing';
 import { newKey } from '../../keys';
+import {
+  type IngredientUse,
+  lineUnitConflicts,
+  UNIT_BASE_LABELS,
+  usedIngredients,
+} from '../../recipe-ingredients';
 import {
   Alert,
   btn,
@@ -44,52 +38,36 @@ import {
   Kbd,
   KeyHint,
   Pills,
-  Tag,
 } from '../../ui/kit';
 import { dishNeedsAttention } from './recipe-drafts';
 
 type Filter = 'attention' | 'all' | 'approved';
 const UNITS = ['G', 'KG', 'ML', 'L', 'UNIT'] as const;
-const LINE_COLS = '28px minmax(150px,1fr) 84px 72px 128px 90px';
+const LINE_COLS = '28px minmax(180px,1fr) 96px 80px';
 
 /**
- * Split-view recipe review (board "Recipes and costs: review"): dishes on the left, the recipe on
- * the right with live plate cost, food cost, band and margin. A approves and moves on, E edits.
+ * Split-view recipe review (board "Recipes: review"): dishes on the left, the recipe (ingredients,
+ * quantity per plate, unit) on the right. A approves and moves on, E edits. No costs here: food
+ * cost starts after setup, from real supplier invoices.
  */
 export function RecipeReview({
   dishes,
   rows,
-  prices,
-  target,
   portionStyle,
-  ingredientNames,
   onChange,
 }: {
   dishes: readonly OnboardingRecipeDishDraft[];
   rows: ReadonlyMap<string, OnboardingMenuRow>;
-  prices: ReadonlyMap<string, IngredientPrice>;
-  target: CostTarget;
   portionStyle: PortionStyle;
-  ingredientNames: readonly string[];
   onChange: (dishes: OnboardingRecipeDishDraft[]) => void;
 }): ReactElement {
-  const costings = useMemo(
-    () =>
-      new Map(
-        dishes.map((dish) => [
-          dish.menuRowKey,
-          costDish(dish, rows.get(dish.menuRowKey), prices, target),
-        ]),
-      ),
-    [dishes, rows, prices, target],
-  );
-  const attention = dishes.filter((dish) =>
-    dishNeedsAttention(dish, costings.get(dish.menuRowKey)!),
-  );
+  const used = useMemo(() => usedIngredients(dishes), [dishes]);
+  const ingredientNames = useMemo(() => [...used.values()].map((entry) => entry.name), [used]);
+  const attention = dishes.filter((dish) => dishNeedsAttention(dish, used));
   const [filter, setFilter] = useState<Filter>(attention.length ? 'attention' : 'all');
   const listed = dishes.filter((dish) =>
     filter === 'attention'
-      ? dishNeedsAttention(dish, costings.get(dish.menuRowKey)!)
+      ? dishNeedsAttention(dish, used)
       : filter === 'approved'
         ? dish.status !== 'draft'
         : true,
@@ -98,6 +76,8 @@ export function RecipeReview({
   const selected = dishes.find((dish) => dish.menuRowKey === selectedKey) ?? listed[0] ?? dishes[0];
   const editorRef = useRef<HTMLDivElement>(null);
   const drafts = dishes.filter((dish) => dish.status === 'draft');
+  // Drafts that need a look aren't approved in bulk: they're reviewed one by one.
+  const ready = drafts.filter((dish) => dish.lines.length > 0 && !dishNeedsAttention(dish, used));
   const approved = dishes.length - drafts.length;
 
   const updateDish = (key: string, patch: Partial<OnboardingRecipeDishDraft>): void =>
@@ -163,9 +143,7 @@ export function RecipeReview({
           <ul className="flex max-h-[600px] flex-col overflow-y-auto" aria-label="Dishes">
             {listed.map((dish) => {
               const row = rows.get(dish.menuRowKey);
-              const costing = costings.get(dish.menuRowKey)!;
               const isSelected = dish.menuRowKey === selected?.menuRowKey;
-              const pct = costing.main.foodCostPct;
               return (
                 <li key={dish.menuRowKey}>
                   <button
@@ -187,19 +165,16 @@ export function RecipeReview({
                           <ApprovedChip />
                         ) : dish.status === 'no-recipe' ? (
                           <Chip>No recipe needed</Chip>
-                        ) : dishNeedsAttention(dish, costing) ? (
+                        ) : dishNeedsAttention(dish, used) ? (
                           <LowConfidenceChip label="Check" />
                         ) : (
                           <AiSuggestedChip label="Draft" />
                         )}
                       </span>
                     </span>
-                    {pct !== null && (
-                      <span className="flex flex-col items-end gap-1">
-                        <b className="tabular-nums">{Math.round(pct)}%</b>
-                        {costing.main.band && <CostBandBadge band={costing.main.band} />}
-                      </span>
-                    )}
+                    <span className="text-[12.5px] text-muted-foreground tabular-nums">
+                      {dish.status === 'no-recipe' ? '' : `${dish.lines.length} items`}
+                    </span>
                   </button>
                 </li>
               );
@@ -212,21 +187,19 @@ export function RecipeReview({
             <button
               type="button"
               className={cn(btn('default', 'sm'), 'w-full')}
-              disabled={drafts.length === 0}
+              disabled={ready.length === 0}
               onClick={() =>
                 onChange(
                   dishes.map((dish) =>
-                    dish.status === 'draft' &&
-                    dish.lines.length > 0 &&
-                    !costings.get(dish.menuRowKey)!.unitMismatches
-                      ? { ...dish, status: 'approved' }
-                      : dish,
+                    ready.includes(dish) ? { ...dish, status: 'approved' } : dish,
                   ),
                 )
               }
             >
               <CircleCheck aria-hidden />
-              Approve all {drafts.length} drafts
+              {ready.length === drafts.length
+                ? `Approve all ${drafts.length} drafts`
+                : `Approve ${ready.length} ready drafts`}
             </button>
           </div>
         </Card>
@@ -237,9 +210,7 @@ export function RecipeReview({
               key={selected.menuRowKey}
               dish={selected}
               row={rows.get(selected.menuRowKey)}
-              costing={costings.get(selected.menuRowKey)!}
-              prices={prices}
-              target={target}
+              used={used}
               portionStyle={portionStyle}
               ingredientNames={ingredientNames}
               onChange={(patch) => updateDish(selected.menuRowKey, patch)}
@@ -259,9 +230,7 @@ export function RecipeReview({
 function DishEditor({
   dish,
   row,
-  costing,
-  prices,
-  target,
+  used,
   portionStyle,
   ingredientNames,
   onChange,
@@ -269,9 +238,7 @@ function DishEditor({
 }: {
   dish: OnboardingRecipeDishDraft;
   row: OnboardingMenuRow | undefined;
-  costing: DishCosting;
-  prices: ReadonlyMap<string, IngredientPrice>;
-  target: CostTarget;
+  used: ReadonlyMap<string, IngredientUse>;
   portionStyle: PortionStyle;
   ingredientNames: readonly string[];
   onChange: (patch: Partial<OnboardingRecipeDishDraft>) => void;
@@ -279,10 +246,6 @@ function DishEditor({
 }): ReactElement {
   const listId = `ingredients-${dish.menuRowKey}`;
   const noRecipe = dish.status === 'no-recipe';
-  const main = costing.main;
-  const realLines = dish.lines.filter(
-    (line) => costLine(line, prices).price?.source === 'invoice',
-  ).length;
   const updateLine = (key: string, patch: Partial<OnboardingRecipeLineDraft>): void =>
     onChange({
       status: dish.status === 'approved' ? 'draft' : dish.status,
@@ -345,7 +308,7 @@ function DishEditor({
         <div className="p-4">
           <Alert>
             Bought in and resold as-is (like bottled drinks). It won&apos;t be listed as missing a
-            recipe, and it has no food cost.
+            recipe.
           </Alert>
         </div>
       ) : (
@@ -366,17 +329,12 @@ function DishEditor({
               <GridHead cols={LINE_COLS}>
                 <span />
                 <span>Ingredient</span>
-                <span className="text-right">Qty</span>
+                <span className="text-right">Qty per plate</span>
                 <span>Unit</span>
-                <span className="text-right">Price</span>
-                <span className="text-right">Line cost</span>
               </GridHead>
               {dish.lines.map((line) => {
-                const result = costLine(line, prices);
                 const low = !line.edited && (line.confidence ?? 100) < 75;
-                const per = result.price?.pricePerBase
-                  ? pricePerDisplayUnit(result.price.pricePerBase, result.price.baseUnit)
-                  : null;
+                const expected = lineUnitConflicts(line, used);
                 return (
                   <GridRow
                     key={line.key}
@@ -404,14 +362,13 @@ function DishEditor({
                         }
                         className="font-medium"
                       />
-                      {(low || line.edited || result.unitMismatch) && (
+                      {(low || line.edited || expected) && (
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                           {low && <LowConfidenceChip label="Check qty" small />}
                           {line.edited && <EditedChip label="Edited" small />}
-                          {result.unitMismatch && (
+                          {expected && (
                             <span className="text-[11.5px] text-red-700 dark:text-red-400">
-                              Stocked in {result.price?.baseUnit?.toLowerCase()}; pick a matching
-                              unit
+                              Other recipes measure this in {UNIT_BASE_LABELS[expected]}
                             </span>
                           )}
                         </div>
@@ -440,28 +397,6 @@ function DishEditor({
                         </option>
                       ))}
                     </CellSelect>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span
-                        className={cn(
-                          'text-sm tabular-nums',
-                          result.price?.source === 'invoice'
-                            ? 'border-b-2 border-emerald-700'
-                            : 'border-b border-dashed border-amber-700',
-                        )}
-                      >
-                        {per
-                          ? `₹${per.value < 10 ? per.value.toFixed(2) : Math.round(per.value)}/${per.unit}`
-                          : '—'}
-                      </span>
-                      <PriceSourceChip
-                        source={result.price?.source ?? 'none'}
-                        small
-                        label={result.price?.source === 'estimated' ? '≈ Estimated' : undefined}
-                      />
-                    </div>
-                    <div className="text-right font-semibold tabular-nums">
-                      {result.cost === null ? '—' : formatInr(result.cost, 2)}
-                    </div>
                   </GridRow>
                 );
               })}
@@ -482,7 +417,8 @@ function DishEditor({
                   Add ingredient
                 </button>
                 <span className="text-[12.5px] text-muted-foreground">
-                  Change a quantity and the cost updates.
+                  Quantities are per plate. Renaming here changes this dish only; rename everywhere
+                  from the Ingredients tab.
                 </span>
               </div>
             </div>
@@ -492,62 +428,7 @@ function DishEditor({
               ))}
             </datalist>
           </div>
-          <div className="mt-3.5 grid grid-cols-2 gap-4 border-t border-border bg-muted p-4 md:grid-cols-4">
-            <div>
-              <Tag>Plate cost</Tag>
-              <div className="mt-1 text-lg font-semibold tabular-nums">
-                {formatInr(main.cost, 2)}
-              </div>
-              <div className="mt-1">
-                {realLines > 0 ? (
-                  <PriceSourceChip source="invoice" label="Partly from invoice" />
-                ) : (
-                  <PriceSourceChip source="estimated" />
-                )}
-              </div>
-            </div>
-            <div>
-              <Tag>Selling price</Tag>
-              <div className="mt-1 text-lg font-semibold tabular-nums">
-                {formatInr(main.sellingPrice)}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {costing.portions.length > 1 ? `${main.name} portion` : 'Menu price'}
-              </div>
-            </div>
-            <div>
-              <Tag>Food cost</Tag>
-              <div className="mt-1 mb-2 flex items-center gap-2">
-                <span className="text-lg font-semibold tabular-nums">
-                  {main.foodCostPct === null ? '—' : `${Math.round(main.foodCostPct)}%`}
-                </span>
-                {main.band && <CostBandBadge band={main.band} />}
-              </div>
-              {main.foodCostPct !== null && (
-                <CostMeter percent={main.foodCostPct} targetMax={target.max} />
-              )}
-            </div>
-            <div>
-              <Tag>Margin per plate</Tag>
-              <div className="mt-1 text-lg font-semibold tabular-nums">
-                {formatInr(Math.round(main.sellingPrice - main.cost))}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Target {target.min} – {target.max}%
-              </div>
-            </div>
-            {costing.portions.length > 1 && (
-              <p className="col-span-full text-xs text-muted-foreground">
-                {costing.portions
-                  .filter((portion) => portion !== main)
-                  .map(
-                    (portion) =>
-                      `${portion.name}: ${formatInr(portion.cost, 2)} cost on ${formatInr(portion.sellingPrice)} (${portion.foodCostPct === null ? '—' : `${Math.round(portion.foodCostPct)}%`})`,
-                  )
-                  .join(' · ')}
-              </p>
-            )}
-          </div>
+          <div className="h-4" />
         </>
       )}
     </Card>

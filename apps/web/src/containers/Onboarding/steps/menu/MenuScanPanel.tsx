@@ -375,8 +375,8 @@ export function MenuScanStep({
       />
       <Alert tone="ai" icon={<Sparkles aria-hidden />} className="items-center">
         <span className="text-sm">
-          <b>Next, we&apos;ll draft recipes and food cost for these dishes.</b> You&apos;ll see what
-          each plate costs and where your margin is thin.
+          <b>Next, we&apos;ll draft a recipe for each of these dishes.</b> You check the
+          ingredients; stock is then deducted as orders are made.
         </span>
       </Alert>
       <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">

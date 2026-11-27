@@ -297,26 +297,31 @@ export const onboardingIngredientPriceSourceSchema = z.enum([
   'none',
 ]);
 
-/** De-duplicated ingredients the recipes use, with their estimated price per base unit. */
+/**
+ * Deprecated: the ingredient price list onboarding used before costs were removed (2026-11-27).
+ * Still accepted so drafts saved earlier keep loading; nothing writes or reads it any more.
+ */
 export const onboardingIngredientDraftSchema = z
   .object({
     key: rowKey,
     name: draftText,
     baseUnit: draftText,
-    /** ₹ per base unit (g, ml or unit). */
-    estimatedPricePerBase: draftText,
-    priceSource: onboardingIngredientPriceSourceSchema,
+    estimatedPricePerBase: draftText.optional(),
+    priceSource: onboardingIngredientPriceSourceSchema.optional(),
     aliases: z.array(z.string().max(150)).max(20).optional(),
   })
   .strict();
 
 export const onboardingRecipesDraftSchema = z
   .object({
-    targetMin: z.number().min(1).max(90),
-    targetMax: z.number().min(1).max(90),
+    /** Deprecated (costs left onboarding): accepted from older drafts, ignored. */
+    targetMin: z.number().min(1).max(90).optional(),
+    /** Deprecated (costs left onboarding): accepted from older drafts, ignored. */
+    targetMax: z.number().min(1).max(90).optional(),
     portionStyle: portionStyleSchema,
     jobId: z.string().uuid().optional(),
     dishes: z.array(onboardingRecipeDishDraftSchema).max(ONBOARDING_MENU_MAX_ROWS),
+    /** Deprecated (see `onboardingIngredientDraftSchema`); new drafts leave it empty. */
     ingredients: z.array(onboardingIngredientDraftSchema).max(ONBOARDING_INVENTORY_MAX_ROWS),
     /** Merge suggestions the owner dismissed ("keep both"). */
     dismissedMerges: z.array(z.string().max(140)).max(200).optional(),
@@ -386,9 +391,12 @@ export const onboardingInventoryRowSchema = z
     openingUnitCost: draftText,
     /** Where the row came from: drafted recipes, a scanned invoice, CSV or typed. */
     origin: z.enum(['recipe', 'invoice', 'csv', 'manual']).optional(),
-    /** Whether `openingUnitCost` is a real invoice cost or typed by the owner. */
+    /**
+     * Whether `openingUnitCost` came from a scanned invoice or was typed by the owner.
+     * 'estimated' is deprecated (older drafts only) and treated as no cost.
+     */
     costSource: z.enum(['estimated', 'invoice', 'manual']).optional(),
-    /** Estimated ₹ per base unit, used for costing until a real cost exists. */
+    /** Deprecated: estimated costs left onboarding. Accepted from older drafts, ignored. */
     estimatedUnitCost: draftText.optional(),
   })
   .strict();
@@ -824,13 +832,6 @@ const completeInventorySchema = onboardingInventoryDraftSchema.superRefine((inve
 });
 
 const completeRecipesSchema = onboardingRecipesDraftSchema.superRefine((recipes, ctx) => {
-  if (recipes.targetMin > recipes.targetMax) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['targetMax'],
-      message: 'The lower target must not exceed the upper one',
-    });
-  }
   for (const issue of findRecipeIssues(recipes)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

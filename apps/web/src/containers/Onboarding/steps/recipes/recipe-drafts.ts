@@ -2,19 +2,22 @@ import {
   type AiJobItem,
   CONFIDENCE_MEDIUM,
   type OnboardingDraftData,
-  type OnboardingIngredientDraft,
   type OnboardingInventoryRow,
   type OnboardingRecipeDishDraft,
   type OnboardingRecipesDraft,
+  parseDecimal,
   recipeDraftSchema,
 } from '@rms/api-contract';
 
-import { type DishCosting, ingredientKey } from '../../costing';
 import { newKey } from '../../keys';
+import {
+  ingredientKey,
+  type IngredientUse,
+  lineUnitConflicts,
+  usedIngredients,
+} from '../../recipe-ingredients';
 
 export const DEFAULT_RECIPES: OnboardingRecipesDraft = {
-  targetMin: 30,
-  targetMax: 35,
   portionStyle: 'STANDARD',
   dishes: [],
   ingredients: [],
@@ -49,76 +52,48 @@ export function mergeRecipeItems(
   return fresh.length ? [...recipes.dishes, ...fresh] : null;
 }
 
-export function dishNeedsAttention(dish: OnboardingRecipeDishDraft, costing: DishCosting): boolean {
+/**
+ * A draft needs a look when it has no lines, the AI was unsure, a quantity is missing, or a line
+ * measures its ingredient differently from the other recipes (milk in g here, ml elsewhere).
+ */
+export function dishNeedsAttention(
+  dish: OnboardingRecipeDishDraft,
+  used: ReadonlyMap<string, IngredientUse>,
+): boolean {
   if (dish.status !== 'draft') return false;
   return (
     dish.lines.length === 0 ||
     (dish.confidence ?? 100) < CONFIDENCE_MEDIUM ||
-    dish.lines.some((line) => !line.edited && (line.confidence ?? 100) < CONFIDENCE_MEDIUM) ||
-    costing.missingPrices > 0 ||
-    costing.unitMismatches > 0
+    dish.lines.some(
+      (line) =>
+        (!line.edited && (line.confidence ?? 100) < CONFIDENCE_MEDIUM) ||
+        !((parseDecimal(line.quantity) ?? 0) > 0) ||
+        lineUnitConflicts(line, used) !== null,
+    )
   );
 }
 
-/** Ingredient names used by recipes that still need a dish (not "No recipe needed"). */
-export function usedIngredients(
-  recipes: OnboardingRecipesDraft,
-): Map<string, { name: string; dishes: number; base: 'G' | 'ML' | 'UNIT' | null }> {
-  const used = new Map<
-    string,
-    { name: string; dishes: number; base: 'G' | 'ML' | 'UNIT' | null }
-  >();
-  for (const dish of recipes.dishes) {
-    if (dish.status === 'no-recipe') continue;
-    const seen = new Set<string>();
-    for (const line of dish.lines) {
-      const name = line.ingredient.trim();
-      const key = ingredientKey(name);
-      if (!name || seen.has(key)) continue;
-      seen.add(key);
-      const unit = line.unit.trim().toUpperCase();
-      const base =
-        unit === 'G' || unit === 'KG'
-          ? 'G'
-          : unit === 'ML' || unit === 'L'
-            ? 'ML'
-            : unit === 'UNIT'
-              ? 'UNIT'
-              : null;
-      const entry = used.get(key) ?? { name, dishes: 0, base };
-      entry.dishes += 1;
-      used.set(key, entry);
-    }
-  }
-  return used;
-}
-
 /**
- * Pre-fills Inventory with every ingredient the recipes use ("From your recipes"): base unit and
- * estimated cost, no opening stock yet. Rows the owner already has are left as they are.
+ * Pre-fills Inventory with every ingredient the recipes use ("From your recipes"), stocked in the
+ * unit most recipes measure it in. No opening stock or cost yet: real costs come from invoices.
+ * Rows the owner already has are left as they are.
  */
 export function inventoryRowsFromRecipes(data: OnboardingDraftData): OnboardingInventoryRow[] {
-  const recipes = data.recipes;
   const rows = data.inventory?.rows ?? [];
-  if (!recipes) return rows;
+  if (!data.recipes) return rows;
   const existing = new Set(rows.map((row) => ingredientKey(row.name)));
-  const registry = new Map(recipes.ingredients.map((entry) => [ingredientKey(entry.name), entry]));
   const added: OnboardingInventoryRow[] = [];
-  for (const [key, { name, base }] of usedIngredients(recipes)) {
+  for (const [key, entry] of usedIngredients(data.recipes.dishes)) {
     if (existing.has(key)) continue;
-    const known: OnboardingIngredientDraft | undefined = registry.get(key);
-    // Stock the ingredient the way its recipes measure it when the price lookup hasn't said.
     added.push({
       key: newKey(),
-      name: known?.name ?? name,
+      name: entry.name,
       sku: '',
-      baseUnit: known?.baseUnit || base || 'G',
+      baseUnit: entry.base ?? 'G',
       reorderLevel: '0',
       openingQuantity: '',
       openingUnitCost: '',
       origin: 'recipe',
-      costSource: 'estimated',
-      estimatedUnitCost: known?.estimatedPricePerBase ?? '',
     });
   }
   return added.length ? [...rows, ...added] : rows;

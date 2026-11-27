@@ -355,9 +355,9 @@ export default function MenuStep(): ReactElement {
           <Sparkles className="mt-0.5 size-4 flex-none" aria-hidden />
           <span>
             <strong className="font-semibold">
-              Next, we&apos;ll draft recipes and food cost for these dishes.
+              Next, we&apos;ll draft a recipe for each of these dishes.
             </strong>{' '}
-            You&apos;ll see what each plate costs and where your margin is thin.
+            You check the ingredients; stock is then deducted as orders are made.
           </span>
         </p>
       )}

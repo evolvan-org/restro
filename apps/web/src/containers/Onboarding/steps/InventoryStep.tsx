@@ -40,8 +40,7 @@ const TEMPLATE = [
 ];
 
 /**
- * Inventory (boards "Inventory: pre-filled from recipes / invoice scan and matching / live margin
- * update"): ingredients from the recipes stay in every mode; a scanned invoice fills in opening
+ * Inventory (boards "Inventory: pre-filled from recipes / invoice scan and matching"): ingredients from the recipes stay in every mode; a scanned invoice fills in opening
  * quantity and real cost.
  */
 export default function InventoryStep(): ReactElement {
@@ -85,7 +84,6 @@ export default function InventoryStep(): ReactElement {
     data: draft.data,
     inventory,
     save,
-    menuSkipped: draft.skippedSteps.includes('menu'),
     onSwitchMode: (next) => save({ mode: next }),
     table: renderTable,
   });

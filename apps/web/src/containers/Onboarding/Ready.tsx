@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { type ReactElement, useEffect, useState } from 'react';
 
 import { formatRoleLabel } from '@/lib/utils';
-import { useMarginReport } from '@/services/api/requests/ai';
 
 import { plural } from './format';
 import { useOnboarding } from './OnboardingProvider';
@@ -43,7 +42,6 @@ function CountUp({ value, suffix = '' }: { value: number; suffix?: string }): Re
 export default function Ready(): ReactElement | null {
   const router = useRouter();
   const { result } = useOnboarding();
-  const margins = useMarginReport(Boolean(result?.counts.recipes));
 
   useEffect(() => {
     if (!result) router.replace('/dashboard');
@@ -51,15 +49,6 @@ export default function Ready(): ReactElement | null {
   if (!result) return null;
 
   const { counts, invitations, invitationsHeld } = result;
-  const averageMargin =
-    margins.data?.averageFoodCostPercent != null
-      ? Math.round(100 - margins.data.averageFoodCostPercent)
-      : null;
-  const watch = margins.data?.rows.filter((row) => row.band === 'watch').length ?? 0;
-  const poor = margins.data?.rows.filter((row) => row.band === 'poor').length ?? 0;
-  const estimated = new Set(
-    margins.data?.rows.filter((row) => row.estimatedIngredients > 0).map((row) => row.menuItemId),
-  ).size;
   const unsent = invitations.filter((person) => !person.emailSent);
   const stillToDo = [
     !counts.tables && 'floor and tables',
@@ -71,7 +60,6 @@ export default function Ready(): ReactElement | null {
     [counts.menuItems, 'dishes'],
     [counts.recipes, 'recipes'],
     [counts.stockItems, 'ingredients'],
-    [averageMargin, 'average margin', '%'],
   ];
   const links = [
     {
@@ -91,7 +79,7 @@ export default function Ready(): ReactElement | null {
     {
       icon: <BarChart3 aria-hidden />,
       title: 'Margin report',
-      detail: margins.data ? `${watch} on watch, ${poor} poor` : 'Plate cost and margin per dish',
+      detail: 'Food cost per dish, filling in as you scan supplier invoices',
       href: '/margins',
     },
   ];
@@ -138,7 +126,7 @@ export default function Ready(): ReactElement | null {
             </p>
           </div>
 
-          <div className="relative mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="relative mt-8 grid grid-cols-3 gap-4">
             {stats.map(([value, label, suffix]) => (
               <Card key={label} className="p-5 text-center">
                 <div className="text-[44px] leading-tight font-bold tracking-[-0.03em] tabular-nums">
@@ -170,12 +158,9 @@ export default function Ready(): ReactElement | null {
             ))}
           </div>
 
-          {(stillToDo.length > 0 || estimated > 0) && (
+          {stillToDo.length > 0 && (
             <Alert tone="warn" icon={<Info aria-hidden />} className="relative mt-5 items-center">
-              <b>Still to do:</b> {stillToDo.length ? stillToDo.join(', ') : 'nothing big'}.
-              {estimated > 0
-                ? ` Estimated prices remain on ${plural(estimated, 'dish', 'dishes')}; scan an invoice to use real costs.`
-                : ''}
+              <b>Still to do:</b> {stillToDo.join(', ')}.
             </Alert>
           )}
 

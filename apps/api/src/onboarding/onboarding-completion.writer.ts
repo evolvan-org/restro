@@ -392,9 +392,6 @@ export class OnboardingCompletionWriter {
       select: { id: true, name: true, baseUnit: true },
     });
     const stock = new Map(existing.map((item) => [key(item.name), item]));
-    const registry = new Map(
-      recipes.ingredients.map((ingredient) => [key(ingredient.name), ingredient]),
-    );
 
     let stockItemsCreated = 0;
     let recipeCount = 0;
@@ -415,16 +412,9 @@ export class OnboardingCompletionWriter {
         const base = baseUnitOf(unit) as InventoryBaseUnit;
         let item = stock.get(key(line.ingredient));
         if (!item) {
-          const known = registry.get(key(line.ingredient));
-          const estimated = known?.estimatedPricePerBase.trim();
+          // No cost yet: food cost starts from the first real purchase.
           item = await tx.stockItem.create({
-            data: {
-              restaurantId,
-              name: line.ingredient.trim(),
-              baseUnit: (known?.baseUnit.trim().toUpperCase() as InventoryBaseUnit) || base,
-              estimatedUnitCost:
-                estimated && Number(estimated) > 0 ? new Prisma.Decimal(estimated) : null,
-            },
+            data: { restaurantId, name: line.ingredient.trim(), baseUnit: base },
             select: { id: true, name: true, baseUnit: true },
           });
           stock.set(key(item.name), item);
@@ -432,7 +422,7 @@ export class OnboardingCompletionWriter {
         }
         if (item.baseUnit && item.baseUnit !== base) {
           throw new BadRequestException(
-            `${line.ingredient.trim()} is stocked in ${item.baseUnit.toLowerCase()}, but a recipe uses ${unit.toLowerCase()}. Change the unit in Recipes & costs.`,
+            `${line.ingredient.trim()} is stocked in ${item.baseUnit.toLowerCase()}, but a recipe uses ${unit.toLowerCase()}. Change the unit in Recipes.`,
           );
         }
         lines.push({
@@ -453,10 +443,6 @@ export class OnboardingCompletionWriter {
       recipeCount += 1;
     }
 
-    await tx.restaurant.update({
-      where: { id: restaurantId },
-      data: { targetFoodCostMin: recipes.targetMin, targetFoodCostMax: recipes.targetMax },
-    });
     return { recipes: recipeCount, stockItemsCreated };
   }
 
@@ -488,15 +474,6 @@ export class OnboardingCompletionWriter {
       input.ownerId,
       rows,
     );
-    // Estimated prices keep food cost meaningful until the first real purchase.
-    for (const row of input.inventory?.rows ?? []) {
-      const estimated = row.estimatedUnitCost?.trim();
-      if (!estimated || !(Number(estimated) > 0)) continue;
-      await tx.stockItem.updateMany({
-        where: { restaurantId: input.restaurantId, name: row.name.trim() },
-        data: { estimatedUnitCost: new Prisma.Decimal(estimated) },
-      });
-    }
     return result;
   }
 

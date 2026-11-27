@@ -17,19 +17,12 @@ import { type ReactElement, type ReactNode, useState } from 'react';
 
 import { AiSuggestedChip, ApprovedChip, PriceSourceChip } from '@/components/AiScan/markers';
 
-import {
-  averageFoodCost,
-  costDish,
-  ingredientPrices,
-  marginSnapshot,
-  recipeMenuRows,
-  recipeTarget,
-} from '../costing';
 import { useOnboarding } from '../OnboardingProvider';
 import { stepStatus } from '../progress';
+import { recipeMenuRows } from '../recipe-ingredients';
 import Shell from '../Shell';
 import { stepPath } from '../steps';
-import { Alert, btn, Card, Chip, Tag } from '../ui/kit';
+import { Alert, btn, Card, Chip } from '../ui/kit';
 import { useStepNavigation } from '../useStepNavigation';
 
 type SectionState = 'ready' | 'todo' | 'skipped';
@@ -124,23 +117,9 @@ export default function ReviewStep(): ReactElement {
     ? []
     : (data.recipes?.dishes ?? []).filter((dish) => recipeRows.has(dish.menuRowKey));
   const withRecipe = dishes.filter((dish) => dish.status !== 'no-recipe' && dish.lines.length > 0);
-  const averageCost = averageFoodCost(marginSnapshot(data, skipped('menu')));
-  const prices = ingredientPrices(data);
-  const target = recipeTarget(data);
-  const lowest = withRecipe
-    .map((dish) => ({
-      dish,
-      costing: costDish(dish, recipeRows.get(dish.menuRowKey), prices, target),
-    }))
-    .filter((entry) => entry.costing.main.foodCostPct !== null)
-    .sort((a, b) => (b.costing.main.foodCostPct ?? 0) - (a.costing.main.foodCostPct ?? 0))
-    .slice(0, 2);
   const recipeIngredients = new Set(
     withRecipe.flatMap((dish) => dish.lines.map((line) => line.ingredient.trim().toLowerCase())),
   );
-  const estimatedIngredients = [...recipeIngredients].filter(
-    (name) => prices.get(name)?.source === 'estimated',
-  ).length;
   const drafts = dishes.filter((dish) => dish.status === 'draft').length;
 
   const inventoryRows = skipped('inventory') ? [] : (data.inventory?.rows ?? []);
@@ -279,7 +258,7 @@ export default function ReviewStep(): ReactElement {
         </SectionCard>
         <SectionCard
           step="recipes"
-          title="Recipes & costs"
+          title="Recipes"
           state={state('recipes', withRecipe.length > 0)}
           isNew
         >
@@ -287,27 +266,6 @@ export default function ReviewStep(): ReactElement {
             <>
               <Kv label="Recipes" value={`${withRecipe.length} of ${menuRows.length} dishes`} />
               <Kv label="Ingredients" value={recipeIngredients.size} />
-              <Kv
-                label="Average food cost"
-                value={averageCost === null ? '—' : `${Math.round(averageCost)}%`}
-              />
-              <Kv
-                label="Estimated prices"
-                value={`${estimatedIngredients} of ${recipeIngredients.size} ingredients`}
-              />
-              {lowest.length > 0 && (
-                <div className="flex flex-col gap-1 border-t border-border pt-2">
-                  <Tag>Lowest margin</Tag>
-                  {lowest.map(({ dish, costing }) => (
-                    <Kv
-                      key={dish.menuRowKey}
-                      label={recipeRows.get(dish.menuRowKey)?.name ?? ''}
-                      value={`${Math.round(costing.main.foodCostPct ?? 0)}%`}
-                      tone={costing.main.band !== 'healthy' ? 'bad' : undefined}
-                    />
-                  ))}
-                </div>
-              )}
               {drafts > 0 && (
                 <Alert
                   tone="ai"
@@ -316,16 +274,6 @@ export default function ReviewStep(): ReactElement {
                 >
                   {drafts} AI draft{drafts === 1 ? '' : 's'} not approved yet: saved and marked
                   &quot;not yet reviewed&quot;.
-                </Alert>
-              )}
-              {estimatedIngredients > 0 && (
-                <Alert
-                  tone="warn"
-                  icon={<TriangleAlert aria-hidden />}
-                  className="px-2.5 py-2 text-[12.5px]"
-                >
-                  Estimated prices on {estimatedIngredients} ingredients. Scan an invoice any time
-                  after setup.
                 </Alert>
               )}
             </>

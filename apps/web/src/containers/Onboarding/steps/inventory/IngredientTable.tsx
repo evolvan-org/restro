@@ -29,9 +29,10 @@ const perDisplay = (base: string): { factor: number; unit: string } =>
     ? { factor: 1, unit: 'unit' }
     : { factor: 1000, unit: base === 'ML' ? 'l' : 'kg' };
 
-function costSource(row: OnboardingInventoryRow): 'invoice' | 'manual' | 'estimated' | 'none' {
-  if (row.openingUnitCost.trim()) return row.costSource === 'invoice' ? 'invoice' : 'manual';
-  return row.estimatedUnitCost?.trim() ? 'estimated' : 'none';
+/** Only real costs: from a scanned invoice or typed by the owner. */
+function costSource(row: OnboardingInventoryRow): 'invoice' | 'manual' | 'none' {
+  if (!row.openingUnitCost.trim()) return 'none';
+  return row.costSource === 'invoice' ? 'invoice' : 'manual';
 }
 
 /**
@@ -84,7 +85,6 @@ export function IngredientTable({
         const base = row.baseUnit.toUpperCase();
         const { factor, unit } = perDisplay(base);
         const real = parseDecimal(row.openingUnitCost);
-        const estimate = parseDecimal(row.estimatedUnitCost);
         const label = row.name || `row ${index + 1}`;
         return (
           <GridRow
@@ -150,7 +150,7 @@ export function IngredientTable({
               <CellInput
                 aria-label={`Unit cost per ${unit}, ${label}`}
                 inputMode="decimal"
-                placeholder={estimate ? String(Math.round(estimate * factor * 100) / 100) : '—'}
+                placeholder="—"
                 value={
                   real === null
                     ? row.openingUnitCost
@@ -173,7 +173,7 @@ export function IngredientTable({
             <div>
               <PriceSourceChip
                 source={costSource(row)}
-                label={costSource(row) === 'estimated' ? 'Estimated' : undefined}
+                label={costSource(row) === 'none' ? 'No cost yet' : undefined}
               />
             </div>
             {compact ? null : onRemove ? (

@@ -1,11 +1,7 @@
 'use client';
 
 import {
-  type CostBand,
-  costBand,
-  type DietType,
   invoiceScanLineSchema,
-  marginDiff,
   type OnboardingDraftData,
   type OnboardingInventoryDraft,
   type OnboardingInventoryRow,
@@ -31,8 +27,6 @@ import {
   InvoiceHeaderCard,
   InvoiceLinesTable,
   InvoiceTotalAlert,
-  type MarginChangeRow,
-  MarginDiffList,
 } from '@/components/AiScan/invoice/InvoiceReview';
 import { ConfidenceBadge, PriceSourceChip } from '@/components/AiScan/markers';
 import { ScanCapture } from '@/components/AiScan/ScanCapture';
@@ -42,8 +36,8 @@ import { getApiErrorCode, getApiErrorMessage } from '@/lib/api-error';
 import { pageBlockReason, prepareScanPages, releasePages, type ScanPage } from '@/lib/scan-images';
 import { cancelAiJob, createScan, releaseAiJob, retakeScanPage } from '@/services/api/requests/ai';
 
-import { ingredientKey, marginSnapshot, recipeTarget } from '../../costing';
 import { newKey } from '../../keys';
+import { ingredientKey } from '../../recipe-ingredients';
 import { Alert, btn, Card, Chip, GridHead, GridRow, GridTable } from '../../ui/kit';
 
 const round3 = (value: number): string => String(Math.round(value * 1000) / 1000);
@@ -174,7 +168,7 @@ export type InvoiceScanView = {
 };
 
 /**
- * Inventory → Scan supplier invoice (boards "invoice scan and matching" and "live margin update"):
+ * Inventory → Scan supplier invoice (board "invoice scan and matching"):
  * capture, live read beside the photo, line matching with pack conversion and the total check,
  * then apply real costs and show the before → after diff. Several invoices in a row.
  */
@@ -182,14 +176,12 @@ export function useInvoiceScan({
   data,
   inventory,
   save,
-  menuSkipped,
   table,
   onSwitchMode,
 }: {
   data: OnboardingDraftData;
   inventory: OnboardingInventoryDraft;
   save: (patch: Partial<OnboardingInventoryDraft>) => void;
-  menuSkipped: boolean;
   /** Renders the ingredient table (given rows to highlight); placed by the phase that shows it. */
   table: (highlight: ReadonlySet<string>, compact?: boolean) => ReactNode;
   onSwitchMode: (mode: NonNullable<OnboardingInventoryDraft['mode']>) => void;
@@ -279,18 +271,7 @@ export function useInvoiceScan({
   }
 
   function apply(invoice: OnboardingInvoiceDraft): void {
-    const before = marginSnapshot(data, menuSkipped);
     const result = applyInvoice(inventory.rows, invoice);
-    const after = marginSnapshot(
-      { ...data, inventory: { ...inventory, rows: result.rows } },
-      menuSkipped,
-    );
-    const changes = marginDiff(before, after).map(({ key, name, before: b, after: a }) => ({
-      key,
-      name,
-      before: b,
-      after: a,
-    }));
     setDiff({
       key: invoice.key,
       updated: result.updated,
@@ -300,7 +281,7 @@ export function useInvoiceScan({
     save({
       rows: result.rows,
       invoices: invoices.map((entry) =>
-        entry.key === invoice.key ? { ...invoice, applied: true, marginChanges: changes } : entry,
+        entry.key === invoice.key ? { ...invoice, applied: true } : entry,
       ),
     });
     void releaseAiJob(invoice.jobId);
@@ -371,19 +352,10 @@ export function useInvoiceScan({
   if (!current) {
     const applied = diff ? invoices.find((invoice) => invoice.key === diff.key) : undefined;
     if (applied && diff) {
-      const rows = new Map((data.menu?.rows ?? []).map((row) => [row.key, row]));
-      const target = recipeTarget(data);
-      const changes: MarginChangeRow[] = (applied.marginChanges ?? []).map((change) => ({
-        ...change,
-        diet: (rows.get(change.key)?.dietType ?? null) as DietType | null,
-        bandBefore: costBand(change.before, target) as CostBand,
-        bandAfter: costBand(change.after, target) as CostBand,
-      }));
-      const worse = changes.filter((change) => change.after > change.before).length;
       for (const line of applied.lines) if (line.ingredientKey) highlight.add(line.ingredientKey);
       return {
         highlight,
-        sub: 'Real costs are in. Estimated prices become From invoice.',
+        sub: 'Real costs from the invoice are in. Food cost per dish appears on the Margins page after setup.',
         content: (
           <>
             <Alert
@@ -404,18 +376,14 @@ export function useInvoiceScan({
               }
             >
               <div className="text-sm font-semibold">
-                Real costs for {diff.updated} ingredient{diff.updated === 1 ? '' : 's'} →{' '}
-                {changes.length} dish
-                {changes.length === 1 ? "'s" : "es'"} margins updated
+                Real costs added for {diff.updated} ingredient{diff.updated === 1 ? '' : 's'}
               </div>
-              <div className="text-[13px] opacity-80">
-                {changes.length
-                  ? `Of the dishes you reviewed, ${worse} cost more to make and ${changes.length - worse} cost less.`
-                  : 'No dish moved by half a point or more.'}
-                {diff.skipped
-                  ? ` ${diff.skipped} line${diff.skipped === 1 ? ' was' : 's were'} skipped: the unit didn't match the ingredient.`
-                  : ''}
-              </div>
+              {diff.skipped > 0 && (
+                <div className="text-[13px] opacity-80">
+                  {diff.skipped} line{diff.skipped === 1 ? ' was' : 's were'} skipped: the unit
+                  didn&apos;t match the ingredient.
+                </div>
+              )}
             </Alert>
             <div className="flex flex-col items-start gap-5 lg:flex-row">
               <div className="flex w-full min-w-0 flex-1 flex-col gap-3">
@@ -423,17 +391,10 @@ export function useInvoiceScan({
                   <span className="text-lg font-semibold tracking-[-0.01em]">
                     {inventory.rows.length} ingredients
                   </span>
-                  <span className="flex gap-2">
-                    <PriceSourceChip source="invoice" label={`${fromInvoice} from invoice`} />
-                    <PriceSourceChip
-                      source="estimated"
-                      label={`${inventory.rows.length - fromInvoice} estimated`}
-                    />
-                  </span>
+                  <PriceSourceChip source="invoice" label={`${fromInvoice} from invoice`} />
                 </div>
                 {table(highlight, true)}
               </div>
-              <MarginDiffList changes={changes} />
             </div>
             <button
               type="button"
@@ -511,7 +472,7 @@ export function useInvoiceScan({
             </span>
             {inventory.rows.length > 0 && fromInvoice === 0 && (
               <span className="text-[13px] text-muted-foreground">
-                All prices are <b>Estimated market price</b>
+                No costs yet. Scan a supplier invoice to add real ones.
               </span>
             )}
           </div>

@@ -37,7 +37,7 @@ const STEP_TIME: Record<string, { time: string; detail: string }> = {
   details: { time: '2 min', detail: 'Address, GSTIN, default GST rate' },
   floor: { time: '3 min', detail: 'Dining sections and tables' },
   menu: { time: '1 min with a photo', detail: 'Scan a photo, import a CSV or add by hand' },
-  recipes: { time: 'Automatic', detail: 'AI drafts a recipe and food cost for every dish' },
+  recipes: { time: 'Automatic', detail: 'AI drafts the ingredients for every dish' },
   inventory: {
     time: '1 min with an invoice',
     detail: 'Ingredients from your recipes, real costs from a supplier invoice',
@@ -178,8 +178,8 @@ export default function Welcome(): ReactElement | null {
                   Have a photo of your menu? Start there.
                 </h2>
                 <p className="mt-2 text-[17px] opacity-85">
-                  Set up in about 3 minutes. We read the menu, draft recipes and work out your food
-                  cost. You review everything before it goes live.
+                  Set up in about 3 minutes. We read the menu and draft a recipe for every dish. You
+                  review everything before it goes live.
                 </p>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button

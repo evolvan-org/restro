@@ -2,7 +2,6 @@
 
 import {
   findRecipeIssues,
-  type OnboardingIngredientDraft,
   type OnboardingMenuRow,
   type OnboardingRecipesDraft,
   PORTION_STYLE_LABELS,
@@ -27,41 +26,41 @@ import { AiFailureState, FloatingAiProgress } from '@/components/AiScan/AiStates
 import { AiSuggestedChip } from '@/components/AiScan/markers';
 import { isActiveJob, useAiJob } from '@/hooks/useAiJob';
 import { getApiErrorCode, getApiErrorMessage } from '@/lib/api-error';
-import { createRecipeDraft, lookupIngredientPrices, useAiUsage } from '@/services/api/requests/ai';
+import { createRecipeDraft, useAiUsage } from '@/services/api/requests/ai';
 
-import { ingredientKey, ingredientPrices, recipeMenuRows, recipeTarget } from '../costing';
-import { newKey } from '../keys';
 import { useOnboarding } from '../OnboardingProvider';
+import { recipeMenuRows, renameIngredient, usedIngredients } from '../recipe-ingredients';
 import Shell from '../Shell';
 import { stepPath } from '../steps';
-import { Alert, btn, Card, Chip, ProgressBar, Seg, Tag } from '../ui/kit';
+import { Alert, btn, Card, Pills, ProgressBar, Seg, Tag } from '../ui/kit';
 import { useStepNavigation } from '../useStepNavigation';
+import { IngredientsTab } from './recipes/IngredientsTab';
 import {
   DEFAULT_RECIPES,
   inventoryRowsFromRecipes,
   mergeRecipeItems,
-  usedIngredients,
 } from './recipes/recipe-drafts';
-import { RecipeIngredients, RecipeMargins } from './recipes/RecipeOverview';
 import { RecipeReview } from './recipes/RecipeReview';
 
-type View = 'review' | 'ingredients' | 'margins';
+type Tab = 'dishes' | 'ingredients';
 const STYLES = (['LIGHT', 'STANDARD', 'GENEROUS'] as const).map((value) => ({
   value,
   label: PORTION_STYLE_LABELS[value],
 }));
-const SUB = 'See what every plate costs, so you know your margin before the first order.';
+const SUB = 'What goes into each dish. Stock is deducted by these recipes when orders are made.';
 
 /**
- * Recipes & costs (boards "Recipes and costs: start / needs a menu / drafting live / review /
- * ingredients / margin overview"): one screen after another, each with its own footer action.
+ * Recipes (boards "Recipes: start / needs a menu / drafting live / review"): AI drafts the
+ * ingredients and quantity per plate for every dish; the owner reviews them on one screen with two
+ * tabs, Dishes and Ingredients (rename once, every recipe updates). No costs in onboarding: food
+ * cost starts after setup, from real supplier invoices.
  */
 export default function RecipesStep(): ReactElement {
   const router = useRouter();
   const { draft, setStepData } = useOnboarding();
   const nav = useStepNavigation('recipes');
   const ai = useAiUsage();
-  const [view, setView] = useState<View>('review');
+  const [tab, setTab] = useState<Tab>('dishes');
   const [reviewEarly, setReviewEarly] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string>();
@@ -77,8 +76,6 @@ export default function RecipesStep(): ReactElement {
   const dishes = recipes.dishes.filter((dish) => rows.has(dish.menuRowKey));
   const withRecipe = new Set(recipes.dishes.map((dish) => dish.menuRowKey));
   const undrafted = menuRows.filter((row) => !withRecipe.has(row.key));
-  const prices = useMemo(() => ingredientPrices(draft.data), [draft.data]);
-  const target = recipeTarget(draft.data);
   const { job, items } = useAiJob(recipes.jobId);
   const active = isActiveJob(job);
 
@@ -90,47 +87,6 @@ export default function RecipesStep(): ReactElement {
     const merged = mergeRecipeItems(current, items);
     if (merged) latest.current.setStepData('recipes', { ...current, dishes: merged });
   }, [items]);
-
-  // Price each new ingredient once (catalog first, then AI).
-  const asked = useRef(new Set<string>());
-  useEffect(() => {
-    const known = new Set(recipes.ingredients.map((entry) => ingredientKey(entry.name)));
-    const missing = [...usedIngredients(recipes).values()]
-      .map((entry) => entry.name)
-      .filter((name) => !known.has(ingredientKey(name)) && !asked.current.has(ingredientKey(name)));
-    if (!missing.length) return;
-    // Marked as asked only when the request goes out: a newer render may cancel this timer.
-    const timer = window.setTimeout(() => {
-      missing.forEach((name) => asked.current.add(ingredientKey(name)));
-      void lookupIngredientPrices(missing)
-        .then((estimates) => {
-          const current = latest.current.recipes;
-          const have = new Set(current.ingredients.map((entry) => ingredientKey(entry.name)));
-          const added: OnboardingIngredientDraft[] = estimates
-            .filter((estimate) => !have.has(ingredientKey(estimate.name)))
-            .map((estimate) => ({
-              key: newKey(),
-              name: estimate.name,
-              baseUnit: estimate.baseUnit,
-              estimatedPricePerBase: estimate.pricePerBase ?? '',
-              priceSource: estimate.source === 'none' ? 'none' : estimate.source,
-              aliases: [
-                ...(estimate.canonicalName && estimate.canonicalName !== estimate.name
-                  ? [estimate.canonicalName]
-                  : []),
-                ...estimate.aliases,
-              ].slice(0, 20),
-            }));
-          if (added.length)
-            latest.current.setStepData('recipes', {
-              ...current,
-              ingredients: [...current.ingredients, ...added],
-            });
-        })
-        .catch(() => missing.forEach((name) => asked.current.delete(ingredientKey(name))));
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [recipes]);
 
   /** Drafts recipes for `forRows` (default: every dish without one), keeping the rest. */
   async function startDrafting(forRows: OnboardingMenuRow[] = undrafted): Promise<void> {
@@ -151,7 +107,7 @@ export default function RecipesStep(): ReactElement {
       // Recipes for dishes no longer on the menu are dropped; the others are kept.
       save({ jobId: result.job.id, dishes });
       setReviewEarly(false);
-      setView('review');
+      setTab('dishes');
     } catch (error) {
       if (getApiErrorCode(error) === 'AI_UNAVAILABLE') setUnavailable(true);
       else setStartError(getApiErrorMessage(error, "We couldn't start drafting. Try again."));
@@ -161,22 +117,11 @@ export default function RecipesStep(): ReactElement {
   }
 
   const issues = findRecipeIssues({ dishes });
-  const mismatched = dishes.some((dish) =>
-    dish.lines.some((line) => {
-      const price = prices.get(ingredientKey(line.ingredient));
-      const unit = line.unit.trim().toUpperCase();
-      const base = unit === 'KG' ? 'G' : unit === 'L' ? 'ML' : unit;
-      return price?.baseUnit && dish.status !== 'no-recipe' && base !== price.baseUnit;
-    }),
-  );
+  const ingredientCount = useMemo(() => usedIngredients(dishes).size, [dishes]);
 
   async function continueToInventory(): Promise<void> {
     // Recipes of dishes no longer on the menu are dropped, so their ingredients don't reach stock.
-    const current: OnboardingRecipesDraft = {
-      ...recipes,
-      dishes,
-      targetMin: Math.min(recipes.targetMin, recipes.targetMax),
-    };
+    const current: OnboardingRecipesDraft = { ...recipes, dishes };
     setStepData('recipes', current);
     const inventoryRows = inventoryRowsFromRecipes({ ...draft.data, recipes: current });
     if (inventoryRows.length !== (draft.data.inventory?.rows.length ?? 0)) {
@@ -190,7 +135,7 @@ export default function RecipesStep(): ReactElement {
     return (
       <Shell
         step="recipes"
-        title="Recipes & costs"
+        title="Recipes"
         description="Recipes are drafted from your menu."
         width="wide"
         footer={{
@@ -210,8 +155,7 @@ export default function RecipesStep(): ReactElement {
           </span>
           <h2 className="text-[22px] font-semibold tracking-[-0.01em]">Add a menu first</h2>
           <p className="text-[15px] text-muted-foreground">
-            We need your dishes to draft recipes and work out food cost. The Menu step is empty or
-            was skipped.
+            We need your dishes to draft recipes. The Menu step is empty or was skipped.
           </p>
           <div className="flex flex-wrap justify-center gap-2.5">
             <button
@@ -240,7 +184,7 @@ export default function RecipesStep(): ReactElement {
     return (
       <Shell
         step="recipes"
-        title="Recipes & costs"
+        title="Recipes"
         description={SUB}
         width="wide"
         footer={{
@@ -282,48 +226,13 @@ export default function RecipesStep(): ReactElement {
                   <Tag>AI draft</Tag>
                 </div>
                 <h2 className="mt-2 text-[26px] leading-tight font-bold tracking-[-0.02em]">
-                  Draft recipes and food cost for all {menuRows.length} dishes?
+                  Draft recipes for all {menuRows.length} dishes?
                 </h2>
                 <p className="mt-1.5 text-[15px] text-muted-foreground">
-                  We&apos;ll suggest ingredients and quantities for every dish, price them at market
-                  rates, and show you the margin on each plate. You review and edit before anything
-                  is saved.
+                  We&apos;ll suggest the ingredients and quantity per plate for every dish. You
+                  review and rename anything before it&apos;s saved.
                 </p>
               </div>
-              <fieldset className="flex flex-col gap-2">
-                <legend className="mb-2 text-sm font-semibold">Target food cost</legend>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="flex h-11 w-[150px] items-center justify-between rounded-md border border-zinc-300 bg-background px-2.5 focus-within:border-foreground focus-within:shadow-[0_0_0_3px_var(--border)] dark:border-zinc-700">
-                    <input
-                      inputMode="decimal"
-                      aria-label="Lowest target food cost, percent"
-                      value={recipes.targetMin}
-                      onChange={(event) =>
-                        save({
-                          targetMin: Math.max(1, Math.min(90, Number(event.target.value) || 1)),
-                        })
-                      }
-                      className="w-8 bg-transparent text-center tabular-nums outline-none"
-                    />
-                    <span aria-hidden>–</span>
-                    <input
-                      inputMode="decimal"
-                      aria-label="Highest target food cost, percent"
-                      value={recipes.targetMax}
-                      onChange={(event) =>
-                        save({
-                          targetMax: Math.max(1, Math.min(90, Number(event.target.value) || 1)),
-                        })
-                      }
-                      className="w-8 bg-transparent text-center tabular-nums outline-none"
-                    />
-                    <span className="text-muted-foreground">%</span>
-                  </span>
-                  <span className="text-[13px] text-muted-foreground">
-                    Dishes above this are flagged.
-                  </span>
-                </div>
-              </fieldset>
               <div className="flex flex-col gap-2">
                 <span className="text-sm font-semibold">Portion style</span>
                 <Seg
@@ -352,9 +261,8 @@ export default function RecipesStep(): ReactElement {
               </div>
             </Card>
             <div className="flex w-full min-w-0 flex-1 flex-col gap-2.5">
-              <Alert tone="warn" icon={<TriangleAlert aria-hidden />}>
-                <b>Prices are estimates.</b> We use market rates until you scan a supplier invoice
-                in the next step.
+              <Alert icon={<Info aria-hidden />}>
+                Recipes deduct stock as orders are made, so your stock levels stay right.
               </Alert>
               <Alert icon={<Info aria-hidden />}>
                 Bought-in items like bottled drinks are marked <b>No recipe needed</b>.
@@ -387,7 +295,7 @@ export default function RecipesStep(): ReactElement {
     return (
       <Shell
         step="recipes"
-        title="Recipes & costs"
+        title="Recipes"
         description="Recipe cards fill in live. You don't have to wait."
         width="wide"
         floating={floating}
@@ -515,82 +423,17 @@ export default function RecipesStep(): ReactElement {
         ingredients by hand, or skip them.
       </Alert>
     ) : null;
-  const blocked = issues.length > 0 || mismatched;
+  const blocked = issues.length > 0;
   const blockedHint = issues.length
     ? `${issues.length} recipe line${issues.length === 1 ? ' needs' : 's need'} fixing: ${issues[0]?.message}.`
-    : mismatched
-      ? 'Some recipe units do not match how the ingredient is stocked.'
-      : undefined;
-
-  // ---- Ingredients ----
-  if (view === 'ingredients') {
-    return (
-      <Shell
-        step="recipes"
-        title="Your ingredients"
-        description="Every ingredient the recipes use, de-duplicated."
-        headerRight={<AiSuggestedChip />}
-        width="wide"
-        floating={floating}
-        footer={{
-          onBack: () => setView('review'),
-          primary: (
-            <button type="button" className={btn('primary')} onClick={() => setView('margins')}>
-              Continue to margins
-              <ArrowRight aria-hidden />
-            </button>
-          ),
-        }}
-      >
-        <RecipeIngredients recipes={{ ...recipes, dishes }} onChange={save} />
-      </Shell>
-    );
-  }
-
-  // ---- Margins ----
-  if (view === 'margins') {
-    return (
-      <Shell
-        step="recipes"
-        title="Margin overview"
-        description="Where your plates earn, and where they don't."
-        width="wide"
-        floating={floating}
-        complete={!blocked}
-        hint={blockedHint}
-        footer={{
-          onBack: () => setView('ingredients'),
-          primary: (
-            <button
-              type="button"
-              className={btn('primary')}
-              disabled={blocked || nav.busy}
-              onClick={() => void continueToInventory()}
-            >
-              Continue to Inventory
-              <ArrowRight aria-hidden />
-            </button>
-          ),
-        }}
-      >
-        <RecipeMargins
-          dishes={dishes}
-          rows={rows}
-          prices={prices}
-          target={target}
-          ingredientCount={usedIngredients({ ...recipes, dishes }).size}
-          onScanInvoice={() => void continueToInventory()}
-        />
-      </Shell>
-    );
-  }
+    : undefined;
 
   // ---- Review ----
   return (
     <Shell
       step="recipes"
       title="Review recipes"
-      description="These are drafts. Edit anything, then approve. Prices are estimated market prices until you add real invoices."
+      description="These are drafts. Check the ingredients and quantities, then approve."
       headerRight={<AiSuggestedChip label="All AI-suggested" />}
       width="wide"
       floating={floating}
@@ -604,8 +447,8 @@ export default function RecipesStep(): ReactElement {
           <button
             type="button"
             className={btn('primary')}
-            disabled={dishes.length === 0}
-            onClick={() => setView('ingredients')}
+            disabled={blocked || nav.busy}
+            onClick={() => void continueToInventory()}
           >
             Save and continue
             <ArrowRight aria-hidden />
@@ -641,24 +484,46 @@ export default function RecipesStep(): ReactElement {
           )}
         </Alert>
       )}
-      <RecipeReview
-        dishes={dishes}
-        rows={rows}
-        prices={prices}
-        target={target}
-        portionStyle={recipes.portionStyle}
-        ingredientNames={recipes.ingredients.map((entry) => entry.name)}
-        onChange={(next) =>
-          save({
-            dishes: [...recipes.dishes.filter((dish) => !rows.has(dish.menuRowKey)), ...next],
-          })
-        }
+      <Pills
+        label="Recipes view"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'dishes', label: `Dishes · ${dishes.length}` },
+          { value: 'ingredients', label: `Ingredients · ${ingredientCount}` },
+        ]}
       />
-      {dishes.length > 0 && (
-        <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <Chip>
-            Target {recipes.targetMin} – {recipes.targetMax}%
-          </Chip>
+      {tab === 'dishes' ? (
+        <RecipeReview
+          dishes={dishes}
+          rows={rows}
+          portionStyle={recipes.portionStyle}
+          onChange={(next) =>
+            save({
+              dishes: [...recipes.dishes.filter((dish) => !rows.has(dish.menuRowKey)), ...next],
+            })
+          }
+        />
+      ) : (
+        <IngredientsTab
+          dishes={dishes}
+          rows={rows}
+          dismissedMerges={recipes.dismissedMerges ?? []}
+          onRename={(fromKey, toName) =>
+            save({
+              dishes: [
+                ...recipes.dishes.filter((dish) => !rows.has(dish.menuRowKey)),
+                ...renameIngredient(dishes, fromKey, toName),
+              ],
+            })
+          }
+          onDismissMerge={(pair) =>
+            save({ dismissedMerges: [...(recipes.dismissedMerges ?? []), pair] })
+          }
+        />
+      )}
+      {dishes.length > 0 && tab === 'dishes' && (
+        <p className="text-[13px] text-muted-foreground">
           Unapproved drafts are still saved, marked &quot;AI draft, not yet reviewed&quot;.
         </p>
       )}
