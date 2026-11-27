@@ -7,29 +7,36 @@ import {
   thermalSettingsSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
-import { Printer, RefreshCw } from 'lucide-react';
+import { Download, Printer, RefreshCw } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import usePermissions from '@/hooks/auth/usePermissions';
 import {
   useCheckThermalConnection,
+  usePairPrintConnector,
+  usePrintConnectorStatus,
+  useRevokePrintConnector,
   useThermalPrinterStatus,
   useThermalTestPrint,
   useUpdateThermalSettings,
 } from '@/services/api/requests/thermal-printing';
 
 const names = { RECEIPT: 'Receipts', KITCHEN: 'Kitchen tickets', BAR: 'Bar tickets' };
-const connectionNames = { usb: 'USB on the API host', network: 'Network printer' };
+const connectionNames = { usb: 'USB on the restaurant computer', network: 'Network printer' };
+const connectorCommand =
+  'node restro-print-connector.mjs --pair ' +
+  (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000');
 const connections = ['usb', 'network'] as const;
 const widths = ['58', '80'] as const;
 
-type PrinterForm = Omit<ThermalSettings, 'network' | 'columns'> & {
+type PrinterForm = Omit<ThermalSettings, 'network' | 'columns' | 'usbDevice'> & {
   host: string;
   port: string;
+  usbDevice: string;
   columns: string;
 };
 
@@ -41,15 +48,18 @@ function defaults(config: ThermalConfiguration): PrinterForm {
     columns: config.columns?.toString() ?? '',
     host: config.network?.host ?? '',
     port: config.network?.port.toString() ?? '9100',
+    usbDevice: config.usbDevice ?? '',
   };
 }
 
 function PrinterProfile({
   config,
   editable,
+  online,
 }: {
   config: ThermalConfiguration;
   editable: boolean;
+  online: boolean;
 }): ReactElement {
   const { register, control, handleSubmit, reset, setError, formState } = useForm<PrinterForm>({
     defaultValues: defaults(config),
@@ -58,6 +68,8 @@ function PrinterProfile({
   const update = useUpdateThermalSettings();
   const check = useCheckThermalConnection();
   const test = useThermalTestPrint();
+  const { mutateAsync: checkPrinter } = check;
+  const { mutateAsync: sendTest } = test;
   const { isDirty, errors } = formState;
   const pending = update.isPending || check.isPending || test.isPending;
   const ready = config.transports.includes(config.connection);
@@ -73,10 +85,12 @@ function PrinterProfile({
       codePage: values.codePage,
       columns: values.columns === '' ? null : Number(values.columns),
       network: values.host.trim() ? { host: values.host, port: Number(values.port) } : null,
+      usbDevice: values.usbDevice.trim() || null,
     });
 
     if (!settings.success) {
       for (const issue of settings.error.issues) {
+        if (issue.path[0] === 'usbDevice') setError('usbDevice', { message: issue.message });
         if (issue.path[0] === 'columns') {
           setError('columns', { message: 'Enter a whole number from 16 to 72.' });
         }
@@ -103,20 +117,25 @@ function PrinterProfile({
   }
 
   const checkInput = { destination: config.destination, transport: config.connection };
+
+  async function diagnose(action: 'check' | 'test'): Promise<void> {
+    try {
+      if (action === 'check') await checkPrinter(checkInput);
+      else await sendTest({ ...checkInput, paper: config.paper });
+    } catch {
+      // The request hook reports the printer or connector failure.
+    }
+  }
   return (
     <form className="space-y-5" onSubmit={handleSubmit(save)} noValidate>
       <div className="rounded-md bg-muted px-3 py-2.5 text-sm" role="status">
         <p className="font-medium">{ready ? 'Connection configured' : 'Connection setup needed'}</p>
         <p className="text-muted-foreground">
           {config.connection === 'usb'
-            ? (config.usbDevice ?? 'Set a USB printer device on the Restro API host.')
+            ? (config.usbDevice ?? 'Enter the printer device path on the restaurant computer.')
             : config.network
               ? [config.network.host, config.network.port].join(':')
               : 'Enter an IPv4 address for your printer.'}
-          {config.connection === 'network' &&
-            config.network &&
-            !ready &&
-            ' The API host must allow this endpoint before it can connect.'}
         </p>
         {!isDirty && check.isSuccess && <p>{check.data.message}</p>}
         {!isDirty && check.isError && <p className="text-destructive">Connection check failed.</p>}
@@ -171,11 +190,26 @@ function PrinterProfile({
               </label>
             </div>
             <p className="text-xs text-muted-foreground">
-              {config.hasApprovedNetworkTargets
-                ? 'The API host must allow the exact address and port. Clear the address to remove it.'
-                : 'You can save an endpoint now. An administrator must enable network printing on the API host and allow the endpoint.'}
+              Use the printer’s private LAN address as seen from the restaurant computer.
             </p>
           </div>
+        )}
+
+        {connection === 'usb' && (
+          <label className="block space-y-1 text-sm">
+            <span className="block font-medium">USB printer device</span>
+            <Input
+              {...register('usbDevice')}
+              placeholder="/dev/usb/lp0"
+              aria-invalid={Boolean(errors.usbDevice)}
+            />
+            {errors.usbDevice && (
+              <span className="block text-destructive">{errors.usbDevice.message}</span>
+            )}
+            <span className="block text-xs text-muted-foreground">
+              Use the Linux printer device path on the computer running the connector.
+            </span>
+          </label>
         )}
 
         <fieldset className="space-y-2">
@@ -224,16 +258,16 @@ function PrinterProfile({
           <Button
             type="button"
             variant="outline"
-            disabled={isDirty || pending || !ready}
-            onClick={() => check.mutate(checkInput)}
+            disabled={isDirty || pending || !ready || !online}
+            onClick={() => void diagnose('check')}
           >
             {check.isPending ? 'Checking…' : 'Check connection'}
           </Button>
           <Button
             type="button"
             variant="outline"
-            disabled={isDirty || pending || !ready}
-            onClick={() => test.mutate({ ...checkInput, paper: config.paper })}
+            disabled={isDirty || pending || !ready || !online}
+            onClick={() => void diagnose('test')}
           >
             {test.isPending ? 'Sending…' : 'Send test print'}
           </Button>
@@ -246,6 +280,24 @@ function PrinterProfile({
 export default function PrinterSettings(): ReactElement {
   const { can } = usePermissions();
   const printers = useThermalPrinterStatus();
+  const connector = usePrintConnectorStatus();
+  const pair = usePairPrintConnector();
+  const revoke = useRevokePrintConnector();
+  const { mutateAsync: pairConnector } = pair;
+  const { mutateAsync: revokeConnector } = revoke;
+  const canManage = can(Permission.RESTAURANT_WRITE);
+
+  async function changePairing(action: 'pair' | 'revoke'): Promise<void> {
+    try {
+      if (action === 'pair') await pairConnector();
+      else {
+        await revokeConnector();
+        pair.reset();
+      }
+    } catch {
+      // The request hook reports the connector failure.
+    }
+  }
   const [destination, setDestination] = useState<ThermalDestination>('RECEIPT');
   const config = printers.data?.find((printer) => printer.destination === destination);
   return (
@@ -266,12 +318,76 @@ export default function PrinterSettings(): ReactElement {
           size="icon"
           aria-label="Refresh printer settings"
           title="Refresh printer settings"
-          disabled={printers.isFetching}
-          onClick={() => void printers.refetch()}
+          disabled={printers.isFetching || connector.isFetching}
+          onClick={() => void Promise.all([printers.refetch(), connector.refetch()])}
         >
           <RefreshCw aria-hidden />
         </Button>
       </header>
+      <section className="space-y-3 rounded-md border p-4" aria-label="Restaurant print connector">
+        <h2 className="font-semibold">Restaurant print connector</h2>
+        <p role="status" className="text-sm text-muted-foreground">
+          {connector.isError
+            ? 'Couldn’t check the connector. Use Refresh to try again.'
+            : connector.isPending
+              ? 'Checking connector…'
+              : connector.data.online
+                ? 'Connected'
+                : connector.data.paired
+                  ? 'Offline. Start the connector and refresh this page.'
+                  : 'Pair a computer at this restaurant for USB and network printing.'}
+        </p>
+        {canManage && (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <a
+                className={buttonVariants({ variant: 'outline' })}
+                href="/restro-print-connector.mjs"
+                download
+              >
+                <Download aria-hidden /> Download connector
+              </a>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pair.isPending || revoke.isPending}
+                onClick={() => void changePairing('pair')}
+              >
+                {connector.data?.paired ? 'Replace pairing code' : 'Generate pairing code'}
+              </Button>
+              {connector.data?.paired && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pair.isPending || revoke.isPending}
+                  onClick={() => void changePairing('revoke')}
+                >
+                  Revoke pairing
+                </Button>
+              )}
+            </div>
+            {connector.data?.paired && !pair.data && (
+              <p className="text-xs text-muted-foreground">
+                Replacing or revoking a pairing disconnects the current connector.
+              </p>
+            )}
+            {pair.data && (
+              <div className="space-y-2 rounded-md bg-muted p-3 text-sm">
+                <p>Run this command on the restaurant computer with Node.js 20 or later.</p>
+                <code className="block break-all">{connectorCommand}</code>
+                <p>
+                  Paste this pairing code at the prompt. It grants access to this restaurant’s print
+                  jobs.
+                </p>
+                <code className="block break-all">{pair.data.token}</code>
+                <Button type="button" variant="ghost" size="sm" onClick={() => pair.reset()}>
+                  Hide pairing code
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </section>
       {printers.isPending && <p role="status">Loading printer settings…</p>}
       {printers.isError && (
         <p role="alert">Couldn’t load printer settings. Use Refresh to try again.</p>
@@ -298,7 +414,8 @@ export default function PrinterSettings(): ReactElement {
           <PrinterProfile
             key={destination}
             config={config}
-            editable={can(Permission.RESTAURANT_WRITE)}
+            editable={canManage}
+            online={connector.data?.online === true}
           />
         </>
       )}

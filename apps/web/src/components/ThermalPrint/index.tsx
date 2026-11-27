@@ -154,7 +154,7 @@ export default function ThermalPrint({
             </div>
             {printDocument.transport.length < 2 && (
               <p className="text-xs text-muted-foreground">
-                Direct printing requires a printer configured on the Restro API host.
+                Direct printing uses the restaurant’s print connector and saved printer settings.
               </p>
             )}
           </>

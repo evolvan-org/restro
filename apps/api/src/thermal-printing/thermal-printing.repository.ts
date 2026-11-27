@@ -23,16 +23,39 @@ export class ThermalPrintingRepository {
     destination: ThermalDestination,
     settings: ThermalSettings,
   ): Promise<ThermalPrinter> {
-    const { network, ...profile } = settings;
+    const { network, usbDevice, ...profile } = settings;
     const fields = {
       ...profile,
       networkHost: network?.host ?? null,
       networkPort: network?.port ?? null,
+      ...(usbDevice !== undefined && { usbDevice }),
     };
     return this.prisma.thermalPrinter.upsert({
       where: { restaurantId_destination: { restaurantId, destination } },
       create: { restaurantId, destination, ...fields },
       update: fields,
+    });
+  }
+  async connectorHash(restaurantId: string): Promise<string | null> {
+    const record = await this.prisma.thermalPrintConnector.findUnique({
+      where: { restaurantId },
+      select: { tokenHash: true },
+    });
+    return record?.tokenHash ?? null;
+  }
+
+  connectorOwner(tokenHash: string): Promise<{ restaurantId: string } | null> {
+    return this.prisma.thermalPrintConnector.findUnique({
+      where: { tokenHash },
+      select: { restaurantId: true },
+    });
+  }
+
+  async setConnector(restaurantId: string, tokenHash: string | null): Promise<void> {
+    await this.prisma.thermalPrintConnector.upsert({
+      where: { restaurantId },
+      create: { restaurantId, tokenHash },
+      update: { tokenHash },
     });
   }
 }

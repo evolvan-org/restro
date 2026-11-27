@@ -1,11 +1,7 @@
-import { constants } from 'node:fs';
-import { access, lstat, open } from 'node:fs/promises';
-import { createConnection } from 'node:net';
-
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import {
   type ThermalConfiguration,
+  type ThermalConnectorTarget,
   type ThermalDestination,
   thermalDestinations,
   type ThermalDocument,
@@ -16,6 +12,7 @@ import {
   thermalProfileSchema,
   type ThermalSettings,
   type ThermalTestRequest,
+  thermalUsbDeviceSchema,
 } from '@rms/api-contract';
 import type { ThermalPrinter } from '@rms/db';
 import { encode } from 'iconv-lite';
@@ -23,19 +20,17 @@ import { encode } from 'iconv-lite';
 import { BillsService } from '../bills/bills.service';
 import type { Actor } from '../common/auth/authenticated-request';
 import { OrdersService } from '../orders/orders.service';
+import { ThermalPrintConnectorService } from './thermal-print-connector.service';
 import { ThermalPrintingRepository } from './thermal-printing.repository';
 
 type Job = Pick<ThermalDocument, 'title' | 'lines'> & { destination: ThermalDestination };
 
 @Injectable()
 export class ThermalPrintingService {
-  private readonly logger = new Logger(ThermalPrintingService.name);
-  private readonly busy = new Set<string>();
-
   constructor(
     private readonly bills: BillsService,
     private readonly orders: OrdersService,
-    private readonly config: ConfigService,
+    private readonly connector: ThermalPrintConnectorService,
     private readonly repository: ThermalPrintingRepository,
   ) {}
 
@@ -54,7 +49,6 @@ export class ThermalPrintingService {
     const records = await this.repository.list(actor.restaurantId);
     return thermalDestinations.map((destination) =>
       this.configuration(
-        actor,
         destination,
         records.find((record) => record.destination === destination) ?? null,
       ),
@@ -67,7 +61,7 @@ export class ThermalPrintingService {
     input: ThermalSettings,
   ): Promise<ThermalConfiguration> {
     const record = await this.repository.save(actor.restaurantId, destination, input);
-    return this.configuration(actor, destination, record);
+    return this.configuration(destination, record);
   }
 
   async check(
@@ -76,25 +70,12 @@ export class ThermalPrintingService {
     transport: ThermalPrintRequest['transport'],
   ): Promise<{ message: string }> {
     const settings = await this.destinationSettings(actor, destination);
-    const address = this.target(settings, transport);
-    if (!address)
-      throw new ServiceUnavailableException('No printer is configured for this connection');
-    try {
-      if (transport === 'usb') {
-        if (!(await lstat(address)).isCharacterDevice())
-          throw new Error('USB printer is unavailable');
-        await access(address, constants.W_OK);
-      } else {
-        await checkNetwork(address);
-      }
-    } catch {
-      throw new ServiceUnavailableException('The API host could not reach this printer');
-    }
+    await this.connector.dispatch(actor.restaurantId, this.target(settings, transport));
     return {
       message:
         transport === 'usb'
-          ? 'USB device is accessible on the API host'
-          : 'Printer network port is reachable',
+          ? 'USB printer is accessible to the connector'
+          : 'Printer network port is reachable from the connector',
     };
   }
 
@@ -105,6 +86,7 @@ export class ThermalPrintingService {
     const settings = await this.destinationSettings(actor, destination);
     const columns = printColumns(request, settings);
     return this.deliver(
+      actor.restaurantId,
       {
         destination,
         title: 'RESTRO PRINTER TEST',
@@ -125,55 +107,25 @@ export class ThermalPrintingService {
     destination: ThermalDestination,
   ): Promise<ThermalConfiguration> {
     return this.configuration(
-      actor,
       destination,
       await this.repository.find(actor.restaurantId, destination),
     );
   }
 
-  private allowedTargets(actor: Actor, destination: ThermalDestination): Set<string> {
-    if (this.config.get<string>('THERMAL_PRINTER_RESTAURANT_ID') !== actor.restaurantId)
-      return new Set();
-    const entries = (this.config.get<string>('THERMAL_NETWORK_TARGETS') ?? '')
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    const endpoint = this.config.get<string>('THERMAL_' + destination + '_NETWORK');
-    if (endpoint) entries.push(endpoint);
-    return new Set(
-      entries.map((entry) => {
-        const [host, port] = entry.split(':');
-        return host + ':' + Number(port);
-      }),
-    );
-  }
-
   private configuration(
-    actor: Actor,
     destination: ThermalDestination,
     record: ThermalPrinter | null,
   ): ThermalConfiguration {
-    const assigned =
-      this.config.get<string>('THERMAL_PRINTER_RESTAURANT_ID') === actor.restaurantId;
-    const defaultTarget = assigned
-      ? this.config.get<string>('THERMAL_' + destination + '_NETWORK')
-      : undefined;
-    const usbDevice = assigned
-      ? (this.config.get<string>('THERMAL_' + destination + '_USB') ?? null)
-      : null;
-    const [host, port] = defaultTarget?.split(':') ?? [];
-    const network = thermalNetworkSchema.safeParse(
-      record
-        ? { host: record.networkHost, port: record.networkPort }
-        : { host, port: Number(port) },
-    );
-    const savedNetwork = network.success ? network.data : null;
-    const allowed = this.allowedTargets(actor, destination);
+    const network = thermalNetworkSchema.safeParse({
+      host: record?.networkHost,
+      port: record?.networkPort,
+    });
+    const device = thermalUsbDeviceSchema.safeParse(record?.usbDevice);
     const transports: ThermalConfiguration['transports'] = [];
-    if (usbDevice) transports.push('usb');
-    if (savedNetwork && allowed.has(addressOf(savedNetwork))) transports.push('network');
+    if (device.success) transports.push('usb');
+    if (network.success) transports.push('network');
     const calibration = thermalProfileSchema.parse({
-      connection: record?.connection ?? (usbDevice ? 'usb' : defaultTarget ? 'network' : 'usb'),
+      connection: record?.connection ?? 'usb',
       paper: record?.paper ?? '80',
       codePage: record?.codePage ?? 'ASCII',
       columns: record?.columns ?? null,
@@ -181,10 +133,9 @@ export class ThermalPrintingService {
     return {
       ...calibration,
       destination,
-      network: savedNetwork,
-      usbDevice,
+      network: network.success ? network.data : null,
+      usbDevice: device.success ? device.data : null,
       transports,
-      hasApprovedNetworkTargets: allowed.size > 0,
     };
   }
 
@@ -195,62 +146,36 @@ export class ThermalPrintingService {
     request: ThermalPrintRequest,
   ): Promise<{ message: string }> {
     const job = await this.job(actor, kind, id);
-    return this.deliver(job, request, await this.destinationSettings(actor, job.destination));
+    return this.deliver(
+      actor.restaurantId,
+      job,
+      request,
+      await this.destinationSettings(actor, job.destination),
+    );
   }
 
   private async deliver(
+    restaurantId: string,
     job: Job,
     request: ThermalPrintRequest,
     settings: ThermalConfiguration,
   ): Promise<{ message: string }> {
-    const address = this.target(settings, request.transport);
-    if (!address)
-      throw new ServiceUnavailableException(
-        'This printer connection is not configured for this station',
-      );
-    const key = request.transport + ':' + address;
-    if (this.busy.has(key))
-      throw new ServiceUnavailableException(
-        'The printer is busy. Try again once the current job finishes.',
-      );
-    this.busy.add(key);
-    try {
-      const data = escPos(job, request, settings);
-      if (request.transport === 'network') await writeNetwork(address, data);
-      else {
-        const device = await open(
-          address,
-          constants.O_WRONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW,
-        );
-        try {
-          if (!(await device.stat()).isCharacterDevice())
-            throw new Error('USB printer path is not a character device');
-          await device.writeFile(data);
-        } finally {
-          await device.close();
-        }
-      }
-      return { message: 'Sent to the printer' };
-    } catch {
-      this.logger.warn('Thermal print delivery could not be confirmed for ' + job.destination);
-      throw new ServiceUnavailableException(
-        'Printer delivery could not be confirmed. Check the printer before sending a copy.',
-      );
-    } finally {
-      this.busy.delete(key);
-    }
+    await this.connector.dispatch(
+      restaurantId,
+      this.target(settings, request.transport),
+      escPos(job, request, settings),
+    );
+    return { message: 'Sent to the printer' };
   }
 
   private target(
     settings: ThermalConfiguration,
     transport: ThermalPrintRequest['transport'],
-  ): string | undefined {
-    if (!settings.transports.includes(transport)) return undefined;
-    return transport === 'usb'
-      ? (settings.usbDevice ?? undefined)
-      : settings.network
-        ? addressOf(settings.network)
-        : undefined;
+  ): ThermalConnectorTarget {
+    if (transport === 'usb' && settings.usbDevice) return { transport, device: settings.usbDevice };
+    if (transport === 'network' && settings.network)
+      return { transport, network: settings.network };
+    throw new ServiceUnavailableException('No printer is configured for this connection');
   }
 
   private async job(actor: Actor, kind: ThermalKind, id: string): Promise<Job> {
@@ -300,10 +225,6 @@ export class ThermalPrintingService {
   }
 }
 
-function addressOf(target: NonNullable<ThermalSettings['network']>): string {
-  return target.host + ':' + target.port;
-}
-
 function printColumns(request: ThermalPrintRequest, settings: ThermalConfiguration): number {
   return (
     (request.paper === settings.paper ? settings.columns : null) ??
@@ -339,32 +260,4 @@ function escPos(
   }
   output.push(Buffer.from([0x0a, 0x0a, 0x1d, 0x56, 0x01]));
   return Buffer.concat(output);
-}
-
-function checkNetwork(address: string): Promise<void> {
-  const [host, port] = address.split(':');
-  return new Promise((resolve, reject) => {
-    const socket = createConnection({ host, port: Number(port) });
-    socket.setTimeout(2500);
-    socket.once('error', reject);
-    socket.once('timeout', () => socket.destroy(new Error('Printer connection timed out')));
-    socket.once('connect', () => {
-      socket.destroy();
-      resolve();
-    });
-  });
-}
-
-function writeNetwork(address: string, data: Buffer): Promise<void> {
-  const [host, port] = address.split(':');
-  return new Promise((resolve, reject) => {
-    const socket = createConnection({ host, port: Number(port) });
-    socket.setTimeout(4500);
-    socket.once('error', reject);
-    socket.once('timeout', () => socket.destroy(new Error('Printer connection timed out')));
-    socket.once('connect', () => socket.end(data));
-    socket.once('close', (hadError) => {
-      if (!hadError) resolve();
-    });
-  });
 }

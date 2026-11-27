@@ -2,6 +2,8 @@ import {
   messageResponseSchema,
   type ThermalCheckRequest,
   thermalConfigurationSchema,
+  thermalConnectorCredentialSchema,
+  thermalConnectorStatusSchema,
   type ThermalDestination,
   thermalDocumentSchema,
   type ThermalKind,
@@ -94,5 +96,40 @@ export function useCheckThermalConnection() {
     mutationFn: async (input: ThermalCheckRequest) =>
       messageResponseSchema.parse((await api.post('/thermal-printing/check', input)).data),
     onError: showError,
+  });
+}
+
+export function usePrintConnectorStatus() {
+  return useQuery({
+    queryKey: ['thermal-print-connector'],
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: async () =>
+      thermalConnectorStatusSchema.parse((await api.get('/thermal-printing/connector')).data),
+  });
+}
+
+export function usePairPrintConnector() {
+  const client = useQueryClient();
+  const showError = useShowApiError('Unable to create a print connector pairing code.');
+  return useMutation({
+    mutationFn: async () =>
+      thermalConnectorCredentialSchema.parse(
+        (await api.post('/thermal-printing/connector/rotate')).data,
+      ),
+    onError: showError,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['thermal-print-connector'] }),
+  });
+}
+
+export function useRevokePrintConnector() {
+  const client = useQueryClient();
+  const showError = useShowApiError('Unable to disconnect the print connector.');
+  return useMutation({
+    mutationFn: async () => {
+      await api.post('/thermal-printing/connector/revoke');
+    },
+    onError: showError,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['thermal-print-connector'] }),
   });
 }

@@ -25,6 +25,9 @@ import {
   thermalCheckRequestSchema,
   type ThermalConfiguration,
   thermalConfigurationSchema,
+  thermalConnectorCredentialSchema,
+  type ThermalConnectorStatus,
+  thermalConnectorStatusSchema,
   type ThermalDestination,
   thermalDestinationSchema,
   type ThermalDocument,
@@ -47,6 +50,7 @@ import { CurrentActor } from '../common/auth/current-actor.decorator';
 import { JwtAuthGuard } from '../common/auth/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import { ThermalPrintConnectorService } from './thermal-print-connector.service';
 import { ThermalPrintingService } from './thermal-printing.service';
 
 const kinds = { receipt: 'receipt', ticket: 'ticket' } as const;
@@ -56,7 +60,36 @@ const kinds = { receipt: 'receipt', ticket: 'ticket' } as const;
 @UseGuards(JwtAuthGuard)
 @Controller('thermal-printing')
 export class ThermalPrintingController {
-  constructor(private readonly service: ThermalPrintingService) {}
+  constructor(
+    private readonly service: ThermalPrintingService,
+    private readonly connector: ThermalPrintConnectorService,
+  ) {}
+
+  @Get('connector')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOkResponse({ schema: zodOpenApiSchema(thermalConnectorStatusSchema) })
+  connectorStatus(@CurrentActor() actor: Actor): Promise<ThermalConnectorStatus> {
+    if (!actorCan(actor, Permission.SETTINGS_READ))
+      throw new ForbiddenException('Missing restaurant settings permission');
+    return this.connector.status(actor.restaurantId);
+  }
+
+  @Post('connector/rotate')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiCreatedResponse({ schema: zodOpenApiSchema(thermalConnectorCredentialSchema) })
+  pairConnector(@CurrentActor() actor: Actor): Promise<{ token: string }> {
+    if (!actorCan(actor, Permission.RESTAURANT_WRITE))
+      throw new ForbiddenException('Missing restaurant settings write permission');
+    return this.connector.rotate(actor.restaurantId);
+  }
+
+  @Post('connector/revoke')
+  @HttpCode(204)
+  revokeConnector(@CurrentActor() actor: Actor): Promise<void> {
+    if (!actorCan(actor, Permission.RESTAURANT_WRITE))
+      throw new ForbiddenException('Missing restaurant settings write permission');
+    return this.connector.revoke(actor.restaurantId);
+  }
 
   @Get('config')
   @Header('Cache-Control', 'private, no-store')

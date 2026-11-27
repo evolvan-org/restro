@@ -209,31 +209,32 @@ enum PaymentStatus {
 
 model Restaurant {
   thermalPrinters       ThermalPrinter[]
+  thermalPrintConnector ThermalPrintConnector?
   logo                  RestaurantLogo?
   foodIncidents         FoodIncident[]
   foodIncidentBatches   FoodIncidentBatch[]
   foodIncidentEntries   FoodIncidentEntry[]
-  id                    String              @id @default(uuid()) @db.Uuid
-  name                  String              @db.VarChar(255)
-  gstNumber             String?             @map("gst_number") @db.VarChar(50)
-  defaultGstRate        Decimal             @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
-  maxDiscountPercent    Decimal             @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
-  address               String?             @db.VarChar(500)
-  currency              String              @default("INR") @db.VarChar(10)
-  timezone              String              @default("Asia/Kolkata") @db.VarChar(100)
-  status                RestaurantStatus    @default(ACTIVE)
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String                 @db.VarChar(255)
+  gstNumber             String?                @map("gst_number") @db.VarChar(50)
+  defaultGstRate        Decimal                @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
+  maxDiscountPercent    Decimal                @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
+  address               String?                @db.VarChar(500)
+  currency              String                 @default("INR") @db.VarChar(10)
+  timezone              String                 @default("Asia/Kolkata") @db.VarChar(100)
+  status                RestaurantStatus       @default(ACTIVE)
   /// Null while the owner's guided setup is pending; set once by `POST /onboarding/complete`.
-  onboardingCompletedAt DateTime?           @map("onboarding_completed_at") @db.Timestamptz(6)
+  onboardingCompletedAt DateTime?              @map("onboarding_completed_at") @db.Timestamptz(6)
   /// Master switch for guest QR ordering (REST-88). Off by default.
-  qrOrderingEnabled     Boolean             @default(false) @map("qr_ordering_enabled")
+  qrOrderingEnabled     Boolean                @default(false) @map("qr_ordering_enabled")
   /// Minutes a guest round may wait for its captain before managers are alerted (1–15).
-  qrEscalationMinutes   Int                 @default(3) @map("qr_escalation_minutes")
+  qrEscalationMinutes   Int                    @default(3) @map("qr_escalation_minutes")
   /// Phone number on the guest "Call restaurant" button.
-  guestPhone            String?             @map("guest_phone") @db.VarChar(30)
+  guestPhone            String?                @map("guest_phone") @db.VarChar(30)
   /// Guest app accent (#RRGGBB). Null uses the default; must give 4.5:1 with white text.
-  brandColor            String?             @map("brand_color") @db.VarChar(7)
-  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  brandColor            String?                @map("brand_color") @db.VarChar(7)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   users                   User[]
   userTokens              UserToken[]
@@ -1823,6 +1824,7 @@ model ThermalPrinter {
   connection   String     @db.VarChar(10)
   networkHost  String?    @map("network_host") @db.VarChar(15)
   networkPort  Int?       @map("network_port")
+  usbDevice    String?    @map("usb_device") @db.VarChar(32)
   paper        String     @db.VarChar(2)
   codePage     String     @map("code_page") @db.VarChar(8)
   columns      Int?
@@ -1831,4 +1833,12 @@ model ThermalPrinter {
 
   @@id([restaurantId, destination])
   @@map("thermal_printers")
+}
+
+model ThermalPrintConnector {
+  restaurantId String     @id @map("restaurant_id") @db.Uuid
+  tokenHash    String?    @unique @map("token_hash") @db.VarChar(64)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  @@map("thermal_print_connectors")
 }
