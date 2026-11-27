@@ -7,7 +7,7 @@ import {
   type OnboardingTeamDraft,
   type OnboardingTeamMemberDraft,
 } from '@rms/api-contract';
-import { Plus, TriangleAlert, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -16,13 +16,13 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formatRoleLabel } from '@/lib/utils';
 import { isOnboardingEmailAvailable } from '@/services/api/requests/onboarding';
-import { useProfile } from '@/services/api/requests/profile';
 
 import { newKey } from '../keys';
 import { useOnboarding } from '../OnboardingProvider';
 import Shell, { Section } from '../Shell';
 import { useStepNavigation } from '../useStepNavigation';
 import { issuesByPath } from '../validation';
+import { OwnerEmailVerification } from './team/OwnerEmailVerification';
 
 function newMember(): OnboardingTeamMemberDraft {
   return { key: newKey(), name: '', email: '', role: 'MANAGER' };
@@ -31,7 +31,6 @@ function newMember(): OnboardingTeamMemberDraft {
 export default function TeamStep(): ReactElement {
   const { draft, setStepData } = useOnboarding();
   const nav = useStepNavigation('team');
-  const profile = useProfile();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [taken, setTaken] = useState<Record<string, boolean>>({});
 
@@ -88,16 +87,10 @@ export default function TeamStep(): ReactElement {
         ),
       }}
     >
-      <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+      <div className="flex flex-col rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
         When setup finishes, we email each person an invitation to set their own password.
-        {!profile.data?.emailVerifiedAt && profile.data && (
-          <span className="mt-2 flex items-start gap-2 text-amber-900">
-            <TriangleAlert className="mt-0.5 size-4 flex-none" aria-hidden />
-            Your own email isn&apos;t verified yet, so invitations will wait. Verify it from the
-            link we emailed you, then use Resend invitation on the Staff page.
-          </span>
-        )}
-      </p>
+        <OwnerEmailVerification />
+      </div>
 
       <Section title="People">
         <div className="flex flex-col gap-4">
