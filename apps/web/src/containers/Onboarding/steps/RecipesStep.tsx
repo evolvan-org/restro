@@ -3,6 +3,7 @@
 import {
   findRecipeIssues,
   type OnboardingIngredientDraft,
+  type OnboardingMenuRow,
   type OnboardingRecipesDraft,
   PORTION_STYLE_LABELS,
   type PortionStyle,
@@ -71,7 +72,11 @@ export default function RecipesStep(): ReactElement {
     setStepData('recipes', { ...(draft.data.recipes ?? DEFAULT_RECIPES), ...patch });
   const menuRows = recipeMenuRows(draft.data, draft.skippedSteps.includes('menu'));
   const rows = useMemo(() => new Map(menuRows.map((row) => [row.key, row])), [menuRows]);
+  // Only recipes for dishes still on the menu count: the menu may have been rescanned or edited
+  // since drafting, leaving recipes for rows that no longer exist.
   const dishes = recipes.dishes.filter((dish) => rows.has(dish.menuRowKey));
+  const withRecipe = new Set(recipes.dishes.map((dish) => dish.menuRowKey));
+  const undrafted = menuRows.filter((row) => !withRecipe.has(row.key));
   const prices = useMemo(() => ingredientPrices(draft.data), [draft.data]);
   const target = recipeTarget(draft.data);
   const { job, items } = useAiJob(recipes.jobId);
@@ -127,14 +132,15 @@ export default function RecipesStep(): ReactElement {
     return () => window.clearTimeout(timer);
   }, [recipes]);
 
-  async function startDrafting(): Promise<void> {
+  /** Drafts recipes for `forRows` (default: every dish without one), keeping the rest. */
+  async function startDrafting(forRows: OnboardingMenuRow[] = undrafted): Promise<void> {
     setStarting(true);
     setStartError(undefined);
     try {
       const result = await createRecipeDraft({
         context: 'ONBOARDING',
         portionStyle: recipes.portionStyle,
-        dishes: menuRows.map((row) => ({
+        dishes: forRows.map((row) => ({
           ref: row.key,
           name: row.name.trim(),
           category: row.category.trim(),
@@ -142,7 +148,8 @@ export default function RecipesStep(): ReactElement {
           dietType: row.dietType ?? null,
         })),
       });
-      save({ jobId: result.job.id, dishes: [] });
+      // Recipes for dishes no longer on the menu are dropped; the others are kept.
+      save({ jobId: result.job.id, dishes });
       setReviewEarly(false);
       setView('review');
     } catch (error) {
@@ -164,11 +171,14 @@ export default function RecipesStep(): ReactElement {
   );
 
   async function continueToInventory(): Promise<void> {
-    setStepData('recipes', {
+    // Recipes of dishes no longer on the menu are dropped, so their ingredients don't reach stock.
+    const current: OnboardingRecipesDraft = {
       ...recipes,
+      dishes,
       targetMin: Math.min(recipes.targetMin, recipes.targetMax),
-    });
-    const inventoryRows = inventoryRowsFromRecipes(draft.data);
+    };
+    setStepData('recipes', current);
+    const inventoryRows = inventoryRowsFromRecipes({ ...draft.data, recipes: current });
     if (inventoryRows.length !== (draft.data.inventory?.rows.length ?? 0)) {
       setStepData('inventory', { ...(draft.data.inventory ?? { rows: [] }), rows: inventoryRows });
     }
@@ -224,8 +234,8 @@ export default function RecipesStep(): ReactElement {
     );
   }
 
-  // ---- Start ----
-  if (!recipes.jobId && recipes.dishes.length === 0) {
+  // ---- Start ---- (also when no recipe matches the current menu, e.g. after a rescan)
+  if (!active && dishes.length === 0) {
     const off = unavailable || ai.data?.enabled === false;
     return (
       <Shell
@@ -241,7 +251,7 @@ export default function RecipesStep(): ReactElement {
               type="button"
               className={btn('ai')}
               disabled={starting}
-              onClick={() => void startDrafting()}
+              onClick={() => void startDrafting(menuRows)}
             >
               <Sparkles aria-hidden />
               {starting ? 'Starting…' : `Draft ${menuRows.length} recipes`}
@@ -334,7 +344,7 @@ export default function RecipesStep(): ReactElement {
                   type="button"
                   className={btn('ai', 'lg')}
                   disabled={starting}
-                  onClick={() => void startDrafting()}
+                  onClick={() => void startDrafting(menuRows)}
                 >
                   <Sparkles aria-hidden />
                   {starting ? 'Starting…' : `Draft ${menuRows.length} recipes`}
@@ -356,7 +366,7 @@ export default function RecipesStep(): ReactElement {
     );
   }
 
-  const total = job?.pagesTotal ?? menuRows.length;
+  const total = menuRows.length;
   const drafted = dishes.length;
   const floating = active ? (
     <FloatingAiProgress label={`Drafting recipes · ${drafted} of ${total}`} />
@@ -604,6 +614,33 @@ export default function RecipesStep(): ReactElement {
       }}
     >
       {failedNote}
+      {!active && undrafted.length > 0 && (
+        <Alert tone="ai" icon={<Sparkles aria-hidden />} role="status">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>
+              <b>
+                {undrafted.length} {undrafted.length === 1 ? 'dish has' : 'dishes have'} no recipe
+                yet
+              </b>{' '}
+              (added to the menu after drafting). Your reviewed recipes stay as they are.
+            </span>
+            <button
+              type="button"
+              className={btn('ai', 'sm')}
+              disabled={starting}
+              onClick={() => void startDrafting()}
+            >
+              <Sparkles aria-hidden />
+              {starting ? 'Starting…' : `Draft ${undrafted.length === 1 ? 'it' : 'them'}`}
+            </button>
+          </div>
+          {startError && (
+            <p role="alert" className="mt-1 text-sm text-red-700 dark:text-red-400">
+              {startError}
+            </p>
+          )}
+        </Alert>
+      )}
       <RecipeReview
         dishes={dishes}
         rows={rows}
