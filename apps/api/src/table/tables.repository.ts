@@ -115,6 +115,11 @@ export type TableDetails = {
   captainUserId?: string | null;
 };
 
+export type CaptainAssignment = {
+  captainUserId: string | null;
+  tables: { tableId: string; expectedCaptainUserId: string | null }[];
+};
+
 export type TableActiveContext = {
   statusCode: string;
   hasActiveOrder: boolean;
@@ -239,6 +244,55 @@ export class TablesRepository {
       data: { captainUserId },
     });
     return count === 0 ? null : this.findById(restaurantId, tableId);
+  }
+
+  async findByIds(restaurantId: string, tableIds: string[]): Promise<TableRecord[]> {
+    if (tableIds.length === 0) return [];
+    const completedOrderIds = await this.latestCompletedOrderIds(restaurantId);
+    return this.prisma.restaurantTable.findMany({
+      where: { restaurantId, id: { in: tableIds } },
+      select: restaurantTableSelect(restaurantId, completedOrderIds),
+      orderBy: [{ tableNumber: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  /**
+   * Applies each captain change only while the table still has the captain the caller saw
+   * (compare-and-set), and moves the table's upcoming BOOKED reservations with it, all in one
+   * transaction. Returns null, changing nothing, when any table is not in the restaurant.
+   */
+  updateCaptainsIfCurrent(
+    restaurantId: string,
+    assignments: CaptainAssignment[],
+  ): Promise<{ appliedIds: string[]; conflictIds: string[] } | null> {
+    const tableIds = assignments.flatMap((assignment) => assignment.tables.map((t) => t.tableId));
+    return this.prisma.$transaction(async (tx) => {
+      const found = await tx.restaurantTable.count({
+        where: { restaurantId, id: { in: tableIds } },
+      });
+      if (found !== tableIds.length) return null;
+
+      const appliedIds: string[] = [];
+      const conflictIds: string[] = [];
+      for (const { captainUserId, tables } of assignments) {
+        const applied: string[] = [];
+        for (const { tableId, expectedCaptainUserId } of tables) {
+          const { count } = await tx.restaurantTable.updateMany({
+            where: { id: tableId, restaurantId, captainUserId: expectedCaptainUserId },
+            data: { captainUserId },
+          });
+          (count === 1 ? applied : conflictIds).push(tableId);
+        }
+        if (applied.length > 0) {
+          await tx.reservation.updateMany({
+            where: { restaurantId, tableId: { in: applied }, status: 'BOOKED' },
+            data: { captainUserId },
+          });
+          appliedIds.push(...applied);
+        }
+      }
+      return { appliedIds, conflictIds };
+    });
   }
 
   /** Open QR table visits on this table, so their guest phones can be told about changes. */

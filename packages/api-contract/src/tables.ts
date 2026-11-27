@@ -175,6 +175,72 @@ export const assignTableCaptainRequestSchema = z
 export const assignTableCaptainResponseSchema = restaurantTableSchema;
 export const captainOptionsResponseSchema = z.array(tableCaptainSchema);
 
+/** Upper bound on tables in one bulk captain request (the whole floor of a large restaurant). */
+export const MAX_BULK_CAPTAIN_TABLES = 200;
+
+export const assignTablesCaptainRequestSchema = z
+  .object({
+    assignments: z
+      .array(
+        z
+          .object({
+            captainUserId: z
+              .string()
+              .uuid('Captain id must be a valid UUID')
+              .nullable()
+              .describe('Target captain; null clears the assignment.'),
+            tables: z
+              .array(
+                z
+                  .object({
+                    tableId: z.string().uuid('Table id must be a valid UUID'),
+                    expectedCaptainUserId: z
+                      .string()
+                      .uuid('Captain id must be a valid UUID')
+                      .nullable()
+                      .describe(
+                        'The captain the client saw; the table is skipped as a conflict when it differs.',
+                      ),
+                  })
+                  .strict(),
+              )
+              .min(1, 'Select at least one table'),
+          })
+          .strict(),
+      )
+      .min(1, 'Provide at least one assignment'),
+  })
+  .strict()
+  .superRefine(({ assignments }, ctx) => {
+    const tableIds = assignments.flatMap((assignment) => assignment.tables.map((t) => t.tableId));
+    if (tableIds.length > MAX_BULK_CAPTAIN_TABLES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['assignments'],
+        message: `Assign at most ${MAX_BULK_CAPTAIN_TABLES} tables at once`,
+      });
+    }
+    if (new Set(tableIds).size !== tableIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['assignments'],
+        message: 'Each table may appear only once',
+      });
+    }
+  })
+  .describe(
+    'Assign, change or clear captains on many tables at once. Tables whose current captain differs from expectedCaptainUserId are left unchanged and returned as conflicts.',
+  );
+
+export const assignTablesCaptainResponseSchema = z
+  .object({
+    updated: z.array(restaurantTableSchema).describe('Tables that were changed, as they are now'),
+    conflicts: z
+      .array(restaurantTableSchema)
+      .describe('Tables skipped because someone else changed their captain, as they are now'),
+  })
+  .strict();
+
 export const tableListResponseSchema = paginatedResponseSchema(restaurantTableSchema);
 /** The floor board needs every active table for local filters and complete counts. */
 export const tableBoardQuerySchema = z.object({}).strict();
@@ -197,6 +263,8 @@ export type TableActiveReservation = z.infer<typeof tableActiveReservationSchema
 export type AssignTableCaptainRequest = z.infer<typeof assignTableCaptainRequestSchema>;
 export type AssignTableCaptainResponse = z.infer<typeof assignTableCaptainResponseSchema>;
 export type CaptainOptionsResponse = z.infer<typeof captainOptionsResponseSchema>;
+export type AssignTablesCaptainRequest = z.infer<typeof assignTablesCaptainRequestSchema>;
+export type AssignTablesCaptainResponse = z.infer<typeof assignTablesCaptainResponseSchema>;
 export type TableLifecycleStatusCode = z.infer<typeof tableLifecycleStatusCodeSchema>;
 export type TableLifecycleStatus = z.infer<typeof tableLifecycleStatusSchema>;
 export type TableLifecycleStatusListResponse = z.infer<

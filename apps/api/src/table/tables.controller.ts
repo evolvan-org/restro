@@ -28,6 +28,10 @@ import {
   assignTableCaptainRequestSchema,
   type AssignTableCaptainResponse,
   assignTableCaptainResponseSchema,
+  type AssignTablesCaptainRequest,
+  assignTablesCaptainRequestSchema,
+  type AssignTablesCaptainResponse,
+  assignTablesCaptainResponseSchema,
   type CaptainOptionsResponse,
   captainOptionsResponseSchema,
   type CreateTableRequest,
@@ -259,6 +263,30 @@ export class TablesController {
     @Body(new ZodValidationPipe(updateTableActiveRequestSchema)) input: UpdateTableActiveRequest,
   ): Promise<UpdateTableActiveResponse> {
     return this.tablesService.updateActiveState(actor, id, input);
+  }
+
+  @Patch('tables/captain')
+  @RequirePermissions(Permission.TABLE_ASSIGN_CAPTAIN)
+  @ApiOperation({
+    summary: 'Assign, change or clear captains on many tables',
+    description:
+      "Each table changes only if its current captain still equals expectedCaptainUserId; others are skipped and returned as conflicts. Applied tables (and their upcoming BOOKED reservations) change in one transaction. Every captain must be an active user of the same restaurant whose role holds `table:be-captain`, and every table must belong to the caller's restaurant. Requires `table:assign-captain`.",
+  })
+  @ApiBody({ schema: zodOpenApiSchema(assignTablesCaptainRequestSchema) })
+  @ApiOkResponse({
+    description: 'Updated tables and skipped (conflicting) tables, with embedded captains',
+    schema: zodOpenApiSchema(assignTablesCaptainResponseSchema),
+  })
+  @ApiBadRequestResponse(
+    apiError('Invalid body, duplicate tables, inactive, other-restaurant or ineligible user'),
+  )
+  @ApiNotFoundResponse(apiError('A table or captain does not exist in your restaurant'))
+  assignCaptains(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(assignTablesCaptainRequestSchema))
+    input: AssignTablesCaptainRequest,
+  ): Promise<AssignTablesCaptainResponse> {
+    return this.tablesService.assignCaptains(actor, input);
   }
 
   @Patch('tables/:id/captain')

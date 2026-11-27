@@ -235,6 +235,16 @@
     transform: rotate(-4deg);
   }
 }
+/* Header "Assign captains" button while QR tables lack a captain; matches the banner's rose. */
+@keyframes assign-blink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--qs-rj) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--qs-rj) 22%, transparent);
+  }
+}
 @keyframes qr-shimmer {
   to {
     background-position: -200% 0;
@@ -252,6 +262,9 @@
 .qr-ring {
   animation: qr-ring 1.2s ease-in-out infinite;
 }
+.assign-blink {
+  animation: assign-blink 1.2s ease-in-out infinite;
+}
 .qr-skeleton {
   background: linear-gradient(90deg, var(--muted) 25%, var(--border) 50%, var(--muted) 75%);
   background-size: 200% 100%;
@@ -263,7 +276,8 @@
   .qr-pop,
   .qr-slidein,
   .qr-ring,
-  .qr-skeleton {
+  .qr-skeleton,
+  .assign-blink {
     animation: none;
   }
 }

@@ -11,6 +11,8 @@ import {
 import {
   type AssignTableCaptainRequest,
   type AssignTableCaptainResponse,
+  type AssignTablesCaptainRequest,
+  type AssignTablesCaptainResponse,
   type CaptainOptionsResponse,
   type CreateTableRequest,
   type CreateTableResponse,
@@ -113,6 +115,46 @@ export class TablesService implements OnApplicationBootstrap, OnApplicationShutd
       throw new NotFoundException('Table not found');
     }
     return toRestaurantTable(updated, actor);
+  }
+
+  /**
+   * Bulk captain change for the floor board. Every target captain must be eligible and every table
+   * in the caller's restaurant (else nothing changes); tables whose captain changed since the client
+   * loaded them are skipped and returned as conflicts, the rest are applied atomically.
+   */
+  async assignCaptains(
+    actor: Actor,
+    input: AssignTablesCaptainRequest,
+  ): Promise<AssignTablesCaptainResponse> {
+    const captainIds = new Set(input.assignments.map((assignment) => assignment.captainUserId));
+    for (const captainUserId of captainIds) {
+      await this.assertCaptainEligible(actor.restaurantId, captainUserId);
+    }
+
+    const result = await this.tablesRepository.updateCaptainsIfCurrent(
+      actor.restaurantId,
+      input.assignments,
+    );
+    if (!result) {
+      throw new NotFoundException('Table not found');
+    }
+
+    const applied = new Set(result.appliedIds);
+    const records = await this.tablesRepository.findByIds(actor.restaurantId, [
+      ...result.appliedIds,
+      ...result.conflictIds,
+    ]);
+    for (const tableId of result.appliedIds) {
+      await this.announceQrTableChange(actor.restaurantId, tableId);
+    }
+    return {
+      updated: records
+        .filter((record) => applied.has(record.id))
+        .map((record) => toRestaurantTable(record, actor)),
+      conflicts: records
+        .filter((record) => !applied.has(record.id))
+        .map((record) => toRestaurantTable(record, actor)),
+    };
   }
 
   /**
