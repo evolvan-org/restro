@@ -29,7 +29,7 @@ const COPY: Record<AiFailureKind, Copy> = {
   UNREADABLE: {
     title: () => "We can't read this photo",
     body: (noun) =>
-      `The page is out of focus, too dark, or its text is too small or crowded to read every price with certainty, so we stopped before reading it. Retake it closer, flat and well lit, one section per photo if the ${noun} is busy. Nothing was added to your draft.`,
+      `We tried twice, the second time at extra detail, but the page is too out of focus, dark or crowded to read. Retake it closer, flat and well lit, one section per photo if the ${noun} is busy. Nothing was added to your draft.`,
     icon: <Eye aria-hidden />,
     tone: 'bad',
   },
@@ -141,8 +141,12 @@ export function PartialReadBanner({
   const failed = job.pages.filter((page) =>
     ['unreadable', 'failed', 'not_document'].includes(page.status),
   );
-  if (!failed.length) return null;
+  // Read, but even the extra-detail re-read had doubts: a clearer photo would read better.
+  const doubtful = job.pages.filter((page) => page.status === 'done' && page.retakeSuggested);
+  if (!failed.length && !doubtful.length) return null;
   const read = job.pages.length - failed.length;
+  const list = (pages: typeof failed) => pages.map((page) => `Page ${page.page}`).join(', ');
+  const retake = [...failed, ...doubtful].sort((a, b) => a.page - b.page);
   return (
     <Card as="section" className="flex flex-col gap-3 p-5">
       <div className="flex items-center gap-3" role="status">
@@ -150,16 +154,26 @@ export function PartialReadBanner({
           <Layers aria-hidden />
         </IconTile>
         <h2 className="text-base font-semibold">
-          We read {read} of {job.pages.length} pages
+          {failed.length
+            ? `We read ${read} of ${job.pages.length} pages`
+            : `Check ${doubtful.length === 1 ? 'this page' : 'these pages'} carefully`}
         </h2>
       </div>
-      <p className="text-[13.5px] text-muted-foreground">
-        {failed.map((page) => `Page ${page.page}`).join(', ')} couldn&apos;t be read. Everything
-        from the other pages is in your draft. Retake {failed.length === 1 ? 'it' : 'them'} to fill
-        the gap.
-      </p>
+      {failed.length > 0 && (
+        <p className="text-[13.5px] text-muted-foreground">
+          {list(failed)} couldn&apos;t be read. Everything from the other pages is in your draft.
+          Retake {failed.length === 1 ? 'it' : 'them'} to fill the gap.
+        </p>
+      )}
+      {doubtful.length > 0 && (
+        <p className="text-[13.5px] text-muted-foreground">
+          {list(doubtful)} {doubtful.length === 1 ? 'was' : 'were'} hard to read even at extra
+          detail, so some names or prices may be wrong. Check the flagged rows, or retake{' '}
+          {doubtful.length === 1 ? 'it' : 'them'} flat and well lit for a cleaner read.
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
-        {failed.map((page) => (
+        {retake.map((page) => (
           <button
             key={page.page}
             type="button"
@@ -170,7 +184,7 @@ export function PartialReadBanner({
             Retake page {page.page}
           </button>
         ))}
-        {onContinue && (
+        {onContinue && failed.length > 0 && (
           <button type="button" className={btn('default', 'sm')} onClick={onContinue}>
             Continue without {failed.length === 1 ? 'it' : 'them'}
           </button>

@@ -20,6 +20,11 @@ export type AiRequest = {
   system: string;
   prompt: string;
   images?: readonly AiImage[];
+  /**
+   * How much detail the model may spend per image. `ultra` doubles the image token budget (Gemini
+   * ULTRA_HIGH: 2240 instead of 1120): used to re-read a page whose first read was poor.
+   */
+  imageDetail?: 'default' | 'ultra';
   /** OpenAPI-subset schema for the JSON response. */
   responseSchema: Record<string, unknown>;
   temperature?: number;

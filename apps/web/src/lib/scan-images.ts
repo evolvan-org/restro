@@ -1,27 +1,32 @@
 /*
  * Browser-side photo preparation for scans: HEIC → JPEG, PDF → one JPEG per page, downscale to a
- * 2000 px long edge, and a quality gate (resolution, text sharpness, brightness) BEFORE anything is
- * uploaded. Pages too small or too blurry to read are refused here, so they never use a scan or AI
- * tokens; the owner retakes them while the menu is still in hand.
+ * 2000 px long edge, and a quick quality check (resolution, text sharpness, brightness) BEFORE
+ * anything is uploaded. Only hopeless photos (thumbnails, extreme blur) are refused here; small,
+ * soft or dark ones are sent with a warning, since readability depends on text size, not image
+ * size. The model judges them, re-reading a poor page at extra detail once.
  */
 
 import { SCAN_MIN_SHORT_EDGE } from '@rms/api-contract';
 
 export const SCAN_LONG_EDGE = 2000;
 const JPEG_QUALITY = 0.85;
-/**
- * Text sharpness (see `measure`) below which prices can no longer be told apart (9 vs 8 vs 0).
- * Calibrated on a printed menu: sharp photos score 600+, slight camera softness ~600–800, a
- * 2 px blur ~50 (risky), 3 px ~12 (unreadable).
+/*
+ * Text sharpness (see `measure`), calibrated on a printed menu: sharp photos score 600+, slight
+ * camera softness ~600–800, a 2 px blur ~50 (prices risky), a 3 px blur ~12 (unreadable).
  */
-const BLUR_THRESHOLD = 100;
+/** Below this, nothing on the page can be read: refused. */
+const UNREADABLE_BLUR = 20;
+/** Below this, prices may be misread: sent with a warning. */
+const SOFT_BLUR = 100;
+/** Short edges below this get a "small photo" warning (above the hard minimum). */
+const SMALL_SHORT_EDGE = 500;
 const DARK_THRESHOLD = 60;
 const SHARPNESS_TILE = 64;
 
-export type PageWarning = 'blurry' | 'dark' | 'small';
+export type PageWarning = 'too-blurry' | 'too-small' | 'blurry' | 'dark' | 'small';
 
-/** Problems that make a page unreadable: it can't be sent until it is retaken or removed. */
-export const BLOCKING_WARNINGS: readonly PageWarning[] = ['blurry', 'small'];
+/** Hopeless photos: refused until retaken or removed. Every other warning is advice only. */
+export const BLOCKING_WARNINGS: readonly PageWarning[] = ['too-blurry', 'too-small'];
 
 export type ScanPage = {
   id: string;
@@ -35,9 +40,12 @@ export type ScanPage = {
 };
 
 export const PAGE_WARNING_TEXT: Record<PageWarning, string> = {
-  blurry: 'Too blurry to read. Hold the phone steady and retake it in good light.',
+  'too-blurry': 'Too blurry to read anything. Hold the phone steady and retake it in good light.',
+  'too-small':
+    'Too small to read. Use the original photo rather than a thumbnail, or retake it closer.',
+  blurry: 'Looks a little soft, so some prices may be misread. A steadier photo reads best.',
   dark: 'Looks dark. Retake near a window or with the lights on.',
-  small: 'Resolution too low to read. Retake it closer so the page fills the frame.',
+  small: 'Small photo. Fine if the text is large; otherwise retake it closer.',
 };
 
 export function isPageBlocked(page: Pick<ScanPage, 'warnings'>): boolean {
@@ -122,10 +130,13 @@ async function fromDrawable(
   const { sharpness, brightness } = measure(canvas);
   const blob = await canvasToBlob(canvas);
   const warnings: PageWarning[] = [];
-  if (sharpness < BLUR_THRESHOLD) warnings.push('blurry');
+  if (sharpness < UNREADABLE_BLUR) warnings.push('too-blurry');
+  else if (sharpness < SOFT_BLUR) warnings.push('blurry');
   if (brightness < DARK_THRESHOLD) warnings.push('dark');
   // The uploaded size, which is what the API checks too.
-  if (Math.min(canvas.width, canvas.height) < SCAN_MIN_SHORT_EDGE) warnings.push('small');
+  const shortEdge = Math.min(canvas.width, canvas.height);
+  if (shortEdge < SCAN_MIN_SHORT_EDGE) warnings.push('too-small');
+  else if (shortEdge < SMALL_SHORT_EDGE) warnings.push('small');
   return {
     id: crypto.randomUUID(),
     blob,

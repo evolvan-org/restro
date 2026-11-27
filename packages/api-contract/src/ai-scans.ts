@@ -44,11 +44,11 @@ export const SCAN_MIN_PAGES = 1;
 export const SCAN_MAX_PAGES = 8;
 export const SCAN_MAX_PAGE_BYTES = 6 * 1024 * 1024;
 /**
- * Shortest side a scan photo may have, after the browser's downscale to a 2000 px long edge.
- * Below this, menu and invoice text is too small to read, so the page is refused before it uses
- * a scan or any AI tokens (checked in the browser and again by the API).
+ * Shortest side a scan photo may have (after the browser's downscale to a 2000 px long edge).
+ * Only thumbnails fall below it: readability depends on text size, not image size, so anything
+ * larger is sent and the model judges it. Checked in the browser and again by the API.
  */
-export const SCAN_MIN_SHORT_EDGE = 700;
+export const SCAN_MIN_SHORT_EDGE = 300;
 export const SCAN_ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 /** Confidence bands: always shown as icon + number, never colour alone. */
@@ -94,6 +94,11 @@ export const scanPageResultSchema = z
     itemCount: z.number().int().nonnegative(),
     /** Section heading the page seems to hold, e.g. "Starters". */
     title: z.string().nullable(),
+    /**
+     * Read, but even the extra-detail re-read left many doubtful rows: suggest a clearer photo.
+     * Absent on pages read before this flag existed.
+     */
+    retakeSuggested: z.boolean().optional(),
   })
   .strict();
 

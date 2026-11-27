@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Part } from '@google/genai';
+import { GoogleGenAI, type Part, PartMediaResolutionLevel } from '@google/genai';
 import { Logger } from '@nestjs/common';
 
 import {
@@ -104,6 +104,9 @@ export class GeminiProvider implements AiProvider {
     const parts: Part[] = [
       ...(request.images ?? []).map((image) => ({
         inlineData: { mimeType: image.mimeType, data: image.data.toString('base64') },
+        ...(request.imageDetail === 'ultra' && {
+          mediaResolution: { level: PartMediaResolutionLevel.MEDIA_RESOLUTION_ULTRA_HIGH },
+        }),
       })),
       { text: request.prompt },
     ];
@@ -143,7 +146,7 @@ export class GeminiProvider implements AiProvider {
           }
         }
         this.logger.log(
-          `task=${request.task} model=${model} in=${usage.inputTokens} out=${usage.outputTokens} ms=${Date.now() - started}`,
+          `task=${request.task} model=${model}${request.imageDetail === 'ultra' ? ' detail=ultra' : ''} in=${usage.inputTokens} out=${usage.outputTokens} ms=${Date.now() - started}`,
         );
         yield { usage };
         return;

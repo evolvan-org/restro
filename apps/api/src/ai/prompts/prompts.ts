@@ -35,9 +35,9 @@ const pageFields = {
 
 /** Judge the page before reading it, so an unusable page costs no row output. */
 const PAGE_CHECK = (document: 'menu' | 'invoice') => `First judge the page, before any rows:
-- documentType: "${document}" for any ${document} with real content, however it was designed (printed, handwritten, or made from a design template with real names and prices). Use "other" only for a different kind of document, or when the content itself is placeholder: Latin filler text (lorem ipsum, "Exercitation", "Nostrud minim"), "Item name" style labels, or prices that are all 0.00 / 00 / $0.
-- quality: "blurry" if the text is out of focus; "cluttered" if the text is too small, too dense or too decorative (illustrations and fancy lettering over the text) to read every line and price with certainty at this resolution; "dark" or "cropped" if so; otherwise "ok".
-- If documentType is not "${document}", or quality is "blurry", "cluttered" or "unreadable", return an empty list and stop: do not guess at lines you can't read with certainty.`;
+- documentType: "${document}" for any ${document}, however it was made (printed, handwritten, photographed at an angle, or designed from a template). Use "other" only when the page is clearly a different kind of thing (for example an invoice or receipt instead of a menu, a menu instead of an invoice, an ID card, or a photo with no ${document} on it).
+- quality: "blurry" only if most of the text is too out of focus to read; "cluttered" only if most lines are too small, dense or decorative to read; "unreadable" if you can't read it at all; "dark" or "cropped" if so; otherwise "ok". A page that is a little soft, tilted or unevenly lit but mostly readable is "ok": read it, and lower confidence (with an issue) on each line you are unsure of.
+- If documentType is not "${document}", or quality is "blurry", "cluttered" or "unreadable", return an empty list and stop: never guess at lines you can't read.`;
 
 export const MENU_SYSTEM = `You read photos of Indian restaurant menus and return structured JSON.
 ${PAGE_CHECK('menu')}

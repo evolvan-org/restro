@@ -43,7 +43,37 @@ type PageReader = {
    * reads the same way: kind, category and raw text vary when the fallback model does the re-read.
    */
   keyFields: readonly string[];
+  /** How sure the model was of a mapped row; null for rows that don't count (headers, notes). */
+  score(row: Record<string, unknown>): { confidence: number; priceDoubt: boolean } | null;
 };
+
+/** Rows held back at default detail before deciding whether the read is good enough to show. */
+export const PROBATION_ROWS = 8;
+/** Below this average row confidence, or above this share of price doubts, a read is poor. */
+export const POOR_CONFIDENCE = 70;
+export const POOR_PRICE_DOUBT_SHARE = 0.2;
+
+export type RowStats = { rows: number; confidenceSum: number; priceDoubts: number };
+
+/** A read is poor when its rows are, on average, doubtful (see the thresholds above). */
+export function isPoorRead(stats: RowStats): boolean {
+  if (stats.rows === 0) return false;
+  return (
+    stats.confidenceSum / stats.rows < POOR_CONFIDENCE ||
+    stats.priceDoubts / stats.rows > POOR_PRICE_DOUBT_SHARE
+  );
+}
+
+type HeldRow = { key: string; row: Record<string, unknown> | null };
+type ReadOptions = { detail: 'default' | 'ultra'; probation: boolean };
+type ReadOutcome =
+  /** Finished; rows were saved and pushed. */
+  | { kind: 'read'; stats: RowStats }
+  /** The verdict stopped the read before any row: not this kind of document, or unreadable. */
+  | { kind: 'stopped'; status: 'not_document' | 'unreadable'; quality: ScanPageResult['quality'] }
+  /** The held rows were too doubtful; nothing was saved or shown. */
+  | { kind: 'poor'; held: HeldRow[] };
+type PageAttempt = ReadOutcome | { kind: 'failed'; unavailable: boolean } | { kind: 'aborted' };
 
 const UNUSABLE_QUALITY = new Set(['blurry', 'cluttered', 'unreadable']);
 
@@ -120,9 +150,13 @@ abstract class PageScanHandler implements AiJobHandler {
   ) {}
 
   /**
-   * One streamed read of a page. On a resumed attempt the model reads the page again from the top,
-   * so rows matching ones already handled (same content, counted so repeats on a menu survive)
-   * are skipped and only the rest are saved.
+   * One streamed read of a page.
+   *
+   * - With `probation`, the first rows are held back: if they turn out doubtful the read is
+   *   aborted and the caller re-reads at more detail, so weak rows never reach the owner's screen.
+   * - On a resumed attempt (after an interrupted stream) the model reads the page again from the
+   *   top, so rows matching ones already handled (same content, counted so repeats on a menu
+   *   survive) are skipped and only the rest are saved.
    */
   private async readPage(
     context: JobRunContext,
@@ -131,13 +165,22 @@ abstract class PageScanHandler implements AiJobHandler {
     pageResult: ScanPageResult,
     result: AiJobResult,
     handled: Map<string, number>,
-  ): Promise<void> {
+    options: ReadOptions,
+  ): Promise<ReadOutcome> {
     const skip = new Map(handled);
     const stream = new JsonArrayStream(reader.arrayKey);
     const expected = this.task === 'menu-page' ? 'menu' : 'invoice';
-    // Stops the request once the page-level verdict says the page isn't worth reading.
+    const stats: RowStats = { rows: 0, confidenceSum: 0, priceDoubts: 0 };
+    const held: HeldRow[] = [];
+    let probation = options.probation;
+    // Stops the request once the page-level verdict (or the held rows) say it isn't worth reading.
     const stop = new AbortController();
     let checking = true;
+    const release = async (entry: HeldRow): Promise<void> => {
+      handled.set(entry.key, (handled.get(entry.key) ?? 0) + 1);
+      await this.saveRow(context, entry.row, pageResult, result);
+    };
+
     for await (const chunk of this.provider.stream({
       task: this.task,
       model: this.model,
@@ -145,6 +188,7 @@ abstract class PageScanHandler implements AiJobHandler {
       system: this.system,
       prompt: this.prompt(pageResult.page, result.pages.length),
       images: [{ mimeType: image.type, data: image.data }],
+      imageDetail: options.detail,
       responseSchema: this.schema,
       signal: AbortSignal.any([context.signal, stop.signal]),
     })) {
@@ -156,11 +200,9 @@ abstract class PageScanHandler implements AiJobHandler {
       if (checking) {
         const verdict = pageVerdict(stream.fullText, expected, reader.arrayKey);
         if (verdict.stop) {
-          // Unusable page (not a real menu / invoice, blurry, cluttered): no rows are generated.
+          // Not this kind of document, or unreadable: no rows are generated.
           stop.abort();
-          pageResult.status = verdict.stop;
-          pageResult.quality = verdict.quality;
-          return;
+          return { kind: 'stopped', status: verdict.stop, quality: verdict.quality };
         }
         checking = !verdict.decided;
       }
@@ -172,29 +214,86 @@ abstract class PageScanHandler implements AiJobHandler {
           skip.set(key, pending - 1);
           continue;
         }
-        handled.set(key, (handled.get(key) ?? 0) + 1);
         const row = reader.map(raw, pageResult.page);
-        if (!row) {
-          result.droppedRows += 1;
+        const score = row ? reader.score(row) : null;
+        if (score) {
+          stats.rows += 1;
+          stats.confidenceSum += score.confidence;
+          if (score.priceDoubt) stats.priceDoubts += 1;
+        }
+        if (!probation) {
+          await release({ key, row });
           continue;
         }
-        await context.emit({
-          page: pageResult.page,
-          confidence: Number(row.confidence ?? 0),
-          data: row,
-        });
-        pageResult.itemCount += 1;
+        held.push({ key, row });
+        if (stats.rows >= PROBATION_ROWS) {
+          if (isPoorRead(stats)) {
+            stop.abort();
+            return { kind: 'poor', held };
+          }
+          probation = false;
+          for (const entry of held.splice(0)) await release(entry);
+        }
       }
     }
+    // A short page ends inside probation: judge what was held.
+    if (probation && isPoorRead(stats)) return { kind: 'poor', held };
+    for (const entry of held) await release(entry);
+
     const full = parseJsonObject(stream.fullText);
     reader.finish(full, result);
-    const quality = full?.quality;
-    pageResult.quality = pageQuality(quality);
+    pageResult.quality = pageQuality(full?.quality);
     pageResult.title = typeof full?.title === 'string' ? full.title.slice(0, 100) : null;
     if (pageResult.itemCount > 0) pageResult.status = 'done';
-    else if (full && full.documentType !== (this.task === 'menu-page' ? 'menu' : 'invoice')) {
-      pageResult.status = 'not_document';
-    } else pageResult.status = 'unreadable';
+    else if (full && full.documentType !== expected) pageResult.status = 'not_document';
+    else pageResult.status = 'unreadable';
+    return { kind: 'read', stats };
+  }
+
+  private async saveRow(
+    context: JobRunContext,
+    row: Record<string, unknown> | null,
+    pageResult: ScanPageResult,
+    result: AiJobResult,
+  ): Promise<void> {
+    if (!row) {
+      result.droppedRows += 1;
+      return;
+    }
+    await context.emit({
+      page: pageResult.page,
+      confidence: Number(row.confidence ?? 0),
+      data: row,
+    });
+    pageResult.itemCount += 1;
+  }
+
+  /** One read of a page, resuming interrupted streams (see `readPage`). */
+  private async readWithResume(
+    context: JobRunContext,
+    reader: PageReader,
+    image: { type: string; data: Buffer },
+    pageResult: ScanPageResult,
+    result: AiJobResult,
+    options: ReadOptions,
+  ): Promise<PageAttempt> {
+    // Rows of this read already handled (saved or dropped), by content, across attempts.
+    const handled = new Map<string, number>();
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.readPage(context, reader, image, pageResult, result, handled, options);
+      } catch (error) {
+        if (context.signal.aborted) return { kind: 'aborted' };
+        if (error instanceof AiStreamInterruptedError && attempt < AI_STREAM_RESUME_ATTEMPTS) {
+          this.logger.warn(
+            `job=${context.job.id} page=${pageResult.page} stream interrupted after ${pageResult.itemCount} row(s); resuming (attempt ${attempt + 1})`,
+          );
+          await resumeDelay(attempt);
+          continue;
+        }
+        return { kind: 'failed', unavailable: error instanceof AiUnavailableError };
+      }
+    }
   }
 
   async run(context: JobRunContext): Promise<JobOutcome> {
@@ -209,6 +308,7 @@ abstract class PageScanHandler implements AiJobHandler {
       if (pageResult.status === 'reading')
         await this.repository.deletePageItems(job.id, pageResult.page);
       Object.assign(pageResult, { status: 'reading', itemCount: 0, quality: null, title: null });
+      delete pageResult.retakeSuggested;
       await context.saveResult(result, doneCount(result.pages));
 
       const image = await this.images.read(job.restaurantId, job.id, pageResult.page);
@@ -222,28 +322,45 @@ abstract class PageScanHandler implements AiJobHandler {
         continue;
       }
 
-      // Rows of this page already handled (saved or dropped), by content, across attempts.
-      const handled = new Map<string, number>();
-      for (let attempt = 1; ; attempt += 1) {
-        try {
-          await this.readPage(context, reader, image, pageResult, result, handled);
-          break;
-        } catch (error) {
-          if (context.signal.aborted) break;
-          if (error instanceof AiStreamInterruptedError && attempt < AI_STREAM_RESUME_ATTEMPTS) {
-            this.logger.warn(
-              `job=${job.id} page=${pageResult.page} stream interrupted after ${pageResult.itemCount} row(s); resuming (attempt ${attempt + 1})`,
-            );
-            await resumeDelay(attempt);
-            continue;
+      // Default detail first; a poor or unreadable read is re-read once at extra detail.
+      const first = await this.readWithResume(context, reader, image, pageResult, result, {
+        detail: 'default',
+        probation: true,
+      });
+      if (first.kind === 'aborted') break;
+      let last: PageAttempt = first;
+      if (first.kind === 'poor' || (first.kind === 'stopped' && first.status === 'unreadable')) {
+        this.logger.log(
+          `job=${job.id} page=${pageResult.page} ${first.kind === 'poor' ? 'doubtful rows' : 'unreadable'} at default detail; re-reading at ultra detail`,
+        );
+        last = await this.readWithResume(context, reader, image, pageResult, result, {
+          detail: 'ultra',
+          probation: false,
+        });
+        if (last.kind === 'aborted') break;
+        if (first.kind === 'poor' && last.kind !== 'read') {
+          // The re-read gave nothing better: keep the first read's rows, and suggest a retake.
+          for (const entry of first.held) {
+            await this.saveRow(context, entry.row, pageResult, result);
           }
-          // Rows saved before the failure stay, but the page is incomplete: the owner retakes it.
-          pageResult.status = 'failed';
-          if (error instanceof AiUnavailableError) unavailable = true;
-          break;
+          pageResult.status = pageResult.itemCount > 0 ? 'done' : 'unreadable';
+          pageResult.quality = 'blurry';
+          pageResult.retakeSuggested = pageResult.itemCount > 0;
+          last = { kind: 'read', stats: { rows: 0, confidenceSum: 0, priceDoubts: 0 } };
         }
       }
-      if (context.signal.aborted) break;
+
+      if (last.kind === 'read') {
+        if (isPoorRead(last.stats) && pageResult.status === 'done')
+          pageResult.retakeSuggested = true;
+      } else if (last.kind === 'stopped') {
+        pageResult.status = last.status;
+        pageResult.quality = last.quality;
+      } else if (last.kind === 'failed') {
+        // Rows saved before the failure stay, but the page is incomplete: the owner retakes it.
+        pageResult.status = 'failed';
+        if (last.unavailable) unavailable = true;
+      }
       await context.saveResult(result, doneCount(result.pages));
     }
 
@@ -305,6 +422,16 @@ export class MenuScanHandler extends PageScanHandler {
     return {
       arrayKey: 'rows',
       keyFields: ['name', 'price'],
+      // Every dish line counts, including ones flagged as a possible duplicate.
+      score: (row) =>
+        row.flag !== 'not_a_dish'
+          ? {
+              confidence: Number(row.confidence ?? 0),
+              priceDoubt: Array.isArray(row.issues)
+                ? row.issues.some((issue) => typeof issue === 'string' && /price/i.test(issue))
+                : false,
+            }
+          : null,
       map: (raw, page) => mapMenuRow(raw, page, dishKey, seen),
       finish: () => undefined,
     };
@@ -340,6 +467,7 @@ export class InvoiceScanHandler extends PageScanHandler {
     return Promise.resolve({
       arrayKey: 'lines',
       keyFields: ['description', 'amount'],
+      score: (row) => ({ confidence: Number(row.confidence ?? 0), priceDoubt: false }),
       map: (raw, page) => mapInvoiceLine(raw, page),
       finish: (full, result) => {
         result.invoiceHeader = mergeInvoiceHeader(result.invoiceHeader, full?.header);

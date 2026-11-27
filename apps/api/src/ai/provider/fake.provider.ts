@@ -427,6 +427,30 @@ function prices(prompt: string): Record<string, unknown> {
   return { items: names.map((name) => ({ name, known: true, baseUnit: 'G', price: '250' })) };
 }
 
+/**
+ * An extra-detail re-read, as a real model behaves: rows it doubted come back more confident (at
+ * least 80) and most price misreads are resolved; one is kept, so the demo review still shows a
+ * flagged price. Other notes (veg marker, category) stay. An unreadable page stays unreadable.
+ */
+function readCloser(body: Record<string, unknown>): Record<string, unknown> {
+  let keptPriceDoubt = false;
+  const sharpen = (rows: unknown): unknown =>
+    Array.isArray(rows)
+      ? rows.map((row: Record<string, unknown>) => {
+          const issues = Array.isArray(row.issues) ? (row.issues as string[]) : [];
+          const priceDoubt = issues.some((issue) => /price/i.test(issue));
+          const keep = priceDoubt && !keptPriceDoubt;
+          if (keep) keptPriceDoubt = true;
+          return {
+            ...row,
+            confidence: keep ? row.confidence : Math.max(Number(row.confidence ?? 0), 80),
+            ...(priceDoubt && !keep && { issues: issues.filter((issue) => !/price/i.test(issue)) }),
+          };
+        })
+      : rows;
+  return { ...body, rows: sharpen(body.rows), lines: sharpen(body.lines) };
+}
+
 export class FakeProvider implements AiProvider {
   readonly name = 'fake';
 
@@ -453,7 +477,7 @@ export class FakeProvider implements AiProvider {
           : request.task === 'recipes'
             ? recipes(request.prompt)
             : prices(request.prompt);
-    const text = JSON.stringify(body);
+    const text = JSON.stringify(request.imageDetail === 'ultra' ? readCloser(body) : body);
     // Roughly one row per ~400 ms, like a real streamed read.
     const chunkSize = 90;
     // `flaky` drops every other stream of a task halfway, like Gemini closing it mid-event, so
