@@ -76,6 +76,19 @@ export function useInventoryReceipts(query: InventoryReceiptQuery) {
   return useInventoryQuery('goods-receipts', inventoryReceiptsSchema, query);
 }
 
+export function useInventoryReceipt(id: string) {
+  return useQuery({
+    queryKey: [...inventoryKey, 'goods-receipt', id],
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: async ({ signal }) =>
+      inventoryReceiptSchema.parse(
+        (await api.get(`/inventory/goods-receipts/${id}`, { signal })).data,
+      ),
+  });
+}
+
 export function useInventoryOptions(enabled: boolean) {
   return useInventoryQuery('options', inventoryOptionsSchema, undefined, enabled);
 }

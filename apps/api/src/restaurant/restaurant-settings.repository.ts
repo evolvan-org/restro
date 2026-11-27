@@ -31,6 +31,27 @@ export type RestaurantSettingsDetails = {
 export class RestaurantSettingsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  findLogo(
+    restaurantId: string,
+  ): Promise<{ mimeType: string | null; data: Uint8Array | null } | null> {
+    return this.prisma.restaurantLogo.findUnique({
+      where: { restaurantId },
+      select: { mimeType: true, data: true },
+    });
+  }
+
+  async saveLogo(
+    restaurantId: string,
+    mimeType: string | null,
+    data: Uint8Array<ArrayBuffer> | null,
+  ): Promise<void> {
+    await this.prisma.restaurantLogo.upsert({
+      where: { restaurantId },
+      create: { restaurantId, mimeType, data },
+      update: { mimeType, data },
+    });
+  }
+
   findById(restaurantId: string): Promise<RestaurantSettingsRecord | null> {
     return this.prisma.restaurant.findUnique({
       where: { id: restaurantId },

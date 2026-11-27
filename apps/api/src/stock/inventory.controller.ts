@@ -24,6 +24,7 @@ import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiParam,
   ApiProduces,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -218,6 +219,17 @@ export class InventoryController {
     @Query(new ZodValidationPipe(inventoryReceiptQuerySchema)) query: InventoryReceiptQuery,
   ): Promise<Paginated<InventoryReceipt>> {
     return this.inventory.receipts(actor, query);
+  }
+
+  @Get('goods-receipts/:id')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(inventoryReceiptSchema) })
+  receipt(
+    @CurrentActor() actor: Actor,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<InventoryReceipt> {
+    return this.inventory.receipt(actor, id);
   }
 
   @Post('items')

@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -26,7 +27,13 @@ import {
 import {
   type CreateMenuItemRequest,
   createMenuItemRequestSchema,
+  type MenuCustomizations,
+  menuCustomizationsSchema,
   type MenuItem,
+  type MenuItemHistoryQuery,
+  menuItemHistoryQuerySchema,
+  type MenuItemHistoryResponse,
+  menuItemHistoryResponseSchema,
   type MenuItemListQuery,
   menuItemListQuerySchema,
   type MenuItemListResponse,
@@ -96,6 +103,37 @@ export class MenuItemsController {
     @Query(new ZodValidationPipe(menuItemSearchQuerySchema)) query: MenuItemSearchQuery,
   ): Promise<MenuItemSearchResponse> {
     return this.service.search(actor, query);
+  }
+
+  @Put(':id/customizations')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({ summary: 'Configure sizes, modifier choices and combo components' })
+  @ApiBody({ schema: zodOpenApiSchema(menuCustomizationsSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemSchema) })
+  @ApiBadRequestResponse(apiError('Invalid choices or cyclic combo components'))
+  @ApiNotFoundResponse(apiError('Item or combo component not found in the caller restaurant'))
+  configure(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(menuCustomizationsSchema)) config: MenuCustomizations,
+  ): Promise<MenuItem> {
+    return this.service.configure(actor, id, config);
+  }
+
+  @Get(':id/history')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.MENU_WRITE)
+  @ApiOperation({ summary: 'View immutable recipe and price revisions for a menu item' })
+  @ApiZodQuery(menuItemHistoryQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(menuItemHistoryResponseSchema) })
+  @ApiNotFoundResponse(apiError('Menu item not found in the caller restaurant'))
+  @ApiBadRequestResponse(apiError('Invalid item id or pagination'))
+  history(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(menuItemHistoryQuerySchema)) query: MenuItemHistoryQuery,
+  ): Promise<MenuItemHistoryResponse> {
+    return this.service.history(actor, id, query);
   }
 
   @Post()

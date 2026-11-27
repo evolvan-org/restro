@@ -2,13 +2,15 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  API_ERROR_CODES,
+  errorResponseSchema,
   type LoginRequest,
   loginRequestSchema,
   onboardingIncompleteErrorSchema,
 } from '@rms/api-contract';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
-import type { ReactElement } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { LoginForm } from '@/components/login-form';
@@ -28,37 +30,48 @@ export default function Login(): ReactElement {
     },
   });
 
-  const onSubmit = form.handleSubmit((values) => {
-    login.mutate(values, {
-      onSuccess: ({ onboarding, mustChangePassword }) => {
-        try {
-          // A fresh login shows "Welcome back" once, so forget the previous session's visit.
-          window.sessionStorage.removeItem(WELCOMED_SESSION_KEY);
-        } catch {
-          // Session storage unavailable: the card just shows again.
-        }
-        // Land inside the signed-in shell so navigation (and Log out) is available.
-        router.push(
-          mustChangePassword
-            ? '/change-password'
-            : onboarding === 'PENDING'
-              ? '/onboarding'
-              : '/dashboard',
-        );
-      },
-    });
+  const [requiresCode, setRequiresCode] = useState(false);
+  const { mutateAsync: signIn, data: signedIn } = login;
+
+  useEffect(() => {
+    if (!signedIn) return;
+    try {
+      window.sessionStorage.removeItem(WELCOMED_SESSION_KEY);
+    } catch {
+      // Session storage is optional.
+    }
+    router.push(
+      signedIn.mustChangePassword
+        ? '/change-password'
+        : signedIn.onboarding === 'PENDING'
+          ? '/onboarding'
+          : '/dashboard',
+    );
+  }, [router, signedIn]);
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    try {
+      await signIn(values);
+    } catch (error) {
+      const body = getApiErrorBody(error, errorResponseSchema);
+      if (body?.code === API_ERROR_CODES.AUTHENTICATOR_REQUIRED) setRequiresCode(true);
+    }
   });
 
   const notReady = login.isError
     ? getApiErrorBody(login.error, onboardingIncompleteErrorSchema)
     : undefined;
-  const submitError = !login.isError
-    ? undefined
-    : notReady
+  const code = getApiErrorBody(login.error, errorResponseSchema)?.code;
+  const submitError =
+    !login.isError || code === API_ERROR_CODES.AUTHENTICATOR_REQUIRED
       ? undefined
-      : axios.isAxiosError(login.error) && login.error.response?.status === 401
-        ? 'Invalid email or password.'
-        : getApiErrorMessage(login.error, 'Unable to log in. Please try again.');
+      : notReady
+        ? undefined
+        : code === API_ERROR_CODES.AUTHENTICATOR_INVALID
+          ? 'Verification code is invalid, expired, or already used.'
+          : axios.isAxiosError(login.error) && login.error.response?.status === 401
+            ? 'Invalid email or password.'
+            : getApiErrorMessage(login.error, 'Unable to log in. Please try again.');
 
   return (
     <LoginForm
@@ -71,9 +84,11 @@ export default function Login(): ReactElement {
           : undefined
       }
       errors={{
+        verificationCode: form.formState.errors.verificationCode?.message,
         email: form.formState.errors.email?.message,
         password: form.formState.errors.password?.message,
       }}
+      requiresCode={requiresCode}
       isSubmitting={form.formState.isSubmitting || login.isPending}
       onSubmit={onSubmit}
       register={form.register}

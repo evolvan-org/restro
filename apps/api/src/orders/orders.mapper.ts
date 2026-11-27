@@ -1,9 +1,11 @@
-import type {
-  CaptainOrderSummary,
-  Kot,
-  KotQueueItem,
-  Order,
-  OrderListItem,
+import {
+  type CaptainOrderSummary,
+  type Kot,
+  type KotQueueItem,
+  type Order,
+  type OrderListItem,
+  orderSelectionSnapshotSchema,
+  type PreparationState,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
@@ -25,16 +27,20 @@ export function toOrder(record: OrderRecord): Order {
     completedAt: record.completedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
-    items: record.items.map(({ menuItem, kotItems, ...item }) => ({
-      ...item,
-      sentQuantity: sentQuantity(kotItems),
-      name: menuItem.name,
-      itemType: menuItem.itemType,
-      unitPrice: item.unitPrice.toFixed(2),
-      lineTotal: orderItemTotal(item).toFixed(2),
-      createdAt: item.createdAt.toISOString(),
-      updatedAt: item.updatedAt.toISOString(),
-    })),
+    items: record.items.map(
+      ({ menuItem, kotItems, nameSnapshot, itemTypeSnapshot, selectionSnapshot, ...item }) => ({
+        ...item,
+        sentQuantity: sentQuantity(kotItems, item.sentQuantity),
+        name: nameSnapshot ?? menuItem.name,
+        itemType: itemTypeSnapshot ?? menuItem.itemType,
+        selections:
+          selectionSnapshot == null ? null : orderSelectionSnapshotSchema.parse(selectionSnapshot),
+        unitPrice: item.unitPrice.toFixed(2),
+        lineTotal: orderItemTotal(item).toFixed(2),
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+      }),
+    ),
   };
 }
 
@@ -45,13 +51,34 @@ export function toKot(record: KotRecord): Kot {
     kotNumber: record.kotNumber,
     destination: record.destination,
     status: record.status,
+    preparation: toPreparation(record),
     createdAt: record.createdAt.toISOString(),
-    items: record.items.map(({ orderItem, ...item }) => ({
-      ...item,
-      menuItemId: orderItem.menuItemId,
-      name: orderItem.menuItem.name,
-      specialInstructions: orderItem.specialInstructions,
-    })),
+    items: record.items.map(
+      ({ orderItem, componentMenuItemId, nameSnapshot, instructionsSnapshot, ...item }) => ({
+        ...item,
+        menuItemId: componentMenuItemId ?? orderItem.menuItemId,
+        name: nameSnapshot ?? orderItem.menuItem.name,
+        specialInstructions: instructionsSnapshot ?? orderItem.specialInstructions,
+      }),
+    ),
+  };
+}
+
+export function toPreparation(record: {
+  controlVersion: number;
+  acceptedAt: Date | null;
+  heldAt: Date | null;
+  holdReason: string | null;
+  isPriority: boolean;
+  targetSeconds: number | null;
+}): PreparationState {
+  return {
+    version: record.controlVersion,
+    acceptedAt: record.acceptedAt?.toISOString() ?? null,
+    heldAt: record.heldAt?.toISOString() ?? null,
+    holdReason: record.holdReason,
+    isPriority: record.isPriority,
+    targetSeconds: record.targetSeconds,
   };
 }
 
@@ -75,8 +102,8 @@ export function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
 }
 
-export function sentQuantity(kotItems: { quantity: number }[]): number {
-  return kotItems.reduce((total, kotItem) => total + kotItem.quantity, 0);
+export function sentQuantity(kotItems: { quantity: number }[], recorded?: number | null): number {
+  return recorded ?? kotItems.reduce((total, kotItem) => total + kotItem.quantity, 0);
 }
 
 /** Use persisted snapshots and decimal arithmetic; cancelled lines remain visible as history. */
@@ -116,7 +143,7 @@ export function toCaptainOrderSummary(record: CaptainOrderRecord): CaptainOrderS
     status: record.status,
     bill: record.bill ? { billNumber: record.bill.billNumber, status: record.bill.status } : null,
     itemCount: active.reduce((count, item) => count + item.quantity, 0),
-    itemNames: [...new Set(active.map((item) => item.menuItem.name))],
+    itemNames: [...new Set(active.map((item) => item.nameSnapshot ?? item.menuItem.name))],
     kotCounts,
     openedAt: record.openedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,

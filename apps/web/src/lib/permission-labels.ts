@@ -11,6 +11,48 @@ type PermissionGroup = { label: string; items: readonly PermissionItem[] };
  */
 export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
   {
+    label: 'Food incidents',
+    items: [
+      {
+        permission: Permission.FOOD_INCIDENT_READ,
+        label: 'View food incidents and response history',
+      },
+      {
+        permission: Permission.FOOD_INCIDENT_MANAGE,
+        label: 'Record food incidents, decisions and resolution',
+      },
+    ],
+  },
+  {
+    label: 'Attendance & workforce',
+    items: [
+      { permission: Permission.SCHEDULE_READ, label: 'View own shifts, availability and leave' },
+      { permission: Permission.SCHEDULE_SELF, label: 'Record own availability and request leave' },
+      { permission: Permission.LEAVE_APPROVE, label: 'Approve, reject or withdraw staff leave' },
+      {
+        permission: Permission.ATTENDANCE_READ,
+        label: 'View own attendance and request corrections',
+      },
+      { permission: Permission.ATTENDANCE_CLOCK, label: 'Clock in/out and record breaks' },
+      {
+        permission: Permission.ATTENDANCE_APPROVE,
+        label: 'Review and approve attendance corrections',
+      },
+      {
+        permission: Permission.WORKFORCE_MANAGE,
+        label: 'View and manage staff attendance and schedules',
+      },
+    ],
+  },
+  {
+    label: 'Operating checks',
+    items: [
+      { permission: Permission.TASK_READ, label: 'View assigned operating checks' },
+      { permission: Permission.TASK_COMPLETE, label: 'Record check completion or exceptions' },
+      { permission: Permission.TASK_MANAGE, label: 'Assign, edit and review all operating checks' },
+    ],
+  },
+  {
     label: 'Dashboard & reports',
     items: [
       { permission: Permission.DASHBOARD_READ, label: 'View dashboard' },

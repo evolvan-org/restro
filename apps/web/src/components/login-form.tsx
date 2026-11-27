@@ -17,6 +17,7 @@ export function LoginForm({
   register,
   submitError,
   notice,
+  requiresCode,
   ...props
 }: React.ComponentProps<'div'> & {
   errors?: Partial<Record<keyof LoginRequest, string>>;
@@ -24,6 +25,7 @@ export function LoginForm({
   onSubmit: React.FormEventHandler<HTMLFormElement>;
   register: UseFormRegister<LoginRequest>;
   submitError?: string;
+  requiresCode?: boolean;
   /** Blue, non-error notice (e.g. the restaurant isn't ready for staff yet). */
   notice?: { title: string; body: string };
 }) {
@@ -76,6 +78,22 @@ export function LoginForm({
                 />
                 <FieldError>{errors?.password}</FieldError>
               </Field>
+              {requiresCode && (
+                <Field data-invalid={Boolean(errors?.verificationCode)}>
+                  <FieldLabel htmlFor="verification-code">
+                    Authenticator or recovery code
+                  </FieldLabel>
+                  <Input
+                    id="verification-code"
+                    autoComplete="one-time-code"
+                    {...register('verificationCode', {
+                      setValueAs: (value: string) => value.trim() || undefined,
+                    })}
+                    required
+                  />
+                  <FieldError>{errors?.verificationCode}</FieldError>
+                </Field>
+              )}
               {submitError && <FieldError>{submitError}</FieldError>}
               <Field>
                 <Button type="submit" disabled={isSubmitting}>

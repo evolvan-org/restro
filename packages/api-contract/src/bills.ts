@@ -85,6 +85,7 @@ export const recordPaymentRequestSchema = z
   .object({
     paymentMethod: paymentMethodSchema,
     amount: billMoneySchema,
+    tipAmount: billMoneySchema.optional(),
     referenceNumber: z.string().trim().max(255).optional(),
   })
   .strict();
@@ -96,6 +97,7 @@ export const paymentSchema = z
     recordedByUserId: z.string().uuid(),
     paymentMethod: paymentMethodSchema,
     amount: billMoneySchema,
+    tipAmount: billMoneySchema,
     status: z.enum(['PENDING', 'COMPLETED', 'FAILED']),
     referenceNumber: z.string().nullable(),
     paidAt: z.string().datetime().nullable(),
@@ -132,6 +134,8 @@ export const billInvoiceSchema = z
     payment: z
       .object({
         method: paymentMethodSchema,
+        tipAmount: billMoneySchema,
+        amount: billMoneySchema,
         referenceNumber: z.string().nullable(),
         paidAt: z.string().datetime().nullable(),
       })

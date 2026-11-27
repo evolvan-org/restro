@@ -74,6 +74,11 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
         permission: Permission.SETTINGS_READ,
       },
       {
+        label: 'Thermal printing',
+        href: '/restaurant/settings/printing',
+        permission: Permission.SETTINGS_READ,
+      },
+      {
         label: 'Cancellation reasons',
         href: '/restaurant/settings/cancellation-reasons',
         permission: Permission.SETTINGS_READ,

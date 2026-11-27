@@ -166,6 +166,12 @@ export class InventoryService {
     );
   }
 
+  async receipt(actor: Actor, id: string): Promise<InventoryReceipt> {
+    const receipt = await this.repository.receipt(actor.restaurantId, id);
+    if (!receipt) throw new NotFoundException('Goods receipt not found');
+    return toInventoryReceipt(receipt);
+  }
+
   async receipts(actor: Actor, query: InventoryReceiptQuery): Promise<Paginated<InventoryReceipt>> {
     if (
       query.purchaseOrderId &&

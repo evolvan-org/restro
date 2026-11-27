@@ -42,9 +42,25 @@ export const Permission = {
   MENU_READ: 'menu:read',
   MENU_WRITE: 'menu:write',
 
+  // Attendance access is explicit; pay information is outside these permissions.
+  ATTENDANCE_READ: 'attendance:read',
+  ATTENDANCE_CLOCK: 'attendance:clock',
+  ATTENDANCE_APPROVE: 'attendance:approve',
+  WORKFORCE_MANAGE: 'workforce:manage',
+  SCHEDULE_READ: 'schedule:read',
+  SCHEDULE_SELF: 'schedule:self',
+  LEAVE_APPROVE: 'leave:approve',
+
+  // Daily operating checks. Existing roles receive these only through explicit role configuration.
+  TASK_READ: 'task:read',
+  TASK_MANAGE: 'task:manage',
+  TASK_COMPLETE: 'task:complete',
+
   // Stock
   STOCK_READ: 'stock:read',
   INVENTORY_MANAGE: 'inventory:manage',
+  FOOD_INCIDENT_READ: 'food-incident:read',
+  FOOD_INCIDENT_MANAGE: 'food-incident:manage',
 
   // Reservations
   RESERVATION_READ: 'reservation:read',

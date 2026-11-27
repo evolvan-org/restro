@@ -81,7 +81,10 @@ export function useQrQueue(scope: QrQueueScope, enabled = true): UseQueryResult<
   });
 }
 
-export function useQrSummary(enabled: boolean): UseQueryResult<QrSummaryResponse> {
+export function useQrSummary(
+  enabled: boolean,
+  observeLive = true,
+): UseQueryResult<QrSummaryResponse> {
   return useQuery({
     queryKey: [QrQueryKey.Summary],
     queryFn: async ({ signal }) =>
@@ -89,7 +92,7 @@ export function useQrSummary(enabled: boolean): UseQueryResult<QrSummaryResponse
         (await api.get('/qr-orders/summary', { signal, errorDisplay: 'inline' })).data,
       ),
     enabled,
-    ...live,
+    ...(observeLive ? live : { refetchOnWindowFocus: false, refetchOnReconnect: false }),
   });
 }
 

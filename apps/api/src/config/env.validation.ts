@@ -1,4 +1,24 @@
+import { isIPv4 } from 'node:net';
+
 import { z } from 'zod';
+
+const networkPrinter = z
+  .string()
+  .refine((value) => {
+    const [host = '', port = '', ...extra] = value.split(':');
+    return (
+      !extra.length &&
+      isIPv4(host) &&
+      /^\d{1,5}$/.test(port) &&
+      Number(port) > 0 &&
+      Number(port) <= 65535
+    );
+  }, 'Use IPv4:port')
+  .optional();
+const usbPrinter = z
+  .string()
+  .regex(/^\/dev\/usb\/lp\d+$/)
+  .optional();
 
 /** Validated environment schema. Fails fast on boot if misconfigured. */
 export const envSchema = z.object({
@@ -6,6 +26,7 @@ export const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(1),
+  AUTHENTICATOR_ENCRYPTION_KEY: z.string().min(32).optional(),
   RATE_LIMIT_HASH_SECRET: z.string().min(16),
   EMAIL_PROVIDER_API_KEY: z.string().min(1),
   EMAIL_FROM_ADDRESS: z.string().email(),
@@ -27,6 +48,21 @@ export const envSchema = z.object({
     .regex(/^(mailto:|https:\/\/)/, 'VAPID_SUBJECT must be a mailto: or https:// URL')
     .optional(),
   NEXT_PUBLIC_API_URL: z.string().url().optional(),
+  THERMAL_PRINTER_RESTAURANT_ID: z.string().uuid().optional(),
+  THERMAL_NETWORK_TARGETS: z
+    .string()
+    .optional()
+    .refine(
+      (value) =>
+        !value || value.split(',').every((entry) => networkPrinter.safeParse(entry.trim()).success),
+      'Use comma-separated IPv4:port endpoints',
+    ),
+  THERMAL_RECEIPT_NETWORK: networkPrinter,
+  THERMAL_RECEIPT_USB: usbPrinter,
+  THERMAL_KITCHEN_NETWORK: networkPrinter,
+  THERMAL_KITCHEN_USB: usbPrinter,
+  THERMAL_BAR_NETWORK: networkPrinter,
+  THERMAL_BAR_USB: usbPrinter,
   WEB_ORIGIN: z.string().optional(),
 });
 

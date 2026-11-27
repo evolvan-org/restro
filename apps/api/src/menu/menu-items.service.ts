@@ -4,24 +4,29 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type {
-  CreateMenuItemRequest,
-  MenuItem,
-  MenuItemListQuery,
-  MenuItemSearchQuery,
-  MenuItemSearchResponse,
-  UpdateMenuItemAvailabilityRequest,
-  UpdateMenuItemClassificationRequest,
-  UpdateMenuItemPriceRequest,
-  UpdateMenuItemRequest,
+import {
+  type CreateMenuItemRequest,
+  type MenuCustomizations,
+  menuCustomizationsSchema,
+  type MenuItem,
+  type MenuItemHistoryQuery,
+  type MenuItemHistoryResponse,
+  type MenuItemListQuery,
+  menuItemRevisionSchema,
+  type MenuItemSearchQuery,
+  type MenuItemSearchResponse,
+  type UpdateMenuItemAvailabilityRequest,
+  type UpdateMenuItemClassificationRequest,
+  type UpdateMenuItemPriceRequest,
+  type UpdateMenuItemRequest,
 } from '@rms/api-contract';
 import { buildPageMeta } from '@rms/shared';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { toMenuItem } from './menu-items.mapper';
 import {
   InactiveRecipeIngredientError,
   IncompatibleRecipeUnitError,
-  type MenuItemRecord,
   MenuItemsRepository,
 } from './menu-items.repository';
 
@@ -39,6 +44,31 @@ export class MenuItemsService {
       query.itemType,
     );
     return items.map(toMenuItem);
+  }
+
+  async configure(actor: Actor, id: string, config: MenuCustomizations): Promise<MenuItem> {
+    return this.repository.withLockedCustomizations(
+      actor.restaurantId,
+      id,
+      actor.userId,
+      async ({ current, findItem, save }) => {
+        if (!current?.isActive) throw new NotFoundException('Menu item not found');
+        const visit = async (itemId: string, path: ReadonlySet<string>): Promise<void> => {
+          if (path.has(itemId)) throw new BadRequestException('A combo cannot contain a cycle');
+          if (path.size >= 20) throw new BadRequestException('Combo nesting exceeds 20 levels');
+          const item = await findItem(itemId);
+          if (!item?.isActive) throw new NotFoundException('Combo component not found');
+          const next = new Set([...path, itemId]);
+          for (const component of menuCustomizationsSchema.parse(item.customizations).components) {
+            await visit(component.menuItemId, next);
+          }
+        };
+        for (const component of config.components) {
+          await visit(component.menuItemId, new Set([id]));
+        }
+        return toMenuItem(await save(config));
+      },
+    );
   }
 
   async search(actor: Actor, query: MenuItemSearchQuery): Promise<MenuItemSearchResponse> {
@@ -62,7 +92,7 @@ export class MenuItemsService {
 
     const { recipe, ...fields } = input;
     const created = await this.repository
-      .create(restaurantId, fields, recipe)
+      .create(restaurantId, fields, recipe, actor.userId)
       .catch(translateRecipeError);
     return toMenuItem(created);
   }
@@ -83,7 +113,7 @@ export class MenuItemsService {
 
     const { recipe, ...fields } = input;
     const updated = await this.repository
-      .update(restaurantId, id, fields, recipe)
+      .update(restaurantId, id, fields, recipe, actor.userId)
       .catch(translateRecipeError);
     if (!updated) throw new NotFoundException('Menu item not found');
     return toMenuItem(updated);
@@ -108,9 +138,36 @@ export class MenuItemsService {
     id: string,
     input: UpdateMenuItemPriceRequest,
   ): Promise<MenuItem> {
-    const updated = await this.repository.updatePrice(actor.restaurantId, id, input.price);
+    const updated = await this.repository.updatePrice(
+      actor.restaurantId,
+      id,
+      input.price,
+      actor.userId,
+    );
     if (!updated) throw new NotFoundException('Menu item not found');
     return toMenuItem(updated);
+  }
+
+  async history(
+    actor: Actor,
+    id: string,
+    query: MenuItemHistoryQuery,
+  ): Promise<MenuItemHistoryResponse> {
+    if (!(await this.repository.findById(actor.restaurantId, id))) {
+      throw new NotFoundException('Menu item not found');
+    }
+    const { items, total } = await this.repository.history(
+      actor.restaurantId,
+      id,
+      (query.page - 1) * query.pageSize,
+      query.pageSize,
+    );
+    return {
+      data: items.map((record) =>
+        menuItemRevisionSchema.parse({ ...record, createdAt: record.createdAt.toISOString() }),
+      ),
+      meta: buildPageMeta(query.page, query.pageSize, total),
+    };
   }
 
   async updateClassification(
@@ -170,19 +227,4 @@ function translateRecipeError(error: unknown): never {
     );
   }
   throw error;
-}
-
-function toMenuItem(record: MenuItemRecord): MenuItem {
-  const { recipeItems, price, createdAt, updatedAt, ...rest } = record;
-  return {
-    ...rest,
-    price: price.toFixed(2),
-    recipe: recipeItems.map((row) => ({
-      stockItem: row.stockItem,
-      quantity: row.quantity.toFixed(3),
-      unit: row.unit,
-    })),
-    createdAt: createdAt.toISOString(),
-    updatedAt: updatedAt.toISOString(),
-  };
 }

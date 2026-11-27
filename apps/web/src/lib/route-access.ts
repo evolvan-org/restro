@@ -39,6 +39,7 @@ export const ROUTE_RULES: readonly RouteRule[] = [
   { path: '/restaurant/settings/tables', permissions: [Permission.SETTINGS_READ] },
   { path: '/restaurant/settings/table-statuses', permissions: [Permission.SETTINGS_READ] },
   { path: '/restaurant/settings/menu-categories', permissions: [Permission.MENU_READ] },
+  { path: '/restaurant/settings/printing', permissions: [Permission.SETTINGS_READ] },
   { path: '/restaurant/settings/tax-discounts', permissions: [Permission.SETTINGS_READ] },
   { path: '/restaurant/settings/cancellation-reasons', permissions: [Permission.SETTINGS_READ] },
   { path: '/restaurant/settings/qr-ordering', permissions: [Permission.SETTINGS_READ] },

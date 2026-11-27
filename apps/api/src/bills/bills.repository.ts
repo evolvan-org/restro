@@ -25,6 +25,8 @@ const orderSelect = {
     select: {
       id: true,
       quantity: true,
+      sentQuantity: true,
+      nameSnapshot: true,
       kotItems: { select: { quantity: true } },
       unitPrice: true,
       menuItem: { select: { name: true } },
@@ -40,7 +42,13 @@ const invoiceInclude = {
   ...billInclude,
   payments: {
     where: { status: 'COMPLETED' as const },
-    select: { paymentMethod: true, referenceNumber: true, paidAt: true },
+    select: {
+      paymentMethod: true,
+      amount: true,
+      tipAmount: true,
+      referenceNumber: true,
+      paidAt: true,
+    },
     take: 1,
   },
 } satisfies Prisma.BillInclude;
@@ -61,7 +69,13 @@ type BillChanges = Partial<BillAmounts> &
 export type PaymentRecord = Prisma.PaymentGetPayload<object>;
 export type NewPayment = Pick<
   Prisma.PaymentUncheckedCreateInput,
-  'paymentMethod' | 'amount' | 'referenceNumber' | 'recordedByUserId' | 'status' | 'paidAt'
+  | 'paymentMethod'
+  | 'amount'
+  | 'tipAmount'
+  | 'referenceNumber'
+  | 'recordedByUserId'
+  | 'status'
+  | 'paidAt'
 >;
 
 /** Raised when the database rejects a duplicate payment. */

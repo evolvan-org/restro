@@ -3,11 +3,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   type AddOrderItemRequest,
-  addOrderItemRequestSchema,
+  emptyMenuCustomizations,
   type MenuItem,
 } from '@rms/api-contract';
-import type { ReactElement } from 'react';
-import { useForm } from 'react-hook-form';
+import { type ReactElement, useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +21,12 @@ import {
 import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+
+import {
+  getAddOrderItemDefaults,
+  getAddOrderItemFormSchema,
+  getOrderSelectionPricePreview,
+} from './mappers';
 
 type Props = {
   item: MenuItem;
@@ -37,20 +43,24 @@ export default function AddOrderItemDialog({
 }: Props): ReactElement {
   const {
     register,
+    control,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isSubmitSuccessful },
   } = useForm<AddOrderItemRequest>({
-    resolver: zodResolver(addOrderItemRequestSchema),
-    defaultValues: { menuItemId: item.id, quantity: 1, specialInstructions: '' },
+    resolver: zodResolver(getAddOrderItemFormSchema(item)),
+    defaultValues: getAddOrderItemDefaults(item),
   });
+  const config = item.customizations ?? emptyMenuCustomizations();
+  const variantId = useWatch({ control, name: 'variantId' });
+  const modifierIds = useWatch({ control, name: 'modifierIds' });
+  const quantity = useWatch({ control, name: 'quantity' });
+  const preview = getOrderSelectionPricePreview(item, variantId, modifierIds, quantity);
   const isSaving = isPending || isSubmitting;
+  useEffect(() => {
+    if (isSubmitSuccessful) onClose();
+  }, [isSubmitSuccessful, onClose]);
   const submit = handleSubmit(async (input) => {
-    try {
-      await onAdd(input);
-      onClose();
-    } catch {
-      // The request hook reports errors; preserve entered values for correction or retry.
-    }
+    await onAdd(input);
   });
 
   return (
@@ -60,16 +70,64 @@ export default function AddOrderItemDialog({
         if (!open && !isSaving) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add {item.name}</DialogTitle>
           <DialogDescription>
-            Menu price: {item.price}. Adding an item already on the order with the same note
-            increases its quantity, and only the new units go to the kitchen. The current menu price
-            is confirmed when added.
+            Standard price: {item.price}. Select sizes and extras below. The server confirms the
+            current price and choices before adding. Identical choices and notes share one line.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} noValidate className="space-y-4">
+        <form
+          onSubmit={(event) => {
+            void submit(event).catch(() => {
+              // The mutation hook reports failure. RHF retains drafts and keeps success false.
+            });
+          }}
+          noValidate
+          className="space-y-4"
+        >
+          {config.variants.length > 0 && (
+            <label className="block space-y-2 text-sm font-medium">
+              Size
+              <select
+                className="w-full rounded border p-2"
+                disabled={isSaving}
+                {...register('variantId', { setValueAs: (value: string) => value || undefined })}
+              >
+                <option value="">Standard · {item.price}</option>
+                {config.variants.map((variant) => (
+                  <option key={variant.id} value={variant.id}>
+                    {variant.name} · {variant.price}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {config.groups.map((group) => (
+            <fieldset key={group.id} className="space-y-2 rounded border p-3" disabled={isSaving}>
+              <legend className="text-sm font-medium">{group.name}</legend>
+              <p className="text-sm text-muted-foreground">
+                Choose {group.minSelect} to {group.maxSelect}
+              </p>
+              {group.modifiers.map((option) => (
+                <label key={option.id} className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" value={option.id} {...register('modifierIds')} />
+                  <span>
+                    {option.name} ({option.priceAdjustment.startsWith('-') ? '' : '+'}
+                    {option.priceAdjustment})
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          ))}
+          <FieldError>{errors.modifierIds?.message}</FieldError>
+          {config.components.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              Includes {config.components.reduce((sum, component) => sum + component.quantity, 0)}{' '}
+              combo components in their standard portions. The combo price covers included items.
+            </p>
+          )}
           <div className="space-y-2">
             <label htmlFor="add-item-quantity" className="text-sm font-medium">
               Quantity
@@ -88,6 +146,11 @@ export default function AddOrderItemDialog({
             />
             <FieldError id="add-item-quantity-error">{errors.quantity?.message}</FieldError>
           </div>
+          {preview && (
+            <p role="status" className="text-sm">
+              Unit price {preview.unitPrice} · Line total {preview.total}
+            </p>
+          )}
           <div className="space-y-2">
             <label htmlFor="add-item-instructions" className="text-sm font-medium">
               Special instructions (optional)

@@ -81,6 +81,30 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'MANAGE',
     items: [
       {
+        label: 'Food incidents',
+        icon: ClipboardList,
+        href: '/food-incidents',
+        permission: Permission.FOOD_INCIDENT_READ,
+      },
+      {
+        label: 'Staff schedule',
+        icon: CalendarCheck,
+        href: '/workforce',
+        permission: Permission.SCHEDULE_READ,
+      },
+      {
+        label: 'Attendance',
+        icon: CalendarCheck,
+        href: '/attendance',
+        permission: Permission.ATTENDANCE_READ,
+      },
+      {
+        label: 'Operating checks',
+        icon: ClipboardList,
+        href: '/operating-tasks',
+        permission: Permission.TASK_READ,
+      },
+      {
         label: 'Menu items',
         icon: Soup,
         href: '/menu/items',

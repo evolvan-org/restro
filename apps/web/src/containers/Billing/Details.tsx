@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import { useStaffLanguage } from '@/components/StaffPreferences';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,7 @@ import {
   paymentFormSchema,
   type PaymentFormValues,
   paymentNeedsReference,
+  paymentTotalWithTip,
   toCancellationRequest,
   toDiscountRequest,
   toPaymentRequest,
@@ -74,6 +76,7 @@ export default function BillDetails({ id }: { id: string }): ReactElement | null
 
 function BillContent({ bill }: { bill: Bill }): ReactElement {
   const { can } = usePermissions();
+  const t = useStaffLanguage();
   const { mutateAsync: updateBill, isPending: updating } = useUpdateBill();
   const { mutateAsync: cancelBill, isPending: cancelling } = useCancelBill();
   const { mutateAsync: reopenBill, isPending: reopening } = useGenerateBill();
@@ -101,6 +104,8 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
     defaultValues: paymentDefaults(),
   });
   const paymentMethod = useWatch({ control: payment.control, name: 'paymentMethod' });
+  const tip = useWatch({ control: payment.control, name: 'tip' });
+  const checkoutTotal = paymentTotalWithTip(bill.totalAmount, tip);
   const needsReference = paymentNeedsReference(paymentMethod);
   const { reset: resetDiscount } = discount;
   const { reset: resetCancellation } = cancellation;
@@ -236,6 +241,10 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               className={`${styles.panel} ${styles.form}`}
               noValidate
               onSubmit={payment.handleSubmit(async (values) => {
+                if (paymentTotalWithTip(bill.totalAmount, values.tip) === null) {
+                  payment.setError('tip', { message: 'Total with tip exceeds the payment limit' });
+                  return;
+                }
                 if (!confirmingPayment) {
                   setPaymentConfirmation(paymentVersion);
                   return;
@@ -249,7 +258,8 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               })}
             >
               <h2 className={styles.sectionTitle}>
-                <Banknote className="size-4 text-muted-foreground" aria-hidden /> Record payment
+                <Banknote className="size-4 text-muted-foreground" aria-hidden />{' '}
+                {t('Record payment')}
               </h2>
               <div className={styles.formFields}>
                 <label>
@@ -266,8 +276,23 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                   </NativeSelect>
                 </label>
                 <label>
-                  Amount
-                  <Input value={bill.totalAmount} readOnly disabled />
+                  {t('Amount to collect')}
+                  <Input value={checkoutTotal ?? ''} readOnly />
+                </label>
+                <label>
+                  {t('Optional tip')}
+                  <Input
+                    inputMode="decimal"
+                    {...payment.register('tip', {
+                      onChange: () => setPaymentConfirmation(null),
+                    })}
+                    disabled={busy}
+                    aria-invalid={Boolean(payment.formState.errors.tip)}
+                    aria-describedby="bill-tip-error"
+                  />
+                  <FieldError id="bill-tip-error">
+                    {payment.formState.errors.tip?.message}
+                  </FieldError>
                 </label>
               </div>
               {needsReference && (
@@ -290,12 +315,16 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               </FieldError>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {confirmingPayment
-                  ? `Confirm receiving ${bill.currency} ${bill.totalAmount} by ${paymentMethod}. A recorded payment cannot be edited, and the bill and order will be closed.`
+                  ? `Confirm receiving ${bill.currency} ${checkoutTotal} by ${paymentMethod}. A recorded payment cannot be edited, and the bill and order will be closed.`
                   : 'The full bill total is settled in one payment. Split payments are not supported.'}
               </p>
               <div className="flex gap-2">
                 <Button type="submit" className={`${styles.touchButton} flex-1`} disabled={busy}>
-                  {paying ? 'Recording…' : confirmingPayment ? 'Confirm payment' : 'Mark as paid'}
+                  {paying
+                    ? 'Recording…'
+                    : confirmingPayment
+                      ? 'Confirm payment'
+                      : t('Mark as paid')}
                 </Button>
                 {confirmingPayment && !paying && (
                   <Button

@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 import AppLayout from '@/components/AppLayout';
+import { initializeStaffPreferences } from '@/components/StaffPreferences/initialize';
 import AppProvider from '@/providers';
 
 export const metadata: Metadata = {
@@ -13,7 +14,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: initializeStaffPreferences }} />
+      </head>
       <body>
         <AppProvider>
           <AppLayout>{children}</AppLayout>

@@ -3,6 +3,11 @@ import {
   type KotDestination,
   type KotQueueItem,
   kotQueueItemSchema,
+  type PreparationControlRequest,
+  preparationControlRequestSchema,
+  type PreparationHistoryQuery,
+  type PreparationHistoryResponse,
+  preparationHistoryResponseSchema,
   type TransitionKotStatusRequest,
   transitionKotStatusRequestSchema,
 } from '@rms/api-contract';
@@ -110,5 +115,56 @@ export function useTransitionKot(
       }
       await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
     },
+  });
+}
+
+export function useControlPreparation(
+  destination: KotDestination,
+  ticketId: string,
+): UseMutationResult<KotQueueItem, Error, PreparationControlRequest> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to update preparation controls.');
+  const queryKey = [KotQueryKey.Queue, destination];
+  return useMutation<KotQueueItem, Error, PreparationControlRequest>({
+    mutationKey: [KotQueryKey.Transition, destination, ticketId],
+    mutationFn: async (input: PreparationControlRequest): Promise<KotQueueItem> => {
+      const response = await api.patch(
+        `/kots/${ticketId}/preparation`,
+        preparationControlRequestSchema.parse(input),
+      );
+      return kotQueueItemSchema.parse(response.data);
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey });
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<KotQueueItem[]>(queryKey, (tickets) =>
+        tickets?.map((ticket) => (ticket.id === updated.id ? updated : ticket)),
+      );
+    },
+    onError: showApiError,
+    onSettled: async () => {
+      if (queryClient.isMutating({ mutationKey: [KotQueryKey.Transition, destination] }) === 1) {
+        await queryClient.invalidateQueries({ queryKey });
+      }
+      await queryClient.invalidateQueries({ queryKey: [KotQueryKey.History, ticketId] });
+    },
+  });
+}
+
+export function usePreparationHistory(
+  ticketId: string,
+  query: PreparationHistoryQuery,
+): UseQueryResult<PreparationHistoryResponse> {
+  return useQuery({
+    queryKey: [KotQueryKey.History, ticketId, query],
+    queryFn: async ({ signal }) => {
+      const response = await api.get(`/kots/${ticketId}/preparation-history`, {
+        params: query,
+        signal,
+      });
+      return preparationHistoryResponseSchema.parse(response.data);
+    },
+    retry: false,
   });
 }

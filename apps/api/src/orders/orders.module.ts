@@ -13,5 +13,6 @@ import { OrdersService } from './orders.service';
   imports: [DatabaseModule, AuthorizationModule, NotificationsModule],
   controllers: [OrdersController, KotsController],
   providers: [OrdersService, OrdersRepository, OrderItemsService],
+  exports: [OrdersService],
 })
 export class OrdersModule {}

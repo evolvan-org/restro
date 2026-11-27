@@ -3,6 +3,7 @@
 import { Permission } from '@rms/permissions';
 import type { ReactElement } from 'react';
 
+import { useStaffLanguage } from '@/components/StaffPreferences';
 import {
   SegmentedControl,
   type SegmentedOption,
@@ -34,6 +35,7 @@ const VIEW_VALUES: readonly DashboardView[] = VIEWS.map((view) => view.value);
 function DashboardContent({ storageKey }: { storageKey: string }): ReactElement {
   const [storedView, setView, isViewRestored] = usePersistedState(storageKey, 'live', VIEW_VALUES);
   const { can } = usePermissions();
+  const t = useStaffLanguage();
   const canReport = can(Permission.REPORT_READ);
   // Roles without report access only ever see the live floor, whatever view was stored.
   const view: DashboardView = canReport ? storedView : 'live';
@@ -43,16 +45,16 @@ function DashboardContent({ storageKey }: { storageKey: string }): ReactElement 
     <div className="flex min-h-[calc(100svh-3.5rem)] flex-col bg-muted/35">
       <header className="flex shrink-0 flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 pt-5 pb-4 sm:px-6 sm:pt-6 xl:px-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-[32px]">Dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-[32px]">{t('Dashboard')}</h1>
           <p className="text-sm text-muted-foreground">
-            Real-time overview of today&apos;s service
+            {t('Real-time overview of today’s service')}
           </p>
         </div>
         {canReport && (
           <SegmentedControl
             idBase={VIEW_ID_BASE}
-            aria-label="Dashboard view"
-            options={VIEWS}
+            aria-label={t('Dashboard view')}
+            options={VIEWS.map((item) => ({ ...item, label: t(item.label) }))}
             value={view}
             onChange={setView}
             className="w-full rounded-xl border sm:w-fit [&>button]:flex-1 [&>button]:justify-center sm:[&>button]:flex-none"

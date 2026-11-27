@@ -12,15 +12,17 @@ import {
   QrCode,
   Timer,
 } from 'lucide-react';
-import { memo, type ReactElement } from 'react';
+import { memo, type ReactElement, useState } from 'react';
 import { toast } from 'sonner';
 
+import ThermalPrint from '@/components/ThermalPrint';
 import { useTransitionKot } from '@/services/api/requests/kots';
 import { KotQueryKey } from '@/services/api/types/KotQueryKey';
 
 import { type ActiveKotStatus, LANES, type StationConfig } from './config';
 import { useNow } from './hooks';
 import { formatClock, formatElapsed, type Urgency } from './mapper';
+import PreparationDialog from './PreparationDialog';
 
 const TIMER_CLASS: Record<Urgency, string> = {
   ok: 'bg-[var(--surface2)] text-[var(--text)]',
@@ -66,6 +68,8 @@ function TicketCard({
   animateIn: boolean;
 }): ReactElement {
   const { destination } = station;
+  // This flag only tracks the operator opening and closing the preparation dialog.
+  const [controlsOpen, setControlsOpen] = useState(false);
   const { mutateAsync: advanceTicket } = useTransitionKot(destination, ticket.id);
   const isPending =
     useIsMutating({ mutationKey: [KotQueryKey.Transition, destination, ticket.id] }) > 0;
@@ -75,11 +79,11 @@ function TicketCard({
 
   async function advance(): Promise<void> {
     try {
-      await advanceTicket({
+      const updated = await advanceTicket({
         id: ticket.id,
         input: { expectedStatus: ticket.status, status: lane.next },
       });
-      if (ticket.qr && lane.next === 'READY') {
+      if (updated.qr?.guestNotifiedAt && lane.next === 'READY') {
         toast.success(`Guest notified · Table ${tableNumber} sees “Your food is on its way”`);
       }
     } catch {
@@ -111,6 +115,8 @@ function TicketCard({
         </div>
         <div className="flex flex-col items-end gap-2">
           <ElapsedTimer createdAt={ticket.createdAt} urgency={urgency} />
+          {ticket.preparation?.isPriority && <strong className="text-sm">Priority</strong>}
+          {ticket.preparation?.heldAt && <strong className="text-sm">On hold</strong>}
           <span className="rounded-full bg-[var(--s)] px-2.5 py-[3px] text-xs font-extrabold tracking-[0.08em] text-[var(--s-fg)] uppercase">
             {lane.label}
           </span>
@@ -151,6 +157,21 @@ function TicketCard({
           </li>
         ))}
       </ul>
+      {ticket.preparation?.heldAt && (
+        <p className="px-4 pb-3 text-sm">{ticket.preparation.holdReason}</p>
+      )}
+      {ticket.preparation?.targetSeconds != null && (
+        <p className="px-4 pb-3 text-sm">
+          Target: {ticket.preparation.targetSeconds / 60} minutes from send
+        </p>
+      )}
+      <button
+        type="button"
+        className="mx-3 mb-3 min-h-11 rounded-xl border border-[var(--border)] px-3 font-semibold"
+        onClick={() => setControlsOpen(true)}
+      >
+        Preparation and history
+      </button>
       {ticket.qr?.guestNotifiedAt && (
         <div
           className="kds-pop mx-3.5 mt-auto mb-2.5 flex items-center gap-2 rounded-[9px] bg-[var(--qrn-b)] px-3 py-2.5 text-base font-bold text-[var(--qrn-f)]"
@@ -160,11 +181,14 @@ function TicketCard({
           Guest notified · {formatClock(ticket.qr.guestNotifiedAt)}
         </div>
       )}
+      <div className="px-3 pb-3">
+        <ThermalPrint id={ticket.id} kind="ticket" />
+      </div>
       {canAdvance && (
         <div className={`${ticket.qr?.guestNotifiedAt ? '' : 'mt-auto '}px-3 pb-3`}>
           <button
             type="button"
-            disabled={disabled || isPending}
+            disabled={disabled || isPending || Boolean(ticket.preparation?.heldAt)}
             onClick={advance}
             aria-label={`${lane.action}, table ${tableNumber}, ${ticket.kotNumber}`}
             className={`flex min-h-14 w-full items-center justify-center gap-2.5 rounded-xl text-lg font-bold ${ticket.status === 'PENDING' ? 'bg-[var(--primary)] text-[var(--primary-fg)]' : 'bg-[var(--s)] text-[var(--s-fg)]'}`}
@@ -179,6 +203,13 @@ function TicketCard({
             {isPending ? 'Updating…' : lane.action}
           </button>
         </div>
+      )}
+      {controlsOpen && (
+        <PreparationDialog
+          ticket={ticket}
+          canControl={canAdvance && !disabled}
+          onClose={() => setControlsOpen(false)}
+        />
       )}
     </article>
   );

@@ -5,9 +5,16 @@ import type {
   KotQueueQuery,
   KotStatus,
   OrderListQuery,
+  OrderSelectionSnapshot,
+  PreparationHistoryQuery,
+  ServingType,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import {
+  INVENTORY_LOCK_WAITER_TIMEOUT_MS,
+  lockRestaurantInventory,
+} from '../common/database/inventory-lock';
 import { createKotTickets } from '../common/database/kot-tickets';
 import { PrismaService } from '../common/database/prisma.service';
 import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
@@ -33,6 +40,10 @@ const orderSelect = {
       menuItem: { select: { name: true, itemType: true } },
       quantity: true,
       unitPrice: true,
+      nameSnapshot: true,
+      itemTypeSnapshot: true,
+      selectionSnapshot: true,
+      sentQuantity: true,
       specialInstructions: true,
       status: true,
       createdAt: true,
@@ -48,12 +59,21 @@ const kotSelect = {
   kotNumber: true,
   destination: true,
   status: true,
+  controlVersion: true,
+  acceptedAt: true,
+  heldAt: true,
+  holdReason: true,
+  isPriority: true,
+  targetSeconds: true,
   createdAt: true,
   items: {
     select: {
       id: true,
       orderItemId: true,
       quantity: true,
+      componentMenuItemId: true,
+      nameSnapshot: true,
+      instructionsSnapshot: true,
       status: true,
       orderItem: {
         select: {
@@ -100,6 +120,7 @@ const captainOrderSelect = {
       quantity: true,
       unitPrice: true,
       status: true,
+      nameSnapshot: true,
       menuItem: { select: { name: true } },
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -133,6 +154,46 @@ export type CaptainOrdersResult = {
 export type KotRecord = Prisma.KotGetPayload<{ select: typeof kotSelect }>;
 export type KotQueueRecord = Prisma.KotGetPayload<{ select: typeof kotQueueSelect }>;
 
+const orderingMenuSelect = {
+  id: true,
+  name: true,
+  price: true,
+  itemType: true,
+  isAvailable: true,
+  customizations: true,
+  recipeRequired: true,
+  recipeItems: {
+    where: { isActive: true },
+    select: {
+      quantity: true,
+      unit: true,
+      stockItem: { select: { id: true, name: true, baseUnit: true, averageUnitCost: true } },
+    },
+    orderBy: { stockItemId: 'asc' },
+  },
+} satisfies Prisma.MenuItemSelect;
+
+export type OrderingMenuRecord = Prisma.MenuItemGetPayload<{ select: typeof orderingMenuSelect }>;
+export type NewOrderLine = {
+  menuItemId: string;
+  quantity: number;
+  specialInstructions: string | null;
+  unitPrice: Prisma.Decimal;
+  nameSnapshot: string;
+  itemTypeSnapshot: ServingType;
+  selectionSnapshot: OrderSelectionSnapshot;
+  recipeSnapshot: Prisma.InputJsonValue;
+  configurationKey: string;
+};
+
+export type NewKotLine = {
+  orderItemId: string;
+  quantity: number;
+  componentMenuItemId?: string;
+  nameSnapshot?: string;
+  instructionsSnapshot?: string | null;
+};
+
 type NewOrder = {
   createdByUserId: string;
   reservationId: string | null;
@@ -150,26 +211,22 @@ export type OrderOpeningContext = {
 
 export type LockedOrderContext = {
   order: Pick<OrderRecord, 'id' | 'status'> | null;
-  findMenuItem: (
-    id: string,
-  ) => Promise<{ id: string; price: Prisma.Decimal; isAvailable: boolean } | null>;
+  findMenuItem: (id: string) => Promise<OrderingMenuRecord | null>;
   findItem: (id: string) => Promise<{
     id: string;
     status: OrderRecord['items'][number]['status'];
     quantity: number;
+    sentQuantity: number | null;
+    selectionSnapshot: Prisma.JsonValue;
     kotItems: { quantity: number }[];
   } | null>;
   findMergeableItem: (match: {
     menuItemId: string;
     specialInstructions: string | null;
     unitPrice: Prisma.Decimal;
+    configurationKey: string;
   }) => Promise<{ id: string; quantity: number } | null>;
-  add: (data: {
-    menuItemId: string;
-    quantity: number;
-    specialInstructions: string | null;
-    unitPrice: Prisma.Decimal;
-  }) => Promise<string>;
+  add: (data: NewOrderLine) => Promise<string>;
   update: (
     id: string,
     data: { quantity: number } | { specialInstructions: string | null },
@@ -179,6 +236,12 @@ export type LockedOrderContext = {
     {
       id: string;
       quantity: number;
+      sentQuantity: number | null;
+      menuItemId: string;
+      nameSnapshot: string | null;
+      itemTypeSnapshot: ServingType | null;
+      selectionSnapshot: Prisma.JsonValue;
+      specialInstructions: string | null;
       kotItems: { quantity: number }[];
       menuItem: { itemType: 'FOOD' | 'BAR' };
     }[]
@@ -187,17 +250,30 @@ export type LockedOrderContext = {
     createdByUserId: string,
     groups: {
       destination: 'KITCHEN' | 'BAR';
-      items: { orderItemId: string; quantity: number }[];
+      items: NewKotLine[];
     }[],
   ) => Promise<KotRecord[]>;
+  markSent: (items: { id: string; quantity: number }[]) => Promise<void>;
   submit: () => Promise<void>;
   refresh: () => Promise<OrderRecord>;
 };
+
+export type PreparationChange = Partial<
+  Pick<
+    Prisma.KotUncheckedUpdateInput,
+    'acceptedAt' | 'heldAt' | 'holdReason' | 'isPriority' | 'targetSeconds'
+  >
+>;
 
 export type LockedKotContext = {
   kot: KotQueueRecord | null;
   /** Writes the KOT and every one of its items in this transaction; completedAt is stamped on COMPLETED. */
   setStatus: (status: KotStatus) => Promise<KotQueueRecord>;
+  setPreparation: (
+    action: string,
+    change: PreparationChange,
+    reason?: string,
+  ) => Promise<KotQueueRecord>;
 };
 
 @Injectable()
@@ -209,9 +285,11 @@ export class OrdersRepository {
     restaurantId: string,
     orderId: string,
     mutate: (context: LockedOrderContext) => Promise<T>,
+    captureMenuSnapshot = false,
   ): Promise<T> {
     return this.prisma.$transaction(
       async (tx) => {
+        if (captureMenuSnapshot) await lockRestaurantInventory(tx, restaurantId);
         // Read only the state needed by the guard while acquiring the lock. Loading the
         // full order here duplicates the final refresh and adds relation queries under lock.
         const orders = await tx.$queryRaw<Pick<OrderRecord, 'id' | 'status'>[]>`
@@ -224,8 +302,8 @@ export class OrdersRepository {
           order,
           findMenuItem: (id) =>
             tx.menuItem.findFirst({
-              where: { id, restaurantId, isActive: true },
-              select: { id: true, price: true, isAvailable: true },
+              where: { id, restaurantId, isActive: true, category: { restaurantId } },
+              select: orderingMenuSelect,
             }),
           findItem: async (id) => {
             await tx.$queryRaw`SELECT id FROM order_items WHERE id = ${id}::uuid AND order_id = ${orderId}::uuid FOR UPDATE`;
@@ -235,11 +313,13 @@ export class OrdersRepository {
                 id: true,
                 status: true,
                 quantity: true,
+                sentQuantity: true,
+                selectionSnapshot: true,
                 kotItems: { select: { quantity: true } },
               },
             });
           },
-          findMergeableItem: ({ menuItemId, specialInstructions, unitPrice }) =>
+          findMergeableItem: ({ menuItemId, specialInstructions, unitPrice, configurationKey }) =>
             tx.orderItem.findFirst({
               where: {
                 orderId,
@@ -247,6 +327,7 @@ export class OrdersRepository {
                 menuItemId,
                 specialInstructions,
                 unitPrice,
+                configurationKey,
                 status: 'ACTIVE',
               },
               select: { id: true, quantity: true },
@@ -254,7 +335,7 @@ export class OrdersRepository {
             }),
           add: async (data) => {
             const item = await tx.orderItem.create({
-              data: { ...data, orderId, status: 'ACTIVE' },
+              data: { ...data, orderId, status: 'ACTIVE', sentQuantity: 0 },
               select: { id: true },
             });
             return item.id;
@@ -281,6 +362,12 @@ export class OrdersRepository {
               select: {
                 id: true,
                 quantity: true,
+                sentQuantity: true,
+                menuItemId: true,
+                nameSnapshot: true,
+                itemTypeSnapshot: true,
+                selectionSnapshot: true,
+                specialInstructions: true,
                 kotItems: { select: { quantity: true } },
                 menuItem: { select: { itemType: true } },
               },
@@ -300,6 +387,14 @@ export class OrdersRepository {
               data: { status: 'SUBMITTED' },
             });
           },
+          markSent: async (items) => {
+            for (const item of items) {
+              await tx.orderItem.update({
+                where: { id: item.id, orderId, order: { restaurantId } },
+                data: { sentQuantity: item.quantity },
+              });
+            }
+          },
           refresh: () =>
             tx.order.findFirstOrThrow({
               where: { id: orderId, restaurantId },
@@ -310,7 +405,7 @@ export class OrdersRepository {
       {
         // Includes lock waits and the final relation reads; keep a bounded budget for
         // slower database connections instead of Prisma's default five seconds.
-        timeout: 15_000,
+        timeout: captureMenuSnapshot ? INVENTORY_LOCK_WAITER_TIMEOUT_MS : 15_000,
       },
     );
   }
@@ -434,6 +529,10 @@ export class OrdersRepository {
     );
   }
 
+  findPrintTicket(restaurantId: string, id: string): Promise<KotQueueRecord | null> {
+    return this.prisma.kot.findFirst({ where: { id, restaurantId }, select: kotQueueSelect });
+  }
+
   findActiveKotBoard(
     restaurantId: string,
     destination: KotDestination,
@@ -475,6 +574,7 @@ export class OrdersRepository {
     restaurantId: string,
     id: string,
     action: (context: LockedKotContext) => Promise<T>,
+    recordedByUserId: string,
   ): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
       const candidate = await tx.kot.findFirst({
@@ -490,12 +590,58 @@ export class OrdersRepository {
         where: { id, restaurantId },
         select: kotQueueSelect,
       });
+      const recordEvent = async (
+        action: string,
+        current: KotQueueRecord,
+        reason?: string,
+      ): Promise<void> => {
+        await tx.preparationEvent.create({
+          data: {
+            restaurantId,
+            kotId: id,
+            recordedByUserId,
+            action,
+            status: current.status,
+            version: current.controlVersion,
+            acceptedAt: current.acceptedAt,
+            heldAt: current.heldAt,
+            holdReason: current.holdReason,
+            isPriority: current.isPriority,
+            targetSeconds: current.targetSeconds,
+            reason,
+            // Capture time after the row locks; transaction-start timestamps can precede
+            // an earlier version committed by another operator while this writer waited.
+            createdAt: new Date(),
+          },
+        });
+      };
+      const baseline = async (): Promise<void> => {
+        if (ticket && !(await tx.preparationEvent.count({ where: { restaurantId, kotId: id } }))) {
+          await recordEvent('BASELINE', ticket);
+        }
+      };
       return action({
         kot: ticket,
+        setPreparation: async (action, change, reason) => {
+          await baseline();
+          const updated = await tx.kot.update({
+            where: { id, restaurantId },
+            data: { ...change, controlVersion: { increment: 1 } },
+            select: kotQueueSelect,
+          });
+          await recordEvent(action, updated, reason);
+          return updated;
+        },
         setStatus: async (status) => {
+          await baseline();
           await tx.kot.update({
             where: { id, restaurantId },
-            data: { status, completedAt: status === 'COMPLETED' ? new Date() : null },
+            data: {
+              status,
+              completedAt: status === 'COMPLETED' ? new Date() : null,
+              ...(status === 'PREPARING' && !ticket?.acceptedAt ? { acceptedAt: new Date() } : {}),
+              controlVersion: { increment: 1 },
+            },
           });
           await tx.kotItem.updateMany({
             where: { kotId: id, kot: { restaurantId } },
@@ -515,10 +661,40 @@ export class OrdersRepository {
               });
             }
           }
-          return tx.kot.findFirstOrThrow({ where: { id, restaurantId }, select: kotQueueSelect });
+          const updated = await tx.kot.findFirstOrThrow({
+            where: { id, restaurantId },
+            select: kotQueueSelect,
+          });
+          await recordEvent('STATUS', updated);
+          return updated;
         },
       });
     });
+  }
+
+  async preparationHistory(restaurantId: string, kotId: string, query: PreparationHistoryQuery) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const kot = await tx.kot.findFirst({
+          where: { id: kotId, restaurantId },
+          select: { id: true },
+        });
+        if (!kot) return null;
+        const where = { restaurantId, kotId };
+        const [items, total] = await Promise.all([
+          tx.preparationEvent.findMany({
+            where,
+            orderBy: [{ version: 'desc' }, { id: 'desc' }],
+            skip: (query.page - 1) * query.pageSize,
+            take: query.pageSize,
+            include: { recordedBy: { select: { id: true, name: true } } },
+          }),
+          tx.preparationEvent.count({ where }),
+        ]);
+        return { items, total };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   findById(restaurantId: string, orderId: string): Promise<OrderRecord | null> {

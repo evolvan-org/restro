@@ -1,5 +1,27 @@
 # Development Guide
 
+## Staff preferences and thermal printers
+
+The staff header remembers the theme and language in the current browser. The sidebar support link
+uses `NEXT_PUBLIC_SUPPORT_URL` when configured and otherwise opens Restro’s internal help page.
+
+Set a stable `AUTHENTICATOR_ENCRYPTION_KEY` before enrolling users on a deployment. The default
+derives a separate key from `JWT_SECRET`. Changing the source key after enrollment prevents the
+server from reading the existing authenticator secrets and recovery codes.
+
+Choose the matching 58 mm or 80 mm roll in the browser’s print dialog. For direct ESC/POS printing,
+configure `THERMAL_PRINTER_RESTAURANT_ID` on the API host. Managers can save the preferred connection,
+network IPv4 address and TCP port, paper width, code page, and columns for each destination under
+Restaurant Settings → Thermal printing.
+
+The API only connects to endpoints in `THERMAL_NETWORK_TARGETS` or the destination’s existing
+`THERMAL_*_NETWORK` setting. Use a comma-separated list of exact `IPv4:port` pairs for
+`THERMAL_NETWORK_TARGETS`. USB destinations use a Linux `/dev/usb/lpN` device on the API host.
+Pass the device through to a containerized API and give its service account write access.
+Use Check connection to check the saved endpoint, then Send test print to verify paper width,
+column count, and character encoding on the printer. Browser printing preserves the original text.
+A successful direct job confirms that Restro sent the data over the connection.
+
 Team workflow, sprint process, and contribution mechanics for the Restaurant Management System.
 
 ## Package manager

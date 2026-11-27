@@ -217,6 +217,13 @@ export class InventoryRepository {
     });
   }
 
+  receipt(restaurantId: string, id: string): Promise<InventoryReceiptRecord | null> {
+    return this.prisma.inventoryReceipt.findUnique({
+      where: { id, restaurantId },
+      include: receiptInclude,
+    });
+  }
+
   receipts(restaurantId: string, query: InventoryReceiptQuery) {
     const where = { restaurantId, purchaseOrderId: query.purchaseOrderId };
     return this.prisma.$transaction(
@@ -262,7 +269,7 @@ export class InventoryWriteContext {
 
   recipeUnits(stockItemId: string) {
     return this.tx.recipeItem.findMany({
-      where: { stockItemId, menuItem: { restaurantId: this.restaurantId } },
+      where: { stockItemId, isActive: true, menuItem: { restaurantId: this.restaurantId } },
       select: { unit: true },
       distinct: ['unit'],
     });

@@ -1,10 +1,12 @@
 'use client';
 
+import { Permission } from '@rms/permissions';
 import { usePathname, useRouter } from 'next/navigation';
 import { type ReactElement, type ReactNode, useEffect, useState } from 'react';
 
 import AppHeader from '@/components/AppHeader';
 import AppSidebar from '@/components/AppSidebar';
+import MobileNavigation from '@/components/AppSidebar/MobileNavigation';
 import EmailVerificationBanner from '@/components/EmailVerificationBanner';
 import QrOrdersWatcher from '@/components/QrOrdersWatcher';
 import useAccessibleHome from '@/hooks/auth/useAccessibleHome';
@@ -33,7 +35,7 @@ export default function ProtectedLayout({
   const accessToken = useAccessToken();
   const { variant } = useAppLayout();
   const profile = useProfile();
-  const { canAny } = usePermissions();
+  const { can, canAny } = usePermissions();
   const home = useAccessibleHome();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -86,6 +88,10 @@ export default function ProtectedLayout({
     return null;
   }
 
+  const captainDashboard =
+    pathname === '/dashboard' &&
+    !can(Permission.TABLE_ASSIGN_CAPTAIN) &&
+    can(Permission.TABLE_BE_CAPTAIN);
   return (
     <div className="flex min-h-svh">
       <AppSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
@@ -93,7 +99,16 @@ export default function ProtectedLayout({
         <AppHeader onMenuClick={() => setMobileNavOpen(true)} />
         <EmailVerificationBanner />
         <QrOrdersWatcher />
-        <main className="flex-1">{children}</main>
+        <main
+          className={
+            captainDashboard
+              ? 'flex-1'
+              : 'flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0'
+          }
+        >
+          {children}
+        </main>
+        {!captainDashboard && <MobileNavigation onMore={() => setMobileNavOpen(true)} />}
       </div>
     </div>
   );

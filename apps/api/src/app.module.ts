@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { BillsModule } from './bills/bills.module';
 import { validateEnv } from './config/env.validation';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { FoodIncidentsModule } from './food-incidents/food-incidents.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { OperatingTasksModule } from './operating-tasks/operating-tasks.module';
 import { OrdersModule } from './orders/orders.module';
 import { QrOrderingModule } from './qr-ordering/qr-ordering.module';
 import { ReportsModule } from './reports/reports.module';
@@ -17,7 +20,9 @@ import { RolesModule } from './roles/roles.module';
 import { StatusModule } from './status/status.module';
 import { StockModule } from './stock/stock.module';
 import { TableModule } from './table/table.module';
+import { ThermalPrintingModule } from './thermal-printing/thermal-printing.module';
 import { UsersModule } from './users/users.module';
+import { WorkforceModule } from './workforce/workforce.module';
 
 @Module({
   imports: [
@@ -29,16 +34,21 @@ import { UsersModule } from './users/users.module';
     }),
     StatusModule,
     AuthModule,
+    AttendanceModule,
+    FoodIncidentsModule,
     DashboardModule,
     ReportsModule,
     UsersModule,
+    WorkforceModule,
     RolesModule,
     RestaurantModule,
     TableModule,
     MenuModule,
     NotificationsModule,
     OrdersModule,
+    OperatingTasksModule,
     BillsModule,
+    ThermalPrintingModule,
     StockModule,
     ReservationsModule,
     OnboardingModule,

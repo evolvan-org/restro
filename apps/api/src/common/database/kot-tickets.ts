@@ -4,7 +4,13 @@ type DatabaseClient = Prisma.TransactionClient;
 
 export type KotGroup = {
   destination: KotDestination;
-  items: { orderItemId: string; quantity: number }[];
+  items: {
+    orderItemId: string;
+    quantity: number;
+    componentMenuItemId?: string | null;
+    nameSnapshot?: string | null;
+    instructionsSnapshot?: string | null;
+  }[];
 };
 
 /**
@@ -33,6 +39,7 @@ export async function createKotTickets<TSelect extends Prisma.KotSelect>(
       AND kot_number ~ '^KOT-[0-9]+$'
   `;
   const firstNumber = Number(rows[0]?.currentNumber ?? 0n) + 1;
+  const sentAt = new Date();
   return Promise.all(
     groups.map(
       (group, index) =>
@@ -44,6 +51,7 @@ export async function createKotTickets<TSelect extends Prisma.KotSelect>(
             kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
             destination: group.destination,
             status: 'PENDING',
+            createdAt: sentAt,
             ...(qr && {
               source: 'QR' as const,
               qrRoundId: qr.roundId,
@@ -51,6 +59,17 @@ export async function createKotTickets<TSelect extends Prisma.KotSelect>(
             }),
             items: {
               create: group.items.map((item) => ({ ...item, status: 'PENDING' as const })),
+            },
+            preparationEvents: {
+              create: {
+                restaurantId,
+                recordedByUserId: createdByUserId,
+                action: 'SENT',
+                status: 'PENDING',
+                version: 0,
+                isPriority: false,
+                createdAt: sentAt,
+              },
             },
           },
           select,

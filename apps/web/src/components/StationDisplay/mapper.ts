@@ -6,11 +6,16 @@ export type Urgency = 'ok' | 'warn' | 'late';
 
 /** Ready tickets never escalate: the cooking is done and they wait on service. */
 export function urgencyOf(
-  ticket: Pick<KotQueueItem, 'status' | 'createdAt'>,
+  ticket: Pick<KotQueueItem, 'status' | 'createdAt' | 'preparation'>,
   station: Pick<StationConfig, 'warnMin' | 'lateMin'>,
   now: number,
 ): Urgency {
   if (ticket.status === 'READY') return 'ok';
+  if (ticket.preparation?.targetSeconds != null) {
+    return now - Date.parse(ticket.createdAt) >= ticket.preparation.targetSeconds * 1000
+      ? 'late'
+      : 'ok';
+  }
   const minutes = (now - Date.parse(ticket.createdAt)) / 60_000;
   if (minutes >= station.lateMin) return 'late';
   if (minutes >= station.warnMin) return 'warn';
@@ -20,7 +25,10 @@ export function urgencyOf(
 export function sortOldestFirst(tickets: KotQueueItem[]): KotQueueItem[] {
   return [...tickets].sort(
     (left, right) =>
-      Date.parse(left.createdAt) - Date.parse(right.createdAt) || left.id.localeCompare(right.id),
+      Number(Boolean(right.preparation?.isPriority)) -
+        Number(Boolean(left.preparation?.isPriority)) ||
+      Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+      left.id.localeCompare(right.id),
   );
 }
 

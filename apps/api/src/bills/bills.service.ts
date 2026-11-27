@@ -150,9 +150,16 @@ export class BillsService {
         throw new ConflictException(
           'Order items have changed. Resync the bill before recording payment.',
         );
-      if (!new Prisma.Decimal(input.amount).equals(bill.totalAmount))
+      const tip = new Prisma.Decimal(input.tipAmount ?? '0.00');
+      const paymentTotal = bill.totalAmount.plus(tip);
+      if (paymentTotal.greaterThan('9999999999.99')) {
         throw new BadRequestException({
-          message: ['amount: Payment must equal the bill total; split payments are not supported'],
+          message: ['tipAmount: Total with tip exceeds the payment limit'],
+        });
+      }
+      if (!new Prisma.Decimal(input.amount).equals(paymentTotal))
+        throw new BadRequestException({
+          message: ['amount: Payment must equal the bill total plus the optional tip'],
         });
       const paidAt = new Date();
       let payment: RecordPaymentResponse['payment'];
@@ -160,7 +167,8 @@ export class BillsService {
         payment = toPayment(
           await context.createPayment({
             paymentMethod: input.paymentMethod,
-            amount: bill.totalAmount,
+            amount: paymentTotal,
+            ...(input.tipAmount !== undefined && { tipAmount: tip }),
             referenceNumber: input.paymentMethod === 'CASH' ? null : input.referenceNumber || null,
             recordedByUserId: actor.userId,
             status: 'COMPLETED',
@@ -231,6 +239,8 @@ export class BillsService {
       payment: payment
         ? {
             method: payment.paymentMethod,
+            tipAmount: payment.tipAmount?.toFixed(2) ?? '0.00',
+            amount: payment.amount?.toFixed(2) ?? bill.totalAmount.toFixed(2),
             referenceNumber: payment.referenceNumber,
             paidAt: payment.paidAt?.toISOString() ?? null,
           }
@@ -241,7 +251,9 @@ export class BillsService {
   private requireSentItems(order: LockedBillingContext['order']): void {
     if (
       order?.items.some(
-        (item) => item.quantity > item.kotItems.reduce((total, sent) => total + sent.quantity, 0),
+        (item) =>
+          item.quantity >
+          (item.sentQuantity ?? item.kotItems.reduce((total, sent) => total + sent.quantity, 0)),
       )
     ) {
       throw new ConflictException(
