@@ -74,6 +74,59 @@ export const recipeSchema = z
     'An ingredient can only appear once in a recipe',
   );
 
+/** Veg / non-veg / egg marker (drawn as circle / triangle / ring, never colour alone). */
+export const DIET_TYPES = ['VEG', 'NON_VEG', 'EGG'] as const;
+export const dietTypeSchema = z.enum(DIET_TYPES, {
+  errorMap: () => ({ message: 'Choose veg, non-veg or egg' }),
+});
+export const DIET_TYPE_LABELS: Record<DietType, string> = {
+  VEG: 'Veg',
+  NON_VEG: 'Non-veg',
+  EGG: 'Egg',
+};
+
+export const recipeSourceSchema = z.enum(['MANUAL', 'AI_DRAFT']);
+
+export const MENU_ITEM_MAX_VARIANTS = 6;
+export const portionFactorSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{1,2}(?:\.\d{1,3})?$/, 'Portion factor must be a number with up to 3 decimals')
+  .refine((value) => Number(value) > 0, 'Portion factor must be greater than 0');
+
+export const menuItemVariantInputSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Portion name is required')
+      .max(50, 'Portion name must be 50 characters or fewer'),
+    price: menuItemPriceSchema,
+    portionFactor: portionFactorSchema.optional(),
+  })
+  .strict();
+
+export const menuItemVariantsInputSchema = z
+  .array(menuItemVariantInputSchema)
+  .max(MENU_ITEM_MAX_VARIANTS, `At most ${MENU_ITEM_MAX_VARIANTS} portions`)
+  .refine(
+    (rows) => new Set(rows.map((row) => row.name.toLowerCase())).size === rows.length,
+    'Two portions have the same name',
+  )
+  .refine((rows) => rows.length !== 1, 'Add at least two portions, or none');
+
+export const menuItemVariantSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    price: z.string(),
+    portionFactor: z.string(),
+    sortOrder: z.number().int(),
+    isActive: z.boolean(),
+  })
+  .strict();
+
 export const recipeItemSchema = z
   .object({
     stockItem: stockItemSchema,
@@ -97,6 +150,11 @@ export const menuItemSchema = z
     /** Veg / non-veg marker on the guest QR menu; null shows no marker. */
     isVeg: z.boolean().nullable(),
     recipe: z.array(recipeItemSchema),
+    dietType: dietTypeSchema.nullable(),
+    variants: z.array(menuItemVariantSchema),
+    recipeSource: recipeSourceSchema,
+    /** Null for an AI-drafted recipe nobody has reviewed yet. */
+    recipeReviewedAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -117,6 +175,10 @@ export const menuItemListQuerySchema = z.object({
 export const menuItemListResponseSchema = z.array(menuItemSchema);
 
 export const menuItemSearchQuerySchema = paginationQuerySchema.extend({
+  recipeStatus: z
+    .enum(['ai-unreviewed'])
+    .optional()
+    .describe('`ai-unreviewed`: AI-drafted recipes nobody has reviewed yet'),
   q: z
     .string()
     .trim()
@@ -163,6 +225,8 @@ export const createMenuItemRequestSchema = z
     recipeRequired: z.boolean().optional().default(true),
     isVeg: z.boolean().nullable().optional(),
     recipe: recipeSchema,
+    dietType: dietTypeSchema.nullable().optional(),
+    variants: menuItemVariantsInputSchema.optional(),
   })
   .strict()
   .refine((value) => !value.recipeRequired || value.recipe.length > 0, {
@@ -184,6 +248,11 @@ export const updateMenuItemRequestSchema = z
     recipeRequired: z.boolean().optional(),
     isVeg: z.boolean().nullable().optional(),
     recipe: recipeSchema.optional(),
+    dietType: dietTypeSchema.nullable().optional(),
+    /** Replaces the item's portions; an empty list removes them. */
+    variants: menuItemVariantsInputSchema.optional(),
+    /** Marks an AI-drafted recipe as reviewed without changing it. */
+    recipeReviewed: z.literal(true).optional(),
   })
   .strict()
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
@@ -211,3 +280,39 @@ export type UpdateMenuItemPriceRequest = z.infer<typeof updateMenuItemPriceReque
 export type UpdateMenuItemClassificationRequest = z.infer<
   typeof updateMenuItemClassificationRequestSchema
 >;
+
+/** Post-onboarding "Import from photo": reviewed rows become live items in one transaction. */
+export const MENU_BULK_IMPORT_MAX_ROWS = 300;
+export const bulkImportMenuItemRowSchema = z
+  .object({
+    category: z.string().trim().min(1, 'Category is required').max(150),
+    itemType: servingTypeSchema,
+    name: menuItemNameSchema,
+    description: descriptionSchema.optional(),
+    price: menuItemPriceSchema,
+    dietType: dietTypeSchema.nullable().optional(),
+    variants: menuItemVariantsInputSchema.optional(),
+  })
+  .strict();
+export const bulkImportMenuItemsRequestSchema = z
+  .object({
+    scanJobId: z.string().uuid().optional(),
+    rows: z.array(bulkImportMenuItemRowSchema).min(1).max(MENU_BULK_IMPORT_MAX_ROWS),
+  })
+  .strict();
+export const bulkImportMenuItemsResponseSchema = z
+  .object({
+    created: z.number().int().nonnegative(),
+    categoriesCreated: z.number().int().nonnegative(),
+    /** Rows left out because the live menu already has an item with that name in that category. */
+    skippedDuplicates: z.array(z.object({ name: z.string(), category: z.string() }).strict()),
+  })
+  .strict();
+
+export type DietType = z.infer<typeof dietTypeSchema>;
+export type RecipeSource = z.infer<typeof recipeSourceSchema>;
+export type MenuItemVariant = z.infer<typeof menuItemVariantSchema>;
+export type MenuItemVariantInput = z.infer<typeof menuItemVariantInputSchema>;
+export type BulkImportMenuItemRow = z.infer<typeof bulkImportMenuItemRowSchema>;
+export type BulkImportMenuItemsRequest = z.infer<typeof bulkImportMenuItemsRequestSchema>;
+export type BulkImportMenuItemsResponse = z.infer<typeof bulkImportMenuItemsResponseSchema>;

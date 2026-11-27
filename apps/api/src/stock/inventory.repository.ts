@@ -317,6 +317,39 @@ export class InventoryWriteContext {
     });
   }
 
+  supplierByGstin(gstin: string) {
+    return this.tx.inventorySupplier.findFirst({
+      where: { restaurantId: this.restaurantId, gstin },
+      select: { id: true, name: true, isActive: true },
+    });
+  }
+
+  /** An earlier receipt of the same supplier invoice (duplicate warning). */
+  receiptForSupplierInvoice(supplierId: string, supplierInvoiceNumber: string) {
+    return this.tx.inventoryReceipt.findFirst({
+      where: {
+        restaurantId: this.restaurantId,
+        supplierId,
+        supplierInvoiceNumber: { equals: supplierInvoiceNumber, mode: 'insensitive' },
+      },
+      select: { id: true, number: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Latest real purchase cost per base unit of each ingredient. */
+  async lastPurchaseCosts(stockItemIds: readonly string[]): Promise<Map<string, Prisma.Decimal>> {
+    const batches = await this.tx.stockBatch.findMany({
+      where: { restaurantId: this.restaurantId, stockItemId: { in: [...stockItemIds] } },
+      select: { stockItemId: true, unitCost: true },
+      orderBy: { receivedAt: 'desc' },
+    });
+    const costs = new Map<string, Prisma.Decimal>();
+    for (const batch of batches)
+      if (!costs.has(batch.stockItemId)) costs.set(batch.stockItemId, batch.unitCost);
+    return costs;
+  }
+
   createSupplier(data: Omit<Prisma.InventorySupplierUncheckedCreateInput, 'restaurantId'>) {
     return this.tx.inventorySupplier.create({ data: { ...data, restaurantId: this.restaurantId } });
   }

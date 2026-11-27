@@ -10,6 +10,7 @@ import {
   type CompleteOnboardingResponse,
   findInventoryRowIssues,
   findMenuRowIssues,
+  ONBOARDING_STEP_CODES,
   ONBOARDING_STEPS,
   type OnboardingDraftData,
   onboardingDraftDataSchema,
@@ -28,6 +29,7 @@ import {
   summarizeMenuCategories,
 } from '@rms/api-contract';
 
+import { AiJobsService } from '../ai/jobs/ai-jobs.service';
 import { AuthTokenService } from '../auth-tokens/auth-token.service';
 import type { Actor } from '../common/auth/authenticated-request';
 import { mapDatabaseError } from '../common/filters/http-exception.filter';
@@ -49,17 +51,30 @@ const STAGE_LABELS: Record<OnboardingStage, string> = {
   statuses: 'Adding table statuses and cancellation reasons',
   menu: 'Menu import',
   inventory: 'Inventory import',
+  recipes: 'Saving recipes',
   team: 'Creating team accounts',
   final: 'Final checks',
 };
 
-/** Steps are stored as 1-based positions; 0 means the owner hasn't left the Welcome screen. */
-function stepToNumber(step: OnboardingStep | null): number {
-  return step === null ? 0 : ONBOARDING_STEPS.indexOf(step) + 1;
+/**
+ * Steps are stored as fixed codes (never list positions, so inserting a step can't shift a saved
+ * draft); 0 means the owner hasn't left the Welcome screen.
+ */
+export function stepToNumber(step: OnboardingStep | null): number {
+  return step === null ? 0 : ONBOARDING_STEP_CODES[step];
 }
 
-function numberToStep(value: number): OnboardingStep | null {
-  return ONBOARDING_STEPS[value - 1] ?? null;
+export function numberToStep(value: number): OnboardingStep | null {
+  return ONBOARDING_STEPS.find((step) => ONBOARDING_STEP_CODES[step] === value) ?? null;
+}
+
+/** Scan jobs whose photos are no longer needed once setup is committed. */
+function scanJobIds(data: OnboardingDraftData): string[] {
+  return [
+    data.menu?.scanJobId,
+    data.recipes?.jobId,
+    ...(data.inventory?.invoices ?? []).map((invoice) => invoice.jobId),
+  ].filter((id): id is string => Boolean(id));
 }
 
 function stageError(stage: OnboardingStage, status: HttpStatus, message: string): HttpException {
@@ -92,6 +107,7 @@ export class OnboardingService {
     private readonly tokens: AuthTokenService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    private readonly scanJobs: AiJobsService,
   ) {}
 
   async getState(actor: Actor): Promise<OnboardingStateResponse> {
@@ -169,9 +185,11 @@ export class OnboardingService {
         details: data.details,
         floor: data.floor,
         menu: data.menu,
+        recipes: data.recipes,
         inventory: data.inventory,
         team,
       });
+      await this.scanJobs.purgeAfterUse(actor.restaurantId, scanJobIds(input.data));
       // Setup is committed, so a mail outage must not fail it: each invitation can be resent.
       const invitationsHeld = result.users.length > 0 && !actor.emailVerifiedAt;
       const inviter = invitationsHeld ? null : await this.repository.findName(actor.userId);
@@ -268,6 +286,8 @@ export class OnboardingService {
       if (!skipped.has(step) && draft[step]) Object.assign(filled, { [step]: draft[step] });
     }
     if (filled.menu?.mode === 'later') delete filled.menu;
+    // Recipes reference menu rows; without a menu there is nothing to attach them to.
+    if (!filled.menu) delete filled.recipes;
 
     const parsed = completeOnboardingDataSchema.safeParse(filled);
     if (parsed.success) return parsed.data;

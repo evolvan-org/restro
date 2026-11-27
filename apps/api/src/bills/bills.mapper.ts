@@ -24,7 +24,7 @@ export function toBill(record: BillRecord): Bill {
     maxDiscountPercent: record.restaurant.maxDiscountPercent.toFixed(2),
     lines: record.order.items.map((line) => ({
       id: line.id,
-      name: line.menuItem.name,
+      name: line.variantName ? `${line.menuItem.name} (${line.variantName})` : line.menuItem.name,
       quantity: line.quantity,
       unitPrice: line.unitPrice.toFixed(2),
       amount: line.unitPrice.mul(line.quantity).toFixed(2),

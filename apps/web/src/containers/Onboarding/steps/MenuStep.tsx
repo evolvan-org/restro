@@ -9,14 +9,14 @@ import {
   type OnboardingMenuRow,
   summarizeMenuCategories,
 } from '@rms/api-contract';
-import { Info, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { Plus, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
-import { SegmentedControl } from '@/components/ui/segmented-control';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { useAiUsage } from '@/services/api/requests/ai';
 import { usePreviewMenuCsv } from '@/services/api/requests/onboarding';
 
 import { CsvUpload } from '../CsvUpload';
@@ -24,11 +24,14 @@ import { plural } from '../format';
 import { newKey } from '../keys';
 import { useOnboarding } from '../OnboardingProvider';
 import Shell, { Section } from '../Shell';
+import { Seg } from '../ui/kit';
 import { useStepNavigation } from '../useStepNavigation';
+import { MenuScanStep } from './menu/MenuScanPanel';
 
 type Mode = OnboardingMenuDraft['mode'];
 
 const MODES = [
+  { value: 'scan', label: 'Scan menu photo', ai: true },
   { value: 'csv', label: 'Import CSV' },
   { value: 'manual', label: 'Add manually' },
   { value: 'later', label: 'Do it later' },
@@ -60,7 +63,14 @@ export default function MenuStep(): ReactElement {
   const [uploadError, setUploadError] = useState<string>();
   const [showAll, setShowAll] = useState(false);
 
-  const menu: OnboardingMenuDraft = draft.data.menu ?? { mode: 'csv', rows: [] };
+  const ai = useAiUsage();
+  const aiEnabled = ai.data?.enabled !== false;
+  const modes = aiEnabled ? MODES : MODES.filter((mode) => mode.value !== 'scan');
+  const menu: OnboardingMenuDraft = draft.data.menu ?? {
+    mode: aiEnabled ? 'scan' : 'csv',
+    rows: [],
+  };
+  const scanning = menu.mode === 'scan';
   const save = (patch: Partial<OnboardingMenuDraft>): void =>
     setStepData('menu', { ...menu, ...patch });
   const updateRow = (key: string, patch: Partial<OnboardingMenuRow>): void =>
@@ -71,6 +81,7 @@ export default function MenuStep(): ReactElement {
   for (const issue of issues)
     issuesByRow.set(issue.index, [...(issuesByRow.get(issue.index) ?? []), issue]);
   const errorCount = issuesByRow.size;
+  const included = menu.rows.filter((row) => !row.excluded);
   const readyCount = menu.rows.length - errorCount;
   const categories = summarizeMenuCategories(menu.rows);
   const mixed = categories.filter((category) => category.mixedTypes);
@@ -99,7 +110,7 @@ export default function MenuStep(): ReactElement {
   }
 
   // Nothing to save until a file is uploaded (or an item added); "Do it later" needs nothing.
-  const empty = menu.mode !== 'later' && menu.rows.length === 0;
+  const empty = menu.mode !== 'later' && included.length === 0;
 
   async function onContinue(): Promise<void> {
     if (menu.mode !== 'later' && (empty || errorCount > 0)) return;
@@ -108,6 +119,26 @@ export default function MenuStep(): ReactElement {
   }
 
   const blocked = menu.mode !== 'later' && (empty || errorCount > 0);
+  const modeSwitch = (
+    <Seg
+      label="How to add your menu"
+      options={modes}
+      value={menu.mode}
+      onChange={(mode: Mode) => save({ mode })}
+    />
+  );
+
+  if (scanning) {
+    return (
+      <MenuScanStep
+        menu={menu}
+        save={save}
+        nav={nav}
+        modeSwitch={modeSwitch}
+        onSwitchMode={(mode) => save({ mode })}
+      />
+    );
+  }
 
   return (
     <Shell
@@ -140,17 +171,11 @@ export default function MenuStep(): ReactElement {
         ),
       }}
     >
-      <SegmentedControl
-        idBase="menu-mode"
-        aria-label="How to add your menu"
-        options={MODES}
-        value={menu.mode}
-        onChange={(mode: Mode) => save({ mode })}
-      />
+      <div className="self-start">{modeSwitch}</div>
 
       {menu.mode === 'csv' && (
         <Section title="Upload your menu">
-          <p className="text-sm text-neutral-700">
+          <p className="text-sm text-muted-foreground">
             Columns: {MENU_CSV_COLUMNS.join(', ')}. Required: category, type (FOOD or BAR), name,
             price. Categories are created from the category column. Up to {ONBOARDING_MENU_MAX_ROWS}{' '}
             rows.
@@ -168,15 +193,15 @@ export default function MenuStep(): ReactElement {
         </Section>
       )}
 
-      {empty && (
-        <p className="text-sm text-neutral-600" role="status">
+      {empty && !scanning && (
+        <p className="text-sm text-muted-foreground" role="status">
           {menu.mode === 'csv'
             ? 'Upload your menu CSV to continue, or choose Skip for now.'
             : 'Add at least one item to continue, or choose Skip for now.'}
         </p>
       )}
 
-      {menu.mode !== 'later' && menu.rows.length > 0 && (
+      {menu.mode !== 'later' && !scanning && menu.rows.length > 0 && (
         <Section
           title={`${readyCount} ready${errorCount ? ` · ${errorCount} need fixing` : ''}`}
           description={
@@ -194,7 +219,7 @@ export default function MenuStep(): ReactElement {
           )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="text-xs text-neutral-600">
+              <thead className="text-xs text-muted-foreground">
                 <tr>
                   <th className="pb-2 pr-2 font-medium">Row</th>
                   <th className="pb-2 pr-2 font-medium">Category</th>
@@ -214,7 +239,7 @@ export default function MenuStep(): ReactElement {
                   const bad = rowIssues.length > 0;
                   return (
                     <tr key={row.key} className={bad ? 'bg-red-50/60' : ''}>
-                      <td className="py-1.5 pr-2 align-top text-neutral-600">
+                      <td className="py-1.5 pr-2 align-top text-muted-foreground">
                         {row.line ?? position + 1}
                       </td>
                       <td className="py-1.5 pr-2 align-top">
@@ -318,22 +343,24 @@ export default function MenuStep(): ReactElement {
 
       {menu.mode === 'later' && (
         <Section title="You can add the menu later">
-          <p className="text-sm text-neutral-700">
+          <p className="text-sm text-muted-foreground">
             Captains can&apos;t take orders until there&apos;s a menu. We&apos;ll put &quot;Add your
             menu&quot; at the top of your dashboard checklist.
           </p>
         </Section>
       )}
 
-      <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <Info className="mt-0.5 size-4 flex-none" aria-hidden />
-        <span>
-          <strong className="font-semibold">Recipes come after setup.</strong> Items are created
-          without recipes. Once you&apos;re in, the dashboard lists every item that still needs one,
-          so stock is deducted when it&apos;s ordered. Items like bottled water can be marked
-          &quot;No recipe needed&quot;.
-        </span>
-      </p>
+      {menu.mode !== 'later' && (
+        <p className="flex items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
+          <Sparkles className="mt-0.5 size-4 flex-none" aria-hidden />
+          <span>
+            <strong className="font-semibold">
+              Next, we&apos;ll draft a recipe for each of these dishes.
+            </strong>{' '}
+            You check the ingredients; stock is then deducted as orders are made.
+          </span>
+        </p>
+      )}
     </Shell>
   );
 }

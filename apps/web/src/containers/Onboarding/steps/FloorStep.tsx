@@ -202,13 +202,13 @@ export default function FloorStep(): ReactElement {
       }}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-[13px] text-neutral-700">Quick add:</span>
+        <span className="mr-1 text-[13px] text-muted-foreground">Quick add:</span>
         {QUICK_SECTIONS.map((quick) => (
           <button
             key={quick.name}
             type="button"
             onClick={() => addSection(quick.name, quick.prefix)}
-            className="h-11 rounded-full border border-dashed border-neutral-300 bg-white px-4 text-sm font-medium hover:border-neutral-500"
+            className="h-11 rounded-full border border-dashed border-zinc-300 dark:border-zinc-700 bg-card px-4 text-sm font-medium hover:border-neutral-500"
           >
             + {quick.name}
           </button>
@@ -216,14 +216,14 @@ export default function FloorStep(): ReactElement {
         <button
           type="button"
           onClick={() => addSection('', 'S')}
-          className="h-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-medium hover:border-neutral-500"
+          className="h-11 rounded-full border border-zinc-300 dark:border-zinc-700 bg-card px-4 text-sm font-medium hover:border-neutral-500"
         >
           + Custom section
         </button>
       </div>
 
       {floor.sections.length === 0 && (
-        <p className="rounded-xl border border-dashed border-neutral-300 bg-white p-6 text-center text-sm text-neutral-600">
+        <p className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 bg-card p-6 text-center text-sm text-muted-foreground">
           Pick a section above to start. Each one generates its tables for you.
         </p>
       )}
@@ -235,7 +235,7 @@ export default function FloorStep(): ReactElement {
           <section
             key={section.key}
             aria-label={section.name || `Section ${sectionIndex + 1}`}
-            className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5"
+            className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5"
           >
             <div className="flex flex-wrap items-end gap-3">
               <Field
@@ -307,7 +307,7 @@ export default function FloorStep(): ReactElement {
             {sectionError && <FieldError>{sectionError}</FieldError>}
 
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-neutral-600">
+              <span className="text-xs text-muted-foreground">
                 {tableSummary(section)} · tap a table to change its number or seats
               </span>
               <div className="flex flex-wrap gap-2">
@@ -338,7 +338,7 @@ export default function FloorStep(): ReactElement {
                   aria-label={`Add one table to ${section.name || 'this section'}`}
                   disabled={section.tables.length >= ONBOARDING_MAX_TABLES_PER_SECTION}
                   onClick={() => setCount(section, String(section.tables.length + 1))}
-                  className="flex h-14 w-16 items-center justify-center rounded-[10px] border border-dashed border-neutral-400 bg-white text-neutral-600 hover:border-neutral-600 disabled:opacity-50"
+                  className="flex h-14 w-16 items-center justify-center rounded-[10px] border border-dashed border-zinc-300 dark:border-zinc-700 bg-card text-muted-foreground hover:border-neutral-600 disabled:opacity-50"
                 >
                   <Plus aria-hidden />
                 </button>
@@ -360,17 +360,17 @@ export default function FloorStep(): ReactElement {
       })}
 
       {floor.sections.length > 0 && (
-        <p className="flex flex-wrap justify-end gap-6 text-sm text-neutral-700">
+        <p className="flex flex-wrap justify-end gap-6 text-sm text-muted-foreground">
           <span>
-            <strong className="text-neutral-900">{floor.sections.length}</strong>{' '}
+            <strong className="text-foreground">{floor.sections.length}</strong>{' '}
             {floor.sections.length === 1 ? 'section' : 'sections'}
           </span>
           <span>
-            <strong className="text-neutral-900">{totals.tables}</strong>{' '}
+            <strong className="text-foreground">{totals.tables}</strong>{' '}
             {totals.tables === 1 ? 'table' : 'tables'}
           </span>
           <span>
-            <strong className="text-neutral-900">{totals.seats}</strong> seats
+            <strong className="text-foreground">{totals.seats}</strong> seats
           </span>
         </p>
       )}
@@ -395,11 +395,11 @@ export default function FloorStep(): ReactElement {
           {SYSTEM_STATUSES.map((status) => (
             <li
               key={status.name}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-[13px] font-medium"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-muted px-3 text-[13px] font-medium"
             >
               <span className={`size-2 rounded-full ${status.color}`} aria-hidden />
               {status.name}
-              <Lock className="size-3 text-neutral-500" aria-label="System status" />
+              <Lock className="size-3 text-muted-foreground" aria-label="System status" />
             </li>
           ))}
         </ul>

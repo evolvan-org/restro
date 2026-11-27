@@ -12,8 +12,9 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
-  // Express's 100 KB default is too small for the base64 UPI QR image (≤ 1 MB, REST-88); the
-  // upload schema caps the payload, so the global limit only needs headroom above that.
+  // Express's 100 KB default is too small for the base64 UPI QR image (≤ 1 MB, REST-88) and for an
+  // onboarding draft with scanned menu rows, drafted recipes and invoices (REST-89); the request
+  // schemas cap each payload, so the global limit only needs headroom above them.
   app.useBodyParser('json', { limit: '2mb' });
 
   if (config.get<string>('TRUST_PROXY') === 'true') {
@@ -44,6 +45,7 @@ async function bootstrap() {
     .addTag('guests', 'Look up guest profiles')
     .addTag('reservations', 'Manage reservation records')
     .addTag('walk-ins', 'Register walk-in guests')
+    .addTag('ai', 'AI menu / invoice scans and recipe drafts (results feed drafts only)')
     .addTag('qr ordering (guest)', 'Public QR table ordering: menu, cart, rounds, bill and split')
     .addTag('qr ordering (staff)', 'Captain approval queue, escalation, QR payments and settings')
     .build();

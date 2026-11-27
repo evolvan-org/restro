@@ -28,6 +28,30 @@ export const envSchema = z.object({
     .optional(),
   NEXT_PUBLIC_API_URL: z.string().url().optional(),
   WEB_ORIGIN: z.string().optional(),
+
+  // ----- AI assistance (REST-89) -----
+  /** `fake` returns canned rows with delays: dev, CI, tests and offline demos. */
+  AI_PROVIDER: z.enum(['gemini', 'fake']).optional(),
+  /** Without a key (and with the gemini provider) AI features report AI_UNAVAILABLE. */
+  GEMINI_API_KEY: z
+    .string()
+    .optional()
+    .transform((value) => value || undefined),
+  AI_MODEL_MENU: z.string().min(1).default('gemini-3.5-flash-lite'),
+  AI_MODEL_INVOICE: z.string().min(1).default('gemini-3.8-flash'),
+  AI_MODEL_RECIPES: z.string().min(1).default('gemini-3.5-flash-lite'),
+  /** Used while the model above is overloaded (Google answers 503 or cuts streams). */
+  AI_MODEL_MENU_FALLBACK: z.string().min(1).default('gemini-3.1-flash-lite'),
+  AI_MODEL_INVOICE_FALLBACK: z.string().min(1).default('gemini-3.5-flash'),
+  AI_MODEL_RECIPES_FALLBACK: z.string().min(1).default('gemini-3.1-flash-lite'),
+  AI_UPLOAD_DIR: z.string().min(1).default('./data/ai-uploads'),
+  AI_IMAGE_TTL_HOURS: z.coerce.number().int().positive().default(72),
+  AI_DAILY_MENU_SCANS: z.coerce.number().int().nonnegative().default(10),
+  AI_DAILY_INVOICE_SCANS: z.coerce.number().int().nonnegative().default(20),
+  AI_MAX_CONCURRENT_JOBS: z.coerce.number().int().positive().max(20).default(3),
+  AI_PRICE_JUMP_PERCENT: z.coerce.number().positive().default(15),
+  /** Fake provider only: force a failure state (`unreadable`, `partial`, `unavailable`). */
+  AI_FAKE_SCENARIO: z.enum(['ok', 'unreadable', 'partial', 'unavailable', 'flaky']).default('ok'),
 });
 
 export type Env = z.infer<typeof envSchema>;

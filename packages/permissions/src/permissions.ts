@@ -41,10 +41,14 @@ export const Permission = {
   // Menu
   MENU_READ: 'menu:read',
   MENU_WRITE: 'menu:write',
+  /** Read a paper menu from photos (AI); results still need menu:write to save. */
+  MENU_SCAN: 'menu:scan',
 
   // Stock
   STOCK_READ: 'stock:read',
   INVENTORY_MANAGE: 'inventory:manage',
+  /** Read a supplier invoice from photos (AI) into a purchase receipt. */
+  INVENTORY_SCAN_INVOICE: 'inventory:scan-invoice',
 
   // Reservations
   RESERVATION_READ: 'reservation:read',

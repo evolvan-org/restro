@@ -15,6 +15,9 @@ export const orderItemSchema = z
     id: z.string().uuid(),
     menuItemId: z.string().uuid(),
     name: z.string(),
+    /** Portion ordered (e.g. "Half"); null for items without portions. */
+    variantId: z.string().uuid().nullable(),
+    variantName: z.string().nullable(),
     itemType: servingTypeSchema,
     quantity: z.number().int().positive(),
     sentQuantity: z
@@ -85,6 +88,8 @@ export type OrderAlreadyOpenError = z.infer<typeof orderAlreadyOpenErrorSchema>;
 export const addOrderItemRequestSchema = z
   .object({
     menuItemId: z.string().uuid(),
+    /** Required when the item has portions; the line takes that portion's price. */
+    variantId: z.string().uuid().optional(),
     quantity: z.number().int().min(1).max(2147483647),
     specialInstructions: z.string().max(255).optional(),
   })

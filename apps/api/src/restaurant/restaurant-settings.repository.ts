@@ -11,6 +11,8 @@ const restaurantSettingsSelect = {
   defaultGstRate: true,
   maxDiscountPercent: true,
   address: true,
+  targetFoodCostMin: true,
+  targetFoodCostMax: true,
 } satisfies Prisma.RestaurantSelect;
 
 export type RestaurantSettingsRecord = Prisma.RestaurantGetPayload<{
@@ -25,6 +27,8 @@ export type RestaurantSettingsDetails = {
   defaultGstRate: number;
   maxDiscountPercent: number;
   address: string | null;
+  targetFoodCostMin?: number;
+  targetFoodCostMax?: number;
 };
 
 @Injectable()

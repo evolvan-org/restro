@@ -7,6 +7,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type {
   AdjustInventoryStock,
   CreateInventoryItem,
@@ -31,11 +32,13 @@ import type {
   InventorySupplierQuery,
   LogInventoryWaste,
   OpeningInventoryStock,
+  ReceiptChecksRequest,
+  ReceiptChecksResponse,
   UpdateInventoryItem,
   UpdateInventoryPurchaseStatus,
   UpdateInventorySupplier,
 } from '@rms/api-contract';
-import { inventorySupplyMeasures } from '@rms/api-contract';
+import { API_ERROR_CODES, inventorySupplyMeasures, priceJumpPercent } from '@rms/api-contract';
 import { Prisma, type StockBatch, type StockItem } from '@rms/db';
 import { buildPageMeta, type Paginated } from '@rms/shared';
 
@@ -101,7 +104,10 @@ function localDay(timezone: string): Date {
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly repository: InventoryRepository) {}
+  constructor(
+    private readonly repository: InventoryRepository,
+    private readonly config: ConfigService,
+  ) {}
 
   async options(actor: Actor): Promise<InventoryOptions> {
     const [stock, suppliers] = await this.repository.options(actor.restaurantId);
@@ -405,6 +411,8 @@ export class InventoryService {
     return this.repository.withWrite(actor.restaurantId, async (inventory) => {
       if (await inventory.supplierByName(input.name))
         throw new ConflictException('Supplier name is already in use');
+      if (input.gstin && (await inventory.supplierByGstin(input.gstin)))
+        throw new ConflictException('Another supplier already has this GSTIN');
       return toInventorySupplier(await inventory.createSupplier(input));
     });
   }
@@ -419,6 +427,11 @@ export class InventoryService {
       const duplicate = await inventory.supplierByName(input.name);
       if (duplicate && duplicate.id !== id)
         throw new ConflictException('Supplier name is already in use');
+      if (input.gstin) {
+        const sameGstin = await inventory.supplierByGstin(input.gstin);
+        if (sameGstin && sameGstin.id !== id)
+          throw new ConflictException('Another supplier already has this GSTIN');
+      }
       if (!input.isActive && supplier.isActive && (await inventory.openPurchasesForSupplier(id))) {
         throw new ConflictException('A supplier with open purchase orders cannot be archived');
       }
@@ -484,8 +497,19 @@ export class InventoryService {
         }
         return toInventoryReceipt(previous);
       }
-      const supplier = await this.requireSupplier(inventory, input.supplierId);
+      const supplier = await this.resolveReceiptSupplier(inventory, input);
       if (!supplier.isActive) throw new ConflictException('Select an active supplier');
+      const invoiceNumber = input.invoice?.supplierInvoiceNumber;
+      if (invoiceNumber && !input.acknowledgeDuplicate) {
+        const earlier = await inventory.receiptForSupplierInvoice(supplier.id, invoiceNumber);
+        if (earlier) {
+          throw new ConflictException({
+            message: `Invoice ${invoiceNumber} was already recorded on ${earlier.createdAt.toISOString().slice(0, 10)} (GRN-${earlier.number}).`,
+            error: 'Conflict',
+            code: API_ERROR_CODES.RECEIPT_DUPLICATE_INVOICE,
+          });
+        }
+      }
       const po = input.purchaseOrderId
         ? await this.requirePurchase(inventory, input.purchaseOrderId)
         : null;
@@ -527,6 +551,13 @@ export class InventoryService {
         supplierId: supplier.id,
         purchaseOrderId: po?.id,
         notes: input.notes,
+        supplierInvoiceNumber: invoiceNumber ?? null,
+        supplierInvoiceDate: input.invoice?.supplierInvoiceDate
+          ? new Date(input.invoice.supplierInvoiceDate)
+          : null,
+        invoiceTotal: input.invoice?.invoiceTotal ?? null,
+        taxBreakdown: input.invoice?.taxBreakdown ?? undefined,
+        scanJobId: input.scanJobId ?? null,
         lines: { create: lines },
       });
       for (const line of receipt.lines) {
@@ -552,6 +583,84 @@ export class InventoryService {
         await inventory.setPurchaseStatus(po.id, complete ? 'RECEIVED' : 'PARTIALLY_RECEIVED');
       }
       return toInventoryReceipt(receipt);
+    });
+  }
+
+  /**
+   * The receipt's supplier: the one chosen, or for a scanned invoice the one with that GSTIN, then
+   * that name (its GSTIN filled in), else a new supplier.
+   */
+  private async resolveReceiptSupplier(
+    inventory: InventoryWriteContext,
+    input: CreateInventoryReceipt,
+  ): Promise<{ id: string; isActive: boolean }> {
+    if (input.supplierId) return this.requireSupplier(inventory, input.supplierId);
+    const wanted = input.newSupplier;
+    if (!wanted) throw new BadRequestException('Select a supplier');
+    if (wanted.gstin) {
+      const byGstin = await inventory.supplierByGstin(wanted.gstin);
+      if (byGstin) return byGstin;
+    }
+    const byName = await inventory.supplierByName(wanted.name);
+    if (byName) {
+      const supplier = await this.requireSupplier(inventory, byName.id);
+      if (wanted.gstin && !supplier.gstin)
+        await inventory.updateSupplier(supplier.id, { gstin: wanted.gstin });
+      return supplier;
+    }
+    return inventory.createSupplier({
+      name: wanted.name,
+      gstin: wanted.gstin ?? null,
+      contactName: '',
+      email: '',
+      phone: '',
+      address: '',
+    });
+  }
+
+  /** Warnings shown before saving a scanned invoice; reads only. */
+  receiptChecks(actor: Actor, input: ReceiptChecksRequest): Promise<ReceiptChecksResponse> {
+    return this.repository.withWrite(actor.restaurantId, async (inventory) => {
+      let supplier: { id: string; name: string } | null = null;
+      if (input.supplierId) {
+        const found = await inventory.supplier(input.supplierId);
+        supplier = found ? { id: found.id, name: found.name } : null;
+      } else if (input.supplierGstin) {
+        const found = await inventory.supplierByGstin(input.supplierGstin.toUpperCase());
+        supplier = found ? { id: found.id, name: found.name } : null;
+      }
+      const earlier =
+        supplier && input.supplierInvoiceNumber
+          ? await inventory.receiptForSupplierInvoice(supplier.id, input.supplierInvoiceNumber)
+          : null;
+      const threshold = this.config.get<number>('AI_PRICE_JUMP_PERCENT') ?? 15;
+      const previous = await inventory.lastPurchaseCosts(
+        input.lines.map((line) => line.stockItemId),
+      );
+      const priceJumps = input.lines.flatMap((line) => {
+        const before = previous.get(line.stockItemId);
+        const change = before ? priceJumpPercent(before.toNumber(), Number(line.unitCost)) : null;
+        if (change === null || Math.abs(change) < threshold) return [];
+        return [
+          {
+            stockItemId: line.stockItemId,
+            previousUnitCost: before!.toFixed(),
+            unitCost: line.unitCost,
+            changePercent: Math.round(change * 10) / 10,
+          },
+        ];
+      });
+      return {
+        supplier,
+        duplicate: earlier
+          ? {
+              receiptId: earlier.id,
+              number: earlier.number,
+              recordedAt: earlier.createdAt.toISOString(),
+            }
+          : null,
+        priceJumps,
+      };
     });
   }
 

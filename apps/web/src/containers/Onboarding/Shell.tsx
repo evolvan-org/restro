@@ -1,128 +1,46 @@
 'use client';
 
 import type { OnboardingStep } from '@rms/api-contract';
-import { Check, ListChecks, Lock } from 'lucide-react';
+import { cn } from 'cn';
+import { ArrowLeft, Check, CircleCheck, ListChecks, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactElement, type ReactNode, useState } from 'react';
 
-import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useLogout } from '@/store/hooks/auth';
 
 import { savedAgo } from './format';
 import { useOnboarding } from './OnboardingProvider';
 import { canOpenStep, setupProgress, stepStatus } from './progress';
-import { stepMeta, stepPath, STEPS } from './steps';
+import { STEP_COUNT, stepMeta, stepPath, STEPS } from './steps';
+import { btn, Card, PageHead } from './ui/kit';
 
-function SaveIndicator(): ReactElement {
+/** "Saved just now" in the top bar. */
+export function SaveIndicator({ label }: { label?: string }): ReactElement {
   const { saveStatus, lastSavedAt } = useOnboarding();
-  const label =
-    saveStatus === 'saving'
+  const text =
+    label ??
+    (saveStatus === 'saving'
       ? 'Saving…'
       : saveStatus === 'offline'
         ? 'Offline · saved on this device'
         : saveStatus === 'error'
           ? "Couldn't save · kept on this device"
           : lastSavedAt
-            ? `All changes saved · ${savedAgo(lastSavedAt)}`
-            : 'Progress saves as you go';
-  const dot =
-    saveStatus === 'saved'
-      ? 'bg-emerald-600'
-      : saveStatus === 'saving'
-        ? 'bg-neutral-400'
-        : 'bg-amber-500';
+            ? `Saved ${savedAgo(lastSavedAt)}`
+            : 'Saves as you go');
   return (
-    <p className="flex items-center gap-2 text-xs text-neutral-700" aria-live="polite">
-      <span className={`size-2 flex-none rounded-full ${dot}`} aria-hidden />
-      {label}
+    <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground" aria-live="polite">
+      <CircleCheck
+        className={cn(
+          'size-[15px]',
+          saveStatus === 'saved' ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-600',
+        )}
+        aria-hidden
+      />
+      <span className="hidden sm:inline">{text}</span>
     </p>
-  );
-}
-
-function StepList({
-  current,
-  onNavigate,
-}: {
-  current: OnboardingStep;
-  onNavigate?: () => void;
-}): ReactElement {
-  const { draft } = useOnboarding();
-  return (
-    <ol className="flex flex-col gap-0.5">
-      {STEPS.map((meta) => {
-        const isCurrent = meta.step === current;
-        const status = stepStatus(draft, meta.step);
-        const tag = isCurrent
-          ? 'In progress'
-          : status === 'done'
-            ? 'Done'
-            : status === 'skipped'
-              ? 'Skipped · finish later'
-              : meta.tag;
-        const tagColor = isCurrent
-          ? 'text-neutral-900'
-          : status === 'done'
-            ? 'text-emerald-700'
-            : status === 'skipped'
-              ? 'text-amber-800'
-              : 'text-neutral-600';
-        const dot = isCurrent
-          ? 'bg-neutral-900 text-white'
-          : status === 'done'
-            ? 'bg-emerald-600 text-white'
-            : status === 'skipped'
-              ? 'border-[1.5px] border-dashed border-neutral-400 bg-white text-neutral-600'
-              : 'border-[1.5px] border-neutral-300 bg-white text-neutral-600';
-        if (!canOpenStep(draft, meta.step)) {
-          return (
-            <li key={meta.step}>
-              <div
-                aria-disabled="true"
-                title="Finish the earlier steps first"
-                className="flex min-h-11 items-center gap-3 rounded-[10px] px-3 py-2.5 text-neutral-400"
-              >
-                <span className="flex size-7 flex-none items-center justify-center rounded-full border-[1.5px] border-neutral-200 bg-white text-[13px] font-semibold">
-                  {meta.number}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-sm font-medium">{meta.label}</span>
-                  <span className="text-xs">Locked · finish earlier steps</span>
-                </span>
-                <Lock className="size-3.5 flex-none" aria-hidden />
-              </div>
-            </li>
-          );
-        }
-        return (
-          <li key={meta.step}>
-            <Link
-              href={stepPath(meta.step)}
-              onClick={onNavigate}
-              aria-current={isCurrent ? 'step' : undefined}
-              className={`flex min-h-11 items-center gap-3 rounded-[10px] px-3 py-2.5 text-neutral-900 transition-colors hover:bg-neutral-50 ${isCurrent ? 'bg-neutral-100 hover:bg-neutral-100' : ''}`}
-            >
-              <span
-                className={`flex size-7 flex-none items-center justify-center rounded-full text-[13px] font-semibold ${dot}`}
-              >
-                {status === 'done' && !isCurrent ? (
-                  <Check className="size-3.5" strokeWidth={3} aria-label="Done" />
-                ) : (
-                  meta.number
-                )}
-              </span>
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className={`text-sm ${isCurrent ? 'font-semibold' : 'font-medium'}`}>
-                  {meta.label}
-                </span>
-                <span className={`text-xs ${tagColor}`}>{tag}</span>
-              </span>
-            </Link>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -142,179 +60,371 @@ function useSaveAndExit(): { exit: () => Promise<void>; exiting: boolean } {
   };
 }
 
+/** Top bar (design: logo · "Restro setup" / restaurant name · saved state). */
+export function TopBar({
+  savedLabel,
+  right,
+}: {
+  savedLabel?: string;
+  right?: ReactNode;
+}): ReactElement {
+  const { draft, server } = useOnboarding();
+  const restaurantName = draft.data.details?.name.trim() || server.restaurant.name;
+  return (
+    <header className="flex h-14 flex-none items-center gap-3 border-b border-border bg-background px-4 sm:gap-4 sm:px-6">
+      <span className="flex size-7 flex-none items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+        R
+      </span>
+      <span className="text-sm font-semibold whitespace-nowrap">Restro setup</span>
+      <span className="hidden text-muted-foreground sm:inline" aria-hidden>
+        /
+      </span>
+      <span className="hidden min-w-0 truncate text-sm text-muted-foreground sm:inline">
+        {restaurantName}
+      </span>
+      <span className="flex-1" />
+      <SaveIndicator label={savedLabel} />
+      {right}
+    </header>
+  );
+}
+
+/** Horizontal stepper (design .steps): dots joined by lines, label and state under each. */
+function Stepper({ current }: { current: OnboardingStep }): ReactElement {
+  const { draft } = useOnboarding();
+  return (
+    <nav
+      aria-label="Setup steps"
+      className="hidden flex-none border-b border-border bg-background px-8 pt-[18px] pb-3.5 lg:block"
+    >
+      <ol className="mx-auto flex max-w-[1280px] items-start">
+        {STEPS.map((meta, index) => {
+          const isCurrent = meta.step === current;
+          const status = stepStatus(draft, meta.step);
+          const open = canOpenStep(draft, meta.step);
+          const sub = isCurrent
+            ? meta.tag
+            : status === 'done'
+              ? 'Done'
+              : status === 'skipped'
+                ? 'Skipped'
+                : draft.data.deferred?.includes(meta.step as never)
+                  ? 'To do'
+                  : meta.tag;
+          const dot = (
+            <span
+              className={cn(
+                'relative z-10 flex size-7 items-center justify-center rounded-full border-2 bg-background text-[13px] font-semibold',
+                isCurrent && 'border-primary text-foreground shadow-[0_0_0_4px_var(--border)]',
+                !isCurrent &&
+                  status === 'done' &&
+                  'border-primary bg-primary text-primary-foreground',
+                !isCurrent &&
+                  status === 'skipped' &&
+                  'border-zinc-300 bg-muted text-muted-foreground',
+                !isCurrent &&
+                  status === 'todo' &&
+                  'border-dashed border-zinc-300 text-muted-foreground',
+              )}
+            >
+              {!isCurrent && status === 'done' ? (
+                <Check className="size-[15px]" strokeWidth={3} aria-hidden />
+              ) : !isCurrent && status === 'skipped' ? (
+                '–'
+              ) : (
+                index + 1
+              )}
+            </span>
+          );
+          const body = (
+            <>
+              {dot}
+              <span
+                className={cn(
+                  'text-center text-[13px] font-semibold',
+                  !open && 'text-muted-foreground',
+                )}
+              >
+                {meta.label}
+              </span>
+              <span className="text-center text-[11.5px] text-muted-foreground">
+                {open ? sub : 'To do'}
+                <span className="sr-only">{isCurrent ? ', current step' : ''}</span>
+              </span>
+            </>
+          );
+          return (
+            <li key={meta.step} className="relative flex min-w-0 flex-1 flex-col items-center">
+              {index < STEPS.length - 1 && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    'absolute top-3.5 right-[calc(-50%+20px)] left-[calc(50%+20px)] h-0.5',
+                    status === 'done' && !isCurrent ? 'bg-primary' : 'bg-zinc-300 dark:bg-zinc-700',
+                  )}
+                />
+              )}
+              {open && !isCurrent ? (
+                <Link
+                  href={stepPath(meta.step)}
+                  className="flex flex-col items-center gap-1.5 rounded-md px-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
+                  {body}
+                </Link>
+              ) : (
+                <span
+                  className="flex flex-col items-center gap-1.5 px-1"
+                  aria-current={isCurrent ? 'step' : undefined}
+                  title={open ? undefined : 'Finish the earlier steps first'}
+                >
+                  {body}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+/** The step list inside the mobile / tablet sheet. */
+function StepList({
+  current,
+  onNavigate,
+}: {
+  current: OnboardingStep;
+  onNavigate: () => void;
+}): ReactElement {
+  const { draft } = useOnboarding();
+  return (
+    <ol className="flex flex-col gap-0.5">
+      {STEPS.map((meta, index) => {
+        const isCurrent = meta.step === current;
+        const status = stepStatus(draft, meta.step);
+        const open = canOpenStep(draft, meta.step);
+        const content = (
+          <>
+            <span
+              className={cn(
+                'flex size-7 flex-none items-center justify-center rounded-full border-2 text-[13px] font-semibold',
+                isCurrent
+                  ? 'border-primary'
+                  : status === 'done'
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-zinc-300 text-muted-foreground',
+                status === 'todo' && !isCurrent && 'border-dashed',
+              )}
+            >
+              {status === 'done' && !isCurrent ? (
+                <Check className="size-3.5" strokeWidth={3} aria-label="Done" />
+              ) : (
+                index + 1
+              )}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className={cn('text-sm', isCurrent ? 'font-semibold' : 'font-medium')}>
+                {meta.label}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {!open
+                  ? 'Locked · finish earlier steps'
+                  : isCurrent
+                    ? 'In progress'
+                    : status === 'done'
+                      ? 'Done'
+                      : status === 'skipped'
+                        ? 'Skipped'
+                        : meta.tag}
+              </span>
+            </span>
+            {!open && <Lock className="size-3.5 text-muted-foreground" aria-hidden />}
+          </>
+        );
+        return (
+          <li key={meta.step}>
+            {open ? (
+              <Link
+                href={stepPath(meta.step)}
+                onClick={onNavigate}
+                aria-current={isCurrent ? 'step' : undefined}
+                className={cn(
+                  'flex min-h-11 items-center gap-3 rounded-[10px] px-3 py-2',
+                  isCurrent ? 'bg-muted' : 'hover:bg-muted',
+                )}
+              >
+                {content}
+              </Link>
+            ) : (
+              <div
+                aria-disabled="true"
+                className="flex min-h-11 items-center gap-3 px-3 py-2 opacity-60"
+              >
+                {content}
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export type ShellFooter = {
   onBack?: () => void;
   onSkip?: () => void;
   /** Extra action placed before the primary one (e.g. "Import 40, leave out 2"). */
   secondary?: ReactNode;
   primary?: ReactNode;
+  /** Short status text beside the primary action. */
+  note?: ReactNode;
 };
 
+/** The design's footer bar: Back · Skip this step · note · primary. */
+export function FooterBar({
+  footer,
+  center = false,
+}: {
+  footer: ShellFooter;
+  center?: boolean;
+}): ReactElement {
+  return (
+    <footer
+      className={cn(
+        'sticky bottom-0 z-20 flex min-h-[72px] flex-none flex-wrap items-center gap-3 border-t border-border bg-background px-4 py-3 sm:px-8',
+        center && 'justify-center',
+      )}
+    >
+      {footer.onBack && (
+        <button type="button" className={btn()} onClick={footer.onBack}>
+          <ArrowLeft aria-hidden />
+          Back
+        </button>
+      )}
+      {footer.onSkip && (
+        <button type="button" className={btn('ghost')} onClick={footer.onSkip}>
+          Skip this step
+        </button>
+      )}
+      {!center && <span className="flex-1" />}
+      {footer.note && (
+        <span className="hidden text-[13px] text-muted-foreground md:inline">{footer.note}</span>
+      )}
+      {footer.secondary}
+      {footer.primary}
+    </footer>
+  );
+}
+
 /**
- * The frame around steps 1–6: stepper on the left (a top bar with a sheet below 1024px), the
- * step's content, and the Back · Skip for now · Save and continue footer.
+ * The frame around every step (design: top bar, horizontal stepper, the step's content, footer bar).
+ * Below 1024px the stepper collapses to "Step n of 7" with a sheet listing every step.
  */
 export default function Shell({
   step,
   title,
   description,
+  headerRight,
   footer,
   complete = true,
   hint,
+  width = 'narrow',
+  floating,
   children,
 }: {
   step: OnboardingStep;
-  title: string;
-  description: string;
+  title?: string;
+  description?: ReactNode;
+  headerRight?: ReactNode;
   footer: ShellFooter;
-  /**
-   * False while a recommended step's form isn't fully filled in: Save and exit stays off (the
-   * step's own Save and continue is disabled by the step).
-   */
+  /** False while a recommended step isn't filled in: Save and exit stays off. */
   complete?: boolean;
   /** What is still missing, shown above the footer while `complete` is false. */
   hint?: string;
+  /** Form steps read best narrow; review tables and split views need the full width. */
+  width?: 'narrow' | 'wide';
+  /** Floating progress pill (renders above the footer). */
+  floating?: ReactNode;
   children: ReactNode;
 }): ReactElement {
-  const { draft, server } = useOnboarding();
-  const { settled, percent } = setupProgress(draft);
+  const { draft } = useOnboarding();
+  const { percent } = setupProgress(draft);
   const { exit, exiting } = useSaveAndExit();
   const [sheetOpen, setSheetOpen] = useState(false);
   const meta = stepMeta(step);
-  const restaurantName = draft.data.details?.name.trim() || server.restaurant.name;
 
   return (
-    <div className="flex min-h-svh flex-col bg-neutral-50 text-neutral-900 lg:flex-row">
-      <aside className="hidden w-[280px] flex-none flex-col gap-7 border-r border-neutral-200 bg-white px-5 py-7 lg:sticky lg:top-0 lg:flex lg:h-svh">
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 flex-none items-center justify-center rounded-[9px] bg-neutral-900 font-bold text-white">
-            R
-          </span>
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-sm font-semibold">{restaurantName}</span>
-            <span className="text-xs text-neutral-600">Restaurant setup</span>
-          </span>
-        </div>
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between text-xs text-neutral-600">
-            <span>{settled} of 6 steps done</span>
-            <span>{percent}%</span>
-          </div>
-          <div
-            className="h-1.5 overflow-hidden rounded-full bg-neutral-100"
-            role="progressbar"
-            aria-label="Setup progress"
-            aria-valuenow={percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div className="h-full rounded-full bg-neutral-900" style={{ width: `${percent}%` }} />
-          </div>
-        </div>
-        <nav aria-label="Setup steps" className="flex-1 overflow-y-auto">
-          <StepList current={step} />
-        </nav>
-        <div className="flex flex-col gap-3 border-t border-neutral-100 pt-4">
-          <SaveIndicator />
+    <div className="flex min-h-svh flex-col bg-background text-foreground">
+      <TopBar
+        right={
           <button
             type="button"
+            className={btn('ghost', 'sm')}
             onClick={() => void exit()}
             disabled={exiting || !complete}
             title={complete ? undefined : 'Fill in this step to save and exit'}
-            className="inline-flex min-h-11 items-center self-start text-[13px] font-semibold hover:underline disabled:no-underline disabled:opacity-50"
           >
             {exiting ? 'Saving…' : 'Save and exit'}
           </button>
-        </div>
-      </aside>
-
-      <header className="sticky top-0 z-10 flex flex-col gap-2 border-b border-neutral-200 bg-white px-4 py-3 lg:hidden">
-        <div className="flex items-center justify-between gap-3">
+        }
+      />
+      <Stepper current={step} />
+      <div className="flex flex-none items-center justify-between gap-3 border-b border-border bg-background px-4 py-2.5 lg:hidden">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <span className="truncate text-sm font-semibold">
-            Step {meta.number} of 6 · {meta.label}
+            Step {meta.number} of {STEP_COUNT} · {meta.label}
           </span>
-          <Button
-            variant="outline"
-            className="h-11"
-            onClick={() => setSheetOpen(true)}
-            aria-label="All setup steps"
-          >
-            <ListChecks aria-hidden />
-            Steps
-          </Button>
+          <span className="h-1.5 w-40 overflow-hidden rounded-full bg-border" aria-hidden>
+            <span
+              className="block h-full rounded-full bg-primary"
+              style={{ width: `${percent}%` }}
+            />
+          </span>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100" aria-hidden>
-          <div className="h-full rounded-full bg-neutral-900" style={{ width: `${percent}%` }} />
-        </div>
-      </header>
+        <button
+          type="button"
+          className={btn('default', 'sm')}
+          onClick={() => setSheetOpen(true)}
+          aria-label="All setup steps"
+        >
+          <ListChecks aria-hidden />
+          Steps
+        </button>
+      </div>
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="left" className="gap-5 p-5">
           <SheetHeader className="p-0">
-            <SheetTitle>
-              {restaurantName} · {settled} of 6 done
-            </SheetTitle>
+            <SheetTitle>Setup steps</SheetTitle>
           </SheetHeader>
           <nav aria-label="Setup steps">
             <StepList current={step} onNavigate={() => setSheetOpen(false)} />
           </nav>
-          <div className="mt-auto flex flex-col gap-3">
-            <SaveIndicator />
-            <Button
-              variant="outline"
-              className="h-11"
-              onClick={() => void exit()}
-              disabled={exiting || !complete}
-            >
-              Save and exit
-            </Button>
-          </div>
         </SheetContent>
       </Sheet>
 
-      <main className="flex min-w-0 flex-1 justify-center px-4 py-8 sm:px-8 lg:py-10">
-        <div className="flex w-full max-w-[820px] flex-col gap-6">
-          <header className="flex flex-col gap-2">
-            <span className="text-[13px] font-semibold text-neutral-600">
-              Step {meta.number} of 6{meta.tag === 'Final step' ? '' : ` · ${meta.tag}`}
-            </span>
-            <h1 className="text-[28px] leading-tight font-bold">{title}</h1>
-            <p className="text-[15px] leading-relaxed text-neutral-700">{description}</p>
-          </header>
+      <main className="flex min-w-0 flex-1 flex-col px-4 py-6 sm:px-8">
+        <div
+          className={cn(
+            'mx-auto flex w-full flex-col gap-4',
+            width === 'wide' ? 'max-w-[1280px]' : 'max-w-[880px]',
+          )}
+        >
+          {title && <PageHead title={title} sub={description} right={headerRight} />}
           {children}
           {!complete && hint && (
-            <p role="status" className="text-sm text-neutral-600">
+            <p role="status" className="text-sm text-muted-foreground">
               {hint}
             </p>
           )}
-          <footer className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            {footer.onBack ? (
-              <Button variant="outline" className="h-11 px-4" onClick={footer.onBack}>
-                Back
-              </Button>
-            ) : (
-              <span />
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              {footer.onSkip && (
-                <Button
-                  variant="ghost"
-                  className="h-11 px-4 text-neutral-700"
-                  onClick={footer.onSkip}
-                >
-                  Skip for now
-                </Button>
-              )}
-              {footer.secondary}
-              {footer.primary}
-            </div>
-          </footer>
         </div>
       </main>
+      {floating}
+      <FooterBar footer={footer} />
     </div>
   );
 }
 
-/** Card wrapper used by every step section. */
+/** Card section used by the form steps (Details, Floor, Team, …). */
 export function Section({
   title,
   description,
@@ -327,15 +437,15 @@ export function Section({
   children: ReactNode;
 }): ReactElement {
   return (
-    <section className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 sm:p-6">
+    <Card as="section" className="flex flex-col gap-4 p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold">{title}</h2>
-          {description && <p className="text-sm text-neutral-600">{description}</p>}
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
         </div>
         {action}
       </div>
       {children}
-    </section>
+    </Card>
   );
 }

@@ -7,6 +7,8 @@ export type StepStatus = 'done' | 'skipped' | 'todo';
 /** Steps before the furthest one reached are done unless the owner skipped them. */
 export function stepStatus(draft: DraftState, step: OnboardingStep): StepStatus {
   if (step !== 'review' && draft.skippedSteps.includes(step)) return 'skipped';
+  // Passed over by the photo shortcut: still to do until the owner continues it.
+  if (step !== 'review' && draft.data.deferred?.includes(step)) return 'todo';
   const reached = draft.currentStep ? ONBOARDING_STEPS.indexOf(draft.currentStep) : -1;
   return ONBOARDING_STEPS.indexOf(step) < reached ? 'done' : 'todo';
 }

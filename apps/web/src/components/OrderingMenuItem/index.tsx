@@ -4,6 +4,8 @@ import type { MenuItem } from '@rms/api-contract';
 import { cn } from 'cn';
 import type { ReactElement } from 'react';
 
+import { DietMarker } from '@/components/AiScan/markers';
+
 export type OrderingItemAction = (item: MenuItem) => Promise<void>;
 
 type Props = {
@@ -34,13 +36,16 @@ export default function OrderingMenuItem({ item, onAdd, isAdding }: Props): Reac
           )}
         />
         <span className="sr-only">{item.itemType}</span>
+        {item.dietType && <DietMarker diet={item.dietType} showLabel={false} />}
         {!item.isAvailable && <span className="text-xs text-muted-foreground">Unavailable</span>}
       </span>
       <span className="block text-sm leading-tight font-medium break-words lg:my-3 lg:leading-snug">
         {item.name}
       </span>
       <span className="mt-auto block text-sm font-semibold tabular-nums lg:text-base">
-        {item.price}
+        {item.variants.length
+          ? item.variants.map((variant) => `${variant.name} ${variant.price}`).join(' · ')
+          : item.price}
       </span>
     </>
   );

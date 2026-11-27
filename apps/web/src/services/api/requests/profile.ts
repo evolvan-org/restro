@@ -21,7 +21,18 @@ import { useAccessToken, useLogout } from '@/store/hooks/auth';
 
 import { ProfileQueryKey } from '../types/ProfileQueryKey';
 
-export function useProfile(): UseQueryResult<ProfileResponse> {
+/** Options for `useProfile`. */
+type ProfileOptions = {
+  /**
+   * Keep re-checking (every 5 s, and on returning to the tab) until the email is verified, so a
+   * screen waiting on verification updates by itself when the owner clicks the emailed link.
+   */
+  pollUntilVerified?: boolean;
+};
+
+export function useProfile({
+  pollUntilVerified = false,
+}: ProfileOptions = {}): UseQueryResult<ProfileResponse> {
   const accessToken = useAccessToken();
 
   return useQuery({
@@ -31,6 +42,10 @@ export function useProfile(): UseQueryResult<ProfileResponse> {
       return profileResponseSchema.parse(response.data);
     },
     enabled: Boolean(accessToken),
+    ...(pollUntilVerified && {
+      refetchInterval: (query) => (query.state.data?.emailVerifiedAt ? false : 5_000),
+      refetchOnWindowFocus: (query) => (query.state.data?.emailVerifiedAt ? false : 'always'),
+    }),
   });
 }
 

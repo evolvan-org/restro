@@ -27,6 +27,7 @@ const orderSelect = {
       quantity: true,
       kotItems: { select: { quantity: true } },
       unitPrice: true,
+      variantName: true,
       menuItem: { select: { name: true } },
     },
     orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],

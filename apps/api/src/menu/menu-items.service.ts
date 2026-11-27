@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type {
   CreateMenuItemRequest,
+  DietType,
   MenuItem,
   MenuItemListQuery,
   MenuItemSearchQuery,
@@ -42,13 +43,15 @@ export class MenuItemsService {
   }
 
   async search(actor: Actor, query: MenuItemSearchQuery): Promise<MenuItemSearchResponse> {
-    const { page, pageSize, q, categoryId, itemType, isAvailable, activeOnly } = query;
+    const { page, pageSize, q, categoryId, itemType, isAvailable, activeOnly, recipeStatus } =
+      query;
     const { items, total } = await this.repository.findSearchPage(actor.restaurantId, {
       q,
       categoryId,
       itemType,
       isAvailable,
       activeOnly,
+      recipeStatus,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
@@ -60,9 +63,9 @@ export class MenuItemsService {
     await this.assertCategoryExists(restaurantId, input.categoryId);
     await this.assertNameAvailable(restaurantId, input.categoryId, input.name);
 
-    const { recipe, ...fields } = input;
+    const { recipe, variants, ...fields } = input;
     const created = await this.repository
-      .create(restaurantId, fields, recipe)
+      .create(restaurantId, withVegMarkers(withVariantPrice(fields, variants)), recipe, variants)
       .catch(translateRecipeError);
     return toMenuItem(created);
   }
@@ -81,9 +84,17 @@ export class MenuItemsService {
       await this.assertNameAvailable(restaurantId, categoryId, name, id);
     }
 
-    const { recipe, ...fields } = input;
+    const { recipe, variants, recipeReviewed, ...fields } = input;
+    // Editing a recipe (or confirming it) is a review of an AI draft.
+    const reviewed = recipe !== undefined || recipeReviewed ? { recipeReviewedAt: new Date() } : {};
     const updated = await this.repository
-      .update(restaurantId, id, fields, recipe)
+      .update(
+        restaurantId,
+        id,
+        { ...withVegMarkers(withVariantPrice(fields, variants), existing), ...reviewed },
+        recipe,
+        variants,
+      )
       .catch(translateRecipeError);
     if (!updated) throw new NotFoundException('Menu item not found');
     return toMenuItem(updated);
@@ -172,11 +183,47 @@ function translateRecipeError(error: unknown): never {
   throw error;
 }
 
-function toMenuItem(record: MenuItemRecord): MenuItem {
-  const { recipeItems, price, createdAt, updatedAt, ...rest } = record;
+/**
+ * Keeps the two veg markers in step: the veg / non-veg / egg type (REST-89) and the guest menu's
+ * veg flag (REST-88). Whichever the caller sends decides the other; egg counts as non-veg.
+ */
+export function withVegMarkers<T extends { dietType?: DietType | null; isVeg?: boolean | null }>(
+  fields: T,
+  current?: { dietType: DietType | null },
+): T {
+  if (fields.dietType !== undefined && fields.isVeg === undefined) {
+    return { ...fields, isVeg: fields.dietType === null ? null : fields.dietType === 'VEG' };
+  }
+  if (fields.isVeg !== undefined && fields.dietType === undefined) {
+    const keepEgg = fields.isVeg === false && current?.dietType === 'EGG';
+    return {
+      ...fields,
+      dietType: fields.isVeg === null ? null : fields.isVeg ? 'VEG' : keepEgg ? 'EGG' : 'NON_VEG',
+    };
+  }
+  return fields;
+}
+
+/** An item with portions shows its most expensive portion as its own price. */
+function withVariantPrice<T extends { price?: number }>(
+  fields: T,
+  variants: readonly { price: string }[] | undefined,
+): T {
+  if (!variants?.length) return fields;
+  return { ...fields, price: Math.max(...variants.map((variant) => Number(variant.price))) };
+}
+
+export function toMenuItem(record: MenuItemRecord): MenuItem {
+  const { recipeItems, variants, price, createdAt, updatedAt, recipeReviewedAt, ...rest } = record;
   return {
     ...rest,
     price: price.toFixed(2),
+    variants: variants.map((variant) => ({
+      ...variant,
+      price: variant.price.toFixed(2),
+      portionFactor: variant.portionFactor.toFixed(3).replace(/\.?0+$/, ''),
+    })),
+    recipeReviewedAt: recipeReviewedAt?.toISOString() ?? null,
     recipe: recipeItems.map((row) => ({
       stockItem: row.stockItem,
       quantity: row.quantity.toFixed(3),

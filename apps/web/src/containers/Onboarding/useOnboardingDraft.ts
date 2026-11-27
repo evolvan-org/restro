@@ -283,8 +283,14 @@ export function useOnboardingDraft(server: OnboardingStateResponse): OnboardingD
         ONBOARDING_STEPS.indexOf(current.currentStep) > ONBOARDING_STEPS.indexOf(to)
           ? current.currentStep
           : to;
+      const deferred = current.data.deferred?.filter((step) => step !== from);
+      const data =
+        current.data.deferred && from && deferred?.length !== current.data.deferred.length
+          ? { ...current.data, deferred }
+          : current.data;
       const next: DraftState = {
         ...current,
+        data,
         currentStep: furthest,
         skippedSteps: [...skipped],
         updatedAt: new Date().toISOString(),

@@ -18,6 +18,12 @@ export const API_ERROR_CODES = {
   ONBOARDING_STAGE_FAILED: 'ONBOARDING_STAGE_FAILED',
   /** The account still has its one-time password (403). */
   PASSWORD_CHANGE_REQUIRED: 'PASSWORD_CHANGE_REQUIRED',
+  /** The restaurant used today's AI scans (429, `limit` / `used` attached). */
+  AI_QUOTA_EXCEEDED: 'AI_QUOTA_EXCEEDED',
+  /** No AI provider is configured or reachable (503): fall back to CSV / manual entry. */
+  AI_UNAVAILABLE: 'AI_UNAVAILABLE',
+  /** The supplier invoice number was already recorded; resend with `acknowledgeDuplicate` (409). */
+  RECEIPT_DUPLICATE_INVOICE: 'RECEIPT_DUPLICATE_INVOICE',
 } as const;
 
 export const apiErrorCodeSchema = z.nativeEnum(API_ERROR_CODES);

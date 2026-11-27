@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AiModule } from '../ai/ai.module';
 import { AuthTokenModule } from '../auth-tokens/auth-token.module';
 import { AuthorizationModule } from '../common/auth/authorization.module';
 import { DatabaseModule } from '../common/database/database.module';
@@ -11,7 +12,14 @@ import { OnboardingService } from './onboarding.service';
 import { OnboardingCompletionWriter } from './onboarding-completion.writer';
 
 @Module({
-  imports: [DatabaseModule, AuthorizationModule, StockModule, AuthTokenModule, EmailModule],
+  imports: [
+    DatabaseModule,
+    AuthorizationModule,
+    StockModule,
+    AuthTokenModule,
+    EmailModule,
+    AiModule,
+  ],
   controllers: [OnboardingController],
   providers: [OnboardingService, OnboardingRepository, OnboardingCompletionWriter],
 })

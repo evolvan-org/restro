@@ -5,10 +5,13 @@ import {
   type CategoryType,
   type CreateMenuItemRequest,
   createMenuItemRequestSchema,
+  DIET_TYPE_LABELS,
+  DIET_TYPES,
+  MENU_ITEM_MAX_VARIANTS,
   type MenuItem,
   type Unit,
 } from '@rms/api-contract';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { type ReactElement, useEffect } from 'react';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 
@@ -78,6 +81,13 @@ export default function MenuItemFormSidePane({
           itemType: item.itemType,
           isAvailable: item.isAvailable,
           recipeRequired: item.recipeRequired,
+          dietType: item.dietType ?? (item.isVeg === null ? null : item.isVeg ? 'VEG' : 'NON_VEG'),
+          variants: item.variants.map((variant) => ({
+            id: variant.id,
+            name: variant.name,
+            price: variant.price,
+            portionFactor: variant.portionFactor,
+          })),
           isVeg: item.isVeg,
           // Items imported during setup have no recipe yet; start one so the owner can add it.
           recipe:
@@ -96,10 +106,13 @@ export default function MenuItemFormSidePane({
           itemType: 'FOOD',
           isAvailable: true,
           recipeRequired: true,
+          dietType: null,
+          variants: [],
           isVeg: null,
           recipe: [{ ...EMPTY_ROW }],
         },
   });
+  const variants = useFieldArray({ control: form.control, name: 'variants' });
   const { errors } = form.formState;
   const recipe = useFieldArray({ control: form.control, name: 'recipe' });
   const priceField = form.register('price', {
@@ -230,40 +243,115 @@ export default function MenuItemFormSidePane({
             </Field>
           </div>
 
+          <Field data-invalid={Boolean(errors.dietType)}>
+            <FieldLabel htmlFor="item-diet">Veg / non-veg / egg</FieldLabel>
+            <Controller
+              control={form.control}
+              name="dietType"
+              render={({ field }) => (
+                <NativeSelect
+                  id="item-diet"
+                  value={field.value ?? ''}
+                  onChange={(event) => {
+                    const diet = (event.target.value || null) as typeof field.value;
+                    field.onChange(diet);
+                    // One control for both markers: egg shows as non-veg on the guest menu.
+                    form.setValue('isVeg', diet === null ? null : diet === 'VEG', {
+                      shouldDirty: true,
+                    });
+                  }}
+                >
+                  <option value="">Not marked</option>
+                  {DIET_TYPES.map((diet) => (
+                    <option key={diet} value={diet}>
+                      {DIET_TYPE_LABELS[diet]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              )}
+            />
+            <span className="text-xs text-muted-foreground">
+              Shown as the green / red marker on the guest QR menu (egg shows as non-veg).
+            </span>
+          </Field>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Portions (optional)</legend>
+            <p className="text-xs text-muted-foreground">
+              Half / Full prices. Captains pick a portion when ordering; the recipe is scaled by the
+              factor (Half = 0.5).
+            </p>
+            {variants.fields.map((variant, index) => (
+              <div
+                key={variant.id}
+                className="grid grid-cols-[1fr_90px_80px_auto] items-start gap-2"
+              >
+                <Input
+                  aria-label={`Portion ${index + 1} name`}
+                  placeholder="Half"
+                  {...form.register(`variants.${index}.name`)}
+                />
+                <Input
+                  aria-label={`Portion ${index + 1} price`}
+                  inputMode="decimal"
+                  placeholder="Price"
+                  {...form.register(`variants.${index}.price`)}
+                />
+                <Input
+                  aria-label={`Portion ${index + 1} recipe factor`}
+                  inputMode="decimal"
+                  placeholder="Factor"
+                  {...form.register(`variants.${index}.portionFactor`, {
+                    setValueAs: (value: string) => (value === '' ? undefined : value),
+                  })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove portion ${index + 1}`}
+                  onClick={() => variants.remove(index)}
+                >
+                  <Trash2 aria-hidden />
+                </Button>
+              </div>
+            ))}
+            <FieldError>{errors.variants?.root?.message ?? errors.variants?.message}</FieldError>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={variants.fields.length >= MENU_ITEM_MAX_VARIANTS}
+              onClick={() =>
+                variants.fields.length === 0
+                  ? variants.append([
+                      { name: 'Half', price: '', portionFactor: '0.5' },
+                      {
+                        name: 'Full',
+                        price: String(form.getValues('price') ?? ''),
+                        portionFactor: '1',
+                      },
+                    ])
+                  : variants.append({ name: '', price: '', portionFactor: '1' })
+              }
+            >
+              <Plus aria-hidden />
+              {variants.fields.length === 0 ? 'Add Half / Full' : 'Add portion'}
+            </Button>
+          </fieldset>
+
+          {item?.recipeSource === 'AI_DRAFT' && !item.recipeReviewedAt && (
+            <p className="flex items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950">
+              <Sparkles className="mt-0.5 size-4 flex-none" aria-hidden />
+              This recipe is an AI draft nobody has reviewed yet. Check the quantities; saving marks
+              it as reviewed.
+            </p>
+          )}
+
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" {...form.register('isAvailable')} />
             Available for ordering
           </label>
-
-          <Controller
-            control={form.control}
-            name="isVeg"
-            render={({ field }) => (
-              <Field>
-                <FieldLabel htmlFor="item-veg">Veg / non-veg</FieldLabel>
-                <NativeSelect
-                  id="item-veg"
-                  value={field.value === true ? 'veg' : field.value === false ? 'non-veg' : ''}
-                  onChange={(event) =>
-                    field.onChange(
-                      event.target.value === 'veg'
-                        ? true
-                        : event.target.value === 'non-veg'
-                          ? false
-                          : null,
-                    )
-                  }
-                >
-                  <option value="">Not marked</option>
-                  <option value="veg">Veg</option>
-                  <option value="non-veg">Non-veg</option>
-                </NativeSelect>
-                <span className="text-xs text-muted-foreground">
-                  Shown as the green / red marker on the guest QR menu.
-                </span>
-              </Field>
-            )}
-          />
 
           <Controller
             control={form.control}
