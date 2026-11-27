@@ -1,8 +1,9 @@
 'use client';
 
+import { useDraggable } from '@dnd-kit/core';
 import type { RestaurantTable } from '@rms/api-contract';
 import { cn } from 'cn';
-import type { ReactElement } from 'react';
+import type { ComponentProps, ReactElement } from 'react';
 
 import FloorTile, {
   DEFAULT_STATUS_COLOR,
@@ -46,6 +47,17 @@ type FloorSectionProps = {
   };
 };
 
+/** Assign-mode tile, draggable onto a captain card (the board's `DndContext` handles the drop). */
+function DraggableTile({
+  assign,
+  ...props
+}: ComponentProps<typeof FloorTile> & { assign: TileAssignState }): ReactElement {
+  const { setNodeRef, listeners, isDragging } = useDraggable({ id: props.table.id });
+  return (
+    <FloorTile {...props} assign={{ ...assign, drag: { setNodeRef, listeners, isDragging } }} />
+  );
+}
+
 export default function FloorSection(props: FloorSectionProps): ReactElement | null {
   const hasFilter = props.statusFilterCode !== '';
   const visible = hasFilter
@@ -87,20 +99,23 @@ export default function FloorSection(props: FloorSectionProps): ReactElement | n
         <span className="text-xs text-muted-foreground">{summary}</span>
       </div>
       <div className={cn('flex flex-wrap gap-2.5 xl:gap-3', props.gridClassName)}>
-        {visible.map((table) => (
-          <FloorTile
-            key={table.id}
-            table={table}
-            colorClasses={props.colorMap[table.currentStatus.code] ?? DEFAULT_STATUS_COLOR}
-            nowMs={props.nowMs}
-            statuses={props.statuses}
-            onWalkInClick={props.onWalkInClick}
-            className={props.tileClassName}
-            qr={props.qrMarkers?.get(table.id)}
-            assign={assign?.getTileState(table)}
-            {...props.permissions}
-          />
-        ))}
+        {visible.map((table) => {
+          const tileProps = {
+            table,
+            colorClasses: props.colorMap[table.currentStatus.code] ?? DEFAULT_STATUS_COLOR,
+            nowMs: props.nowMs,
+            statuses: props.statuses,
+            onWalkInClick: props.onWalkInClick,
+            className: props.tileClassName,
+            qr: props.qrMarkers?.get(table.id),
+            ...props.permissions,
+          };
+          return assign ? (
+            <DraggableTile key={table.id} {...tileProps} assign={assign.getTileState(table)} />
+          ) : (
+            <FloorTile key={table.id} {...tileProps} />
+          );
+        })}
       </div>
     </section>
   );

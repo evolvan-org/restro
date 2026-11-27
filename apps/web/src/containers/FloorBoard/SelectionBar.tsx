@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDown } from 'lucide-react';
-import type { ReactElement, Ref } from 'react';
+import type { ReactElement } from 'react';
 
 import { CaptainAvatar } from '@/components/FloorTile';
 import { Button } from '@/components/ui/button';
@@ -101,19 +101,12 @@ export default function SelectionBar({
   );
 }
 
-/** Off-screen "N tables" pill used as the native drag image while dragging tiles. */
-export function DragGhost({
-  count,
-  ref,
-}: {
-  count: number;
-  ref: Ref<HTMLDivElement>;
-}): ReactElement {
+/** "N tables" pill under the pointer or finger while dragging tiles (rendered in `DragOverlay`). */
+export function DragPill({ count }: { count: number }): ReactElement {
   return (
     <div
-      ref={ref}
       aria-hidden
-      className="pointer-events-none fixed -left-[9999px] top-0 rounded-full bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-neutral-50 shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+      className="pointer-events-none w-max rounded-full bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-neutral-50 shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
     >
       {plural(Math.max(count, 1))}
     </div>

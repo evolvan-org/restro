@@ -2,7 +2,6 @@
 
 import type { AssignTablesCaptainResponse, RestaurantTable, TableCaptain } from '@rms/api-contract';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { toast } from 'sonner';
 
 import { shortNameOf } from '@/lib/qr';
@@ -133,19 +132,13 @@ export default function useCaptainAssignment(rows: readonly RestaurantTable[]) {
     });
   };
 
-  /**
-   * Starts a drag from `tableId`; an unselected tile replaces the selection. Flushed synchronously
-   * so the drag ghost shows the right count before the browser snapshots it.
-   */
+  /** Starts a drag from `tableId`; an unselected tile replaces the selection. */
   const startDrag = (tableId: string): void => {
-    const count = selectedIds.has(tableId) ? selectedIds.size : 1;
-    flushSync(() => {
-      if (!selectedIds.has(tableId)) {
-        setSelectedIds(new Set([tableId]));
-        setAnchorId(tableId);
-      }
-      setDragCount(count);
-    });
+    if (!selectedIds.has(tableId)) {
+      setSelectedIds(new Set([tableId]));
+      setAnchorId(tableId);
+    }
+    setDragCount(selectedIds.has(tableId) ? selectedIds.size : 1);
   };
 
   const endDrag = (): void => setDragCount(0);

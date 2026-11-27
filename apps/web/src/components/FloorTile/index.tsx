@@ -2,17 +2,12 @@
 
 import { Popover } from '@base-ui/react/popover';
 import { Tooltip } from '@base-ui/react/tooltip';
+import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import type { RestaurantTable } from '@rms/api-contract';
 import { cn } from 'cn';
 import { Calendar, Check, Clock, TriangleAlert, Users, X } from 'lucide-react';
 import Link from 'next/link';
-import {
-  type DragEvent,
-  type MouseEvent,
-  type ReactElement,
-  type ReactNode,
-  useState,
-} from 'react';
+import { type MouseEvent, type ReactElement, type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 
 import TableCaptainAction from '@/components/TableCaptainAction';
@@ -136,9 +131,12 @@ export type TileAssignState = {
   /** Another captain's table while the board is focused on one captain. */
   dimmed: boolean;
   onToggle: (event: MouseEvent<HTMLButtonElement>) => void;
-  /** Omitted on touch screens, where tables are tapped and then a captain is tapped. */
-  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
-  onDragEnd?: () => void;
+  /** Drag onto a captain (mouse, touch and pen), wired by the floor board's dnd-kit context. */
+  drag?: {
+    setNodeRef: (element: HTMLElement | null) => void;
+    listeners: DraggableSyntheticListeners;
+    isDragging: boolean;
+  };
 };
 
 type FloorTileProps = {
@@ -298,6 +296,11 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
             ? 'ring-2 ring-red-500'
             : assign.selected && 'ring-2 ring-neutral-900 dark:ring-neutral-100',
           assign.dimmed && 'opacity-40',
+          // Touch: keep scrolling, no double-tap zoom delay, no iOS long-press callout.
+          assign.drag && 'touch-manipulation [-webkit-touch-callout:none]',
+          // Selected tiles can be dragged onto a captain: open hand on hover, fist while pressed.
+          assign.selected && assign.drag && 'cursor-grab active:cursor-grabbing',
+          assign.drag?.isDragging && 'opacity-50',
         )
       : cn(
           attention && !hasReadyTickets && 'ring-2 ring-amber-500',
@@ -317,9 +320,8 @@ export default function FloorTile(props: FloorTileProps): ReactElement {
           table.captain ? `captain ${table.captain.name}` : 'no captain'
         }${assign.conflict ? ', not assigned because it was just changed' : ''}`}
         className={tileClassName}
-        draggable={Boolean(assign.onDragStart)}
-        onDragStart={assign.onDragStart}
-        onDragEnd={assign.onDragEnd}
+        ref={assign.drag?.setNodeRef}
+        {...assign.drag?.listeners}
         onClick={assign.onToggle}
       >
         {tileInner}

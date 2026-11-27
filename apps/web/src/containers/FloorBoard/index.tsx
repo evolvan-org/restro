@@ -1,9 +1,25 @@
 'use client';
 
+import {
+  type Announcements,
+  type CollisionDetection,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  MouseSensor,
+  pointerWithin,
+  rectIntersection,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import type { RestaurantTable } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { MAX_PAGE_SIZE } from '@rms/shared';
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from 'cn';
+import { type ReactElement, useEffect, useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
 import { buildStatusColorMap, type TileAssignState } from '@/components/FloorTile';
@@ -11,7 +27,6 @@ import { getTableAttention } from '@/components/FloorTile/attention';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
-import useMediaQuery from '@/hooks/useMediaQuery';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { useReservations } from '@/services/api/requests/reservations';
 import { useCaptainOptions, useTableBoard, useTableOptions } from '@/services/api/requests/tables';
@@ -19,7 +34,7 @@ import { useShowWalkInFormSidePane } from '@/store/hooks/sidepane';
 
 import AssignInfoBar from './AssignInfoBar';
 import AttentionRail, { type AttentionEntry } from './AttentionRail';
-import { buildCaptainCards, CaptainDock, CaptainRail } from './CaptainRail';
+import { buildCaptainCards, CaptainDock, type CaptainDropData, CaptainRail } from './CaptainRail';
 import {
   FloorEmpty,
   FloorError,
@@ -30,10 +45,14 @@ import {
 import FloorHeader from './FloorHeader';
 import FloorSection, { type TilePermissions } from './FloorSection';
 import { type FloorBoardFilters, getFloorBoardFilterDefaults } from './mapper';
-import QrFloorBanner, { useQrTileMarkers } from './QrFloorBanner';
+import QrFloorBanner, {
+  getQrTablesWithoutCaptain,
+  QR_NO_CAPTAIN_MESSAGE_ID,
+  useQrTileMarkers,
+} from './QrFloorBanner';
 import { searchTables } from './search';
 import SectionTabs from './SectionTabs';
-import SelectionBar, { DragGhost } from './SelectionBar';
+import SelectionBar, { DragPill } from './SelectionBar';
 import StatusFilterChips from './StatusFilterChips';
 import TakeoverDialog from './TakeoverDialog';
 import useCaptainAssignment from './useCaptainAssignment';
@@ -43,6 +62,22 @@ const UP_NEXT_WINDOW_MS = 2 * 60 * 60 * 1000;
 const STALE_AFTER_MS = 60_000;
 const SEARCH_DEBOUNCE_MS = 250;
 const NO_TABLES: RestaurantTable[] = [];
+
+// Drag onto a captain card: a click (mouse) or quick tap (touch) still selects; a touch drag needs
+// a short press so swiping still scrolls the floor.
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 5 } };
+const TOUCH_ACTIVATION = { activationConstraint: { delay: 200, tolerance: 5 } };
+
+// A captain counts as the target only while the pointer or finger is over it.
+const collisionDetection: CollisionDetection = (args) => {
+  const within = pointerWithin(args);
+  return within.length > 0 ? within : rectIntersection(args);
+};
+
+function dropTargetName(data: unknown): string {
+  const target = (data as CaptainDropData | undefined)?.target;
+  return target ? target.name : 'No captain';
+}
 
 function formatAgo(ms: number): string {
   if (ms < 10_000) return 'updated just now';
@@ -90,8 +125,10 @@ export default function FloorBoard(): ReactElement | null {
   const rows = tables.data?.data ?? NO_TABLES;
   const assignment = useCaptainAssignment(rows);
   const captains = useCaptainOptions(assignment.active);
-  const canDrag = useMediaQuery('(pointer: fine)');
-  const dragGhostRef = useRef<HTMLDivElement>(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION),
+  );
 
   useEffect(() => {
     if (!tables.isFetching) setNowMs(Date.now());
@@ -155,6 +192,10 @@ export default function FloorBoard(): ReactElement | null {
     .filter((s) => s.count > 0);
 
   const assignMode = assignment.active;
+  // A drag is in progress: everything but the captains list fades out.
+  const isDragging = assignMode && assignment.dragCount > 0;
+  const tableNumbers = new Map(rows.map((table) => [table.id, table.tableNumber]));
+  const qrTablesWithoutCaptain = getQrTablesWithoutCaptain(qr.data, tableNumbers);
   const unassignedCount = rows.filter((t) => t.captainUserId === null).length;
   const searched = searchTables(rows, debouncedSearch);
   const afterCaptain =
@@ -246,16 +287,32 @@ export default function FloorBoard(): ReactElement | null {
     conflict: assignment.conflictIds.has(table.id),
     dimmed: assignment.focusCaptainId !== null && table.captainUserId !== assignment.focusCaptainId,
     onToggle: (event) => assignment.toggle(table.id, event.shiftKey, orderedVisibleIds),
-    onDragStart: canDrag
-      ? (event) => {
-          assignment.startDrag(table.id);
-          event.dataTransfer.effectAllowed = 'move';
-          event.dataTransfer.setData('text/plain', table.id);
-          if (dragGhostRef.current) event.dataTransfer.setDragImage(dragGhostRef.current, 16, 16);
-        }
-      : undefined,
-    onDragEnd: assignment.endDrag,
   });
+
+  /** Tables a drag from `tableId` carries: the selection, or just that table if unselected. */
+  const dragSize = (tableId: string): number =>
+    assignment.selectedIds.has(tableId) ? assignment.selectedIds.size : 1;
+  const tablesLabel = (count: number): string => `${count} ${count === 1 ? 'table' : 'tables'}`;
+
+  const onDragStart = ({ active, activatorEvent }: DragStartEvent): void => {
+    assignment.startDrag(String(active.id));
+    // Light haptic tick on touch (Android; iOS has no web vibration API).
+    if ('touches' in activatorEvent) navigator.vibrate?.(10);
+  };
+  const onDragEnd = ({ over }: DragEndEvent): void => {
+    assignment.endDrag();
+    const drop = over?.data.current as CaptainDropData | undefined;
+    if (drop) assignment.assign(drop.target);
+  };
+  // Screen-reader feedback (the defaults read out raw ids).
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `Picked up ${tablesLabel(dragSize(String(active.id)))}.`,
+    onDragOver: ({ over }) =>
+      over ? `Over ${dropTargetName(over.data.current)}. Release to assign.` : undefined,
+    onDragEnd: ({ over }) =>
+      over ? `Dropped on ${dropTargetName(over.data.current)}.` : 'Dropped. No captain changed.',
+    onDragCancel: () => 'Drag cancelled. No captain changed.',
+  };
 
   const renderBody = (): ReactElement => {
     if (tables.isError && rows.length === 0) {
@@ -325,124 +382,153 @@ export default function FloorBoard(): ReactElement | null {
   };
 
   return (
-    <div className="flex">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="shrink-0 border-b">
-          <FloorHeader
-            updatedLabel={formatAgo(age)}
-            isReconnecting={isReconnecting}
-            searchField={register('search')}
-            hasSearch={Boolean(search)}
-            onClearSearch={clearSearch}
-            onSeatWalkIn={onSeatWalkIn}
-            canReserve={permissions.canReserve}
-            attentionCount={attention.length}
-            onOpenAttention={() => setRailOpen(true)}
-            canAssignCaptains={canAssignCaptains}
-            assignMode={assignMode}
-            onToggleAssignMode={toggleAssignMode}
-          />
-          {statuses.length > 0 && (
-            <StatusFilterChips
-              statuses={statuses}
-              colorMap={colorMap}
-              counts={counts}
-              total={rows.length}
-              activeCode={statusCode}
-              onChange={(code) => {
-                setValue('statusCode', code);
-                setValue('noCaptain', false);
-              }}
-              onClear={() => {
-                setValue('statusCode', '');
-                setValue('noCaptain', false);
-              }}
-              coversLabel={`${occupiedCovers}/${totalCapacity}`}
-              noCaptain={
-                assignMode
-                  ? {
-                      count: unassignedCount,
-                      active: noCaptain,
-                      onToggle: () => {
-                        setValue('noCaptain', !noCaptain);
-                        setValue('statusCode', '');
-                      },
-                    }
-                  : undefined
-              }
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      accessibility={{ announcements }}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={assignment.endDrag}
+    >
+      <div className="flex">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="shrink-0 border-b">
+            <FloorHeader
+              updatedLabel={formatAgo(age)}
+              isReconnecting={isReconnecting}
+              searchField={register('search')}
+              hasSearch={Boolean(search)}
+              onClearSearch={clearSearch}
+              onSeatWalkIn={onSeatWalkIn}
+              canReserve={permissions.canReserve}
+              attentionCount={attention.length}
+              onOpenAttention={() => setRailOpen(true)}
+              canAssignCaptains={canAssignCaptains}
+              assignMode={assignMode}
+              onToggleAssignMode={toggleAssignMode}
+              highlightAssign={qrTablesWithoutCaptain.length > 0}
+              highlightDescriptionId={QR_NO_CAPTAIN_MESSAGE_ID}
             />
-          )}
-          {sectionsWithCounts.length > 0 && (
-            <SectionTabs
-              sections={sectionsWithCounts}
-              total={rows.length}
-              activeSectionId={sectionId}
-              onChange={(id) => setValue('sectionId', id)}
-            />
-          )}
-        </div>
-        <div className="flex-1 px-6 py-[18px] xl:px-8">
-          {assignMode && rows.length > 0 && (
-            <AssignInfoBar
+            {statuses.length > 0 && (
+              <StatusFilterChips
+                statuses={statuses}
+                colorMap={colorMap}
+                counts={counts}
+                total={rows.length}
+                activeCode={statusCode}
+                onChange={(code) => {
+                  setValue('statusCode', code);
+                  setValue('noCaptain', false);
+                }}
+                onClear={() => {
+                  setValue('statusCode', '');
+                  setValue('noCaptain', false);
+                }}
+                coversLabel={`${occupiedCovers}/${totalCapacity}`}
+                noCaptain={
+                  assignMode
+                    ? {
+                        count: unassignedCount,
+                        active: noCaptain,
+                        onToggle: () => {
+                          setValue('noCaptain', !noCaptain);
+                          setValue('statusCode', '');
+                        },
+                      }
+                    : undefined
+                }
+              />
+            )}
+            {sectionsWithCounts.length > 0 && (
+              <SectionTabs
+                sections={sectionsWithCounts}
+                total={rows.length}
+                activeSectionId={sectionId}
+                onChange={(id) => setValue('sectionId', id)}
+              />
+            )}
+          </div>
+          <div className="flex-1 px-6 py-[18px] xl:px-8">
+            {assignMode && rows.length > 0 && (
+              <AssignInfoBar
+                assignment={assignment}
+                focusCaptainName={focusCaptainName}
+                visibleUnassignedIds={afterStatus
+                  .filter((t) => t.captainUserId === null)
+                  .map((t) => t.id)}
+              />
+            )}
+            {isReconnecting && rows.length > 0 && (
+              <ReconnectingBanner
+                lastUpdatedLabel={`Last ${formatAgo(age)}.`}
+                onRefresh={() => void tables.refetch()}
+                isRefreshing={tables.isFetching}
+              />
+            )}
+            {rows.length > 0 && <QrFloorBanner data={qr.data} tableNumbers={tableNumbers} />}
+            {renderBody()}
+            {assignMode && <SelectionBar cards={captainCards} assignment={assignment} />}
+          </div>
+          {assignMode && (
+            <CaptainDock
+              cards={captainCards}
+              totalSeats={totalCapacity}
               assignment={assignment}
-              focusCaptainName={focusCaptainName}
-              visibleUnassignedIds={afterStatus
-                .filter((t) => t.captainUserId === null)
-                .map((t) => t.id)}
+              raised={isDragging}
             />
           )}
-          {isReconnecting && rows.length > 0 && (
-            <ReconnectingBanner
-              lastUpdatedLabel={`Last ${formatAgo(age)}.`}
-              onRefresh={() => void tables.refetch()}
-              isRefreshing={tables.isFetching}
-            />
-          )}
-          {rows.length > 0 && (
-            <QrFloorBanner
-              data={qr.data}
-              tableNumbers={new Map(rows.map((table) => [table.id, table.tableNumber]))}
-            />
-          )}
-          {renderBody()}
-          {assignMode && <SelectionBar cards={captainCards} assignment={assignment} />}
         </div>
+
+        <aside
+          className={cn(
+            'hidden w-[300px] shrink-0 border-l bg-neutral-50 p-4 lg:block xl:w-[320px] xl:p-5 dark:bg-neutral-900/40',
+            // Above the drag backdrop; opaque so the faded page doesn't show through.
+            isDragging && 'relative z-50 dark:bg-neutral-900',
+          )}
+        >
+          {assignMode ? (
+            <CaptainRail
+              cards={captainCards}
+              totalSeats={totalCapacity}
+              assignment={assignment}
+              isLoading={captains.isPending}
+              attentionCount={attention.length}
+              activity={rail}
+            />
+          ) : (
+            rail
+          )}
+        </aside>
+
+        {/* Smaller screens: the rail remains reachable even when no table needs attention. */}
+        <Sheet open={railOpen} onOpenChange={setRailOpen}>
+          <SheetContent side="right" className="w-[320px] overflow-y-auto p-4">
+            <SheetHeader className="px-0">
+              <SheetTitle>Floor activity</SheetTitle>
+            </SheetHeader>
+            {rail}
+          </SheetContent>
+        </Sheet>
+
+        {isDragging && (
+          // Fades the page while dragging so only the captains list (the drop zone) stands out.
+          // Pointer events pass through, so drops outside the rail are still rejected.
+          <div
+            aria-hidden
+            className="pointer-events-none fixed inset-0 z-40 bg-background/80 backdrop-blur-[2px] animate-in fade-in-0 duration-150"
+          />
+        )}
+
         {assignMode && (
-          <CaptainDock cards={captainCards} totalSeats={totalCapacity} assignment={assignment} />
+          <>
+            <TakeoverDialog assignment={assignment} />
+            {/* Above the drag backdrop (z-40) and the raised rail/dock (z-50). */}
+            <DragOverlay modifiers={[snapCenterToCursor]} dropAnimation={null} zIndex={60}>
+              {isDragging ? <DragPill count={assignment.dragCount} /> : null}
+            </DragOverlay>
+          </>
         )}
       </div>
-
-      <aside className="hidden w-[300px] shrink-0 border-l bg-neutral-50 p-4 lg:block xl:w-[320px] xl:p-5 dark:bg-neutral-900/40">
-        {assignMode ? (
-          <CaptainRail
-            cards={captainCards}
-            totalSeats={totalCapacity}
-            assignment={assignment}
-            isLoading={captains.isPending}
-            attentionCount={attention.length}
-            activity={rail}
-          />
-        ) : (
-          rail
-        )}
-      </aside>
-
-      {/* Smaller screens: the rail remains reachable even when no table needs attention. */}
-      <Sheet open={railOpen} onOpenChange={setRailOpen}>
-        <SheetContent side="right" className="w-[320px] overflow-y-auto p-4">
-          <SheetHeader className="px-0">
-            <SheetTitle>Floor activity</SheetTitle>
-          </SheetHeader>
-          {rail}
-        </SheetContent>
-      </Sheet>
-
-      {assignMode && (
-        <>
-          <TakeoverDialog assignment={assignment} />
-          <DragGhost ref={dragGhostRef} count={assignment.dragCount} />
-        </>
-      )}
-    </div>
+    </DndContext>
   );
 }

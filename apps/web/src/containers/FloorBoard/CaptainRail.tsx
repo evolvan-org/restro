@@ -1,9 +1,10 @@
 'use client';
 
+import { useDroppable } from '@dnd-kit/core';
 import type { RestaurantTable, TableCaptain } from '@rms/api-contract';
 import { cn } from 'cn';
 import { Eye } from 'lucide-react';
-import { type DragEvent, type ReactElement, useId, useState } from 'react';
+import { type ReactElement, useId, useState } from 'react';
 
 import { CaptainAvatar } from '@/components/FloorTile';
 import { Badge } from '@/components/ui/badge';
@@ -70,8 +71,10 @@ type CaptainCardProps = {
   compact?: boolean;
 };
 
+/** Drop data on each captain card; the floor board's `DndContext` assigns on drop. */
+export type CaptainDropData = { target: AssignTarget };
+
 function CaptainCard({ data, totalSeats, assignment, compact }: CaptainCardProps): ReactElement {
-  const [isOver, setIsOver] = useState(false);
   const { target, readOnly } = data;
   const targetId = target?.id ?? null;
   const name = target ? target.name : 'No captain';
@@ -82,31 +85,22 @@ function CaptainCard({ data, totalSeats, assignment, compact }: CaptainCardProps
     assignment.justAssigned && assignment.justAssigned.targetId === targetId
       ? assignment.justAssigned.count
       : 0;
+  const { setNodeRef, isOver } = useDroppable({
+    id: `captain:${targetId ?? 'none'}`,
+    data: { target } satisfies CaptainDropData,
+    disabled: !canAssign,
+  });
   const dropTarget = isOver && assignment.dragCount > 0;
-
-  const onDragOver = (event: DragEvent<HTMLDivElement>): void => {
-    if (!canAssign || assignment.dragCount === 0) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-    setIsOver(true);
-  };
-  const onDrop = (event: DragEvent<HTMLDivElement>): void => {
-    event.preventDefault();
-    setIsOver(false);
-    assignment.endDrag();
-    assignment.assign(target);
-  };
 
   const stats = `${plural(data.tables, 'table')} · ${plural(data.seats, 'seat')}`;
 
   return (
     <div
-      onDragOver={onDragOver}
-      onDragLeave={() => setIsOver(false)}
-      onDrop={onDrop}
+      ref={setNodeRef}
       className={cn(
         'relative flex items-center gap-2 rounded-[10px] border bg-card transition-colors',
-        compact ? 'min-w-[150px] shrink-0 p-2' : 'p-3',
+        // Compact (tablet dock): at least a 44px touch target.
+        compact ? 'min-h-11 min-w-[150px] shrink-0 p-2' : 'p-3',
         !target && 'border-dashed',
         dropTarget && 'border-2 border-dashed border-neutral-900 bg-muted dark:border-neutral-100',
         isFiltered && !dropTarget && 'border-neutral-900 dark:border-neutral-100',
@@ -216,10 +210,14 @@ type CaptainRailProps = Omit<CaptainListProps, 'totalSeats'> & {
 
 /** Replaces the activity rail (lg+) while the floor board is in assign-captains mode. */
 export function CaptainRail({ attentionCount, activity, ...list }: CaptainRailProps): ReactElement {
-  const [view, setView] = useState<RailView>('captains');
+  const [chosenView, setView] = useState<RailView>('captains');
   const idBase = useId();
+  // While dragging, the captains list is the drop zone, so it shows even from the Activity tab;
+  // the chosen tab comes back after the drop.
+  const view: RailView = list.assignment.dragCount > 0 ? 'captains' : chosenView;
   return (
-    <div className="space-y-4">
+    // Sticky so the drop zone stays on screen on a long, scrolled floor.
+    <div className="sticky top-4 max-h-[calc(100dvh-2rem)] space-y-4 overflow-y-auto">
       <SegmentedControl<RailView>
         idBase={idBase}
         aria-label="Rail view"
@@ -242,20 +240,29 @@ export function CaptainRail({ attentionCount, activity, ...list }: CaptainRailPr
   );
 }
 
-/** Tablet (< lg): the captains rail as a bottom dock; tap tables, then tap a captain. */
+/** Tablet (< lg): the captains rail as a bottom dock; drag tables onto a captain, or tap tables then tap a captain. */
 export function CaptainDock({
   cards,
   totalSeats,
   assignment,
-}: Omit<CaptainListProps, 'isLoading'>): ReactElement {
+  raised = false,
+}: Omit<CaptainListProps, 'isLoading'> & {
+  /** Lifted above the drag backdrop while a drag is in progress. */
+  raised?: boolean;
+}): ReactElement {
   const count = assignment.selected.length;
   return (
-    <div className="sticky bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur lg:hidden">
+    <div
+      className={cn(
+        'sticky bottom-0 border-t bg-background/95 px-4 py-3 backdrop-blur lg:hidden',
+        raised ? 'z-50 bg-background' : 'z-30',
+      )}
+    >
       <div className="mb-2 flex min-h-8 items-center gap-2 text-sm">
         <span className="font-medium" aria-live="polite">
           {count > 0
             ? `${plural(count, 'table')} selected · Tap a captain to assign`
-            : 'Tap tables, then tap a captain'}
+            : 'Drag tables onto a captain, or tap tables then a captain'}
         </span>
         {count > 0 && (
           <Button variant="ghost" size="sm" className="ml-auto" onClick={assignment.clear}>

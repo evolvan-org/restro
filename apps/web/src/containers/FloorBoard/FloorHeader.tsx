@@ -21,6 +21,10 @@ type FloorHeaderProps = {
   canAssignCaptains: boolean;
   assignMode: boolean;
   onToggleAssignMode: () => void;
+  /** Some QR tables have no captain: highlight and blink the Assign button until all are covered. */
+  highlightAssign: boolean;
+  /** Id of the element explaining why the button is highlighted. */
+  highlightDescriptionId?: string;
 };
 
 export default function FloorHeader(props: FloorHeaderProps): ReactElement {
@@ -84,7 +88,15 @@ export default function FloorHeader(props: FloorHeaderProps): ReactElement {
       {props.canAssignCaptains && (
         <Button
           variant={props.assignMode ? 'default' : 'outline'}
-          className="h-11 gap-1.5 xl:h-9"
+          className={cn(
+            'h-11 gap-1.5 xl:h-9',
+            props.highlightAssign && 'assign-blink',
+            // Same rose tokens as the QR "no captain" banner (light and dark come from the theme).
+            props.highlightAssign &&
+              !props.assignMode &&
+              'border-(--qs-rj) bg-(--qs-rj-b) font-semibold text-(--qs-rj-f) hover:bg-[color-mix(in_srgb,var(--qs-rj-b)_92%,var(--qs-rj))] hover:text-(--qs-rj-f) focus-visible:ring-(--qs-rj)/40 dark:border-(--qs-rj) dark:bg-(--qs-rj-b) dark:hover:bg-[color-mix(in_srgb,var(--qs-rj-b)_92%,var(--qs-rj))]',
+          )}
+          aria-describedby={props.highlightAssign ? props.highlightDescriptionId : undefined}
           onClick={props.onToggleAssignMode}
         >
           {props.assignMode ? (
