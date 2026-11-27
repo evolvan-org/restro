@@ -6,23 +6,24 @@ Branch: `feature/REST-89-photo-to-restaurant` (one branch, one PR; commits group
 
 ## 0. Decisions (agreed 2026-11-25)
 
-| Topic | Decision |
-|---|---|
-| AI provider | Gemini direct (`@google/genai`), behind an `AiProvider` port. Flash-Lite for menu + recipes, Flash for invoices. Model IDs from env. A `fake` provider for dev, CI, tests and offline demos. |
-| Images | On the API server's disk (Docker volume), deleted when no longer needed (see §3.4). Object storage later. |
-| Job runner | Our own `ai_jobs` table + small in-process runner (`FOR UPDATE SKIP LOCKED`, recovers on boot). No pg-boss/Redis: the job table already exists for results, so a queue library adds nothing. |
-| Live rows | Gemini streaming → incremental JSON-array parser → each element Zod-validated → saved to `ai_job_items` → pushed on Pusher. Refresh = refetch items, resubscribe. |
-| Portions | New optional `menu_item_variants` table. Items keep `price`; variants only for Half/Full. `OrderItem.variantId` optional. |
-| Recipes | One recipe per item; each variant has `portionFactor` (Half = 0.5). Cost per variant = item recipe cost × factor. |
-| Estimated prices | Seeded global ingredient catalog; Gemini estimates only unknown ingredients, cached in the catalog (`priceSource = AI`). |
-| Cost bands | Follow restaurant target: healthy ≤ targetMax, watch ≤ targetMax + 7, poor above. Target stored on `restaurants`. |
-| Daily limits | 10 menu scans + 20 invoice scans per restaurant per day (env). Recipe drafting is unmetered by count but token usage is logged. |
+| Topic            | Decision                                                                                                                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI provider      | Gemini direct (`@google/genai`), behind an `AiProvider` port. Flash-Lite for menu + recipes, Flash for invoices. Model IDs from env. A `fake` provider for dev, CI, tests and offline demos. |
+| Images           | On the API server's disk (Docker volume), deleted when no longer needed (see §3.4). Object storage later.                                                                                    |
+| Job runner       | Our own `ai_jobs` table + small in-process runner (`FOR UPDATE SKIP LOCKED`, recovers on boot). No pg-boss/Redis: the job table already exists for results, so a queue library adds nothing. |
+| Live rows        | Gemini streaming → incremental JSON-array parser → each element Zod-validated → saved to `ai_job_items` → pushed on Pusher. Refresh = refetch items, resubscribe.                            |
+| Portions         | New optional `menu_item_variants` table. Items keep `price`; variants only for Half/Full. `OrderItem.variantId` optional.                                                                    |
+| Recipes          | One recipe per item; each variant has `portionFactor` (Half = 0.5). Cost per variant = item recipe cost × factor.                                                                            |
+| Estimated prices | Seeded global ingredient catalog; Gemini estimates only unknown ingredients, cached in the catalog (`priceSource = AI`).                                                                     |
+| Cost bands       | Follow restaurant target: healthy ≤ targetMax, watch ≤ targetMax + 7, poor above. Target stored on `restaurants`.                                                                            |
+| Daily limits     | 10 menu scans + 20 invoice scans per restaurant per day (env). Recipe drafting is unmetered by count but token usage is logged.                                                              |
 
 **Deterministic, not AI:** blur/quality pre-check, pack-size conversion, GST/total check, plate cost, food-cost %, margins, before→after diff, duplicate detection, ingredient merge suggestions, invoice-line→ingredient matching (AI only for leftovers), price-jump check, duplicate-invoice check.
 
 ## 1. Data model (`packages/db/prisma/schema.prisma`) — one migration + one seed migration
 
 ### 1.1 Menu
+
 ```prisma
 enum DietType { VEG NON_VEG EGG }
 enum RecipeSource { MANUAL AI_DRAFT }
@@ -60,9 +61,11 @@ model OrderItem {
   @@index([variantId])
 }
 ```
+
 "No AI draft reviewed" filter = `recipeSource = AI_DRAFT AND recipeReviewedAt IS NULL`. Editing a recipe in the menu UI sets `recipeReviewedAt`.
 
 ### 1.2 Restaurant / inventory
+
 ```prisma
 model Restaurant {
   targetFoodCostMin Decimal @default(30) @map("target_food_cost_min") @db.Decimal(5, 2)
@@ -85,9 +88,11 @@ model InventoryReceipt {
   @@index([restaurantId, supplierId, supplierInvoiceNumber])   // duplicate warning, not a hard block
 }
 ```
+
 Duplicate invoice is a **warning** the owner must acknowledge (`acknowledgeDuplicate: true`), not a unique constraint, because suppliers reuse numbers across years.
 
 ### 1.3 AI tables
+
 ```prisma
 enum AiJobKind   { MENU_SCAN INVOICE_SCAN RECIPE_DRAFT }
 enum AiJobStatus { QUEUED RUNNING SUCCEEDED PARTIAL FAILED CANCELLED }
@@ -122,6 +127,7 @@ model AiUsage {
 ```
 
 ### 1.4 Global reference data (no `restaurant_id`, intentionally: holds no tenant data)
+
 ```prisma
 model IngredientCatalog {
   id; canonicalName String @unique; baseUnit InventoryBaseUnit
@@ -138,9 +144,11 @@ model RecipeTemplate {
   @@unique([dishKey, portionStyle]); @@map("recipe_templates")
 }
 ```
+
 Seed: hand-written migration inserting about 200 common Indian kitchen ingredients with aliases (English/Hindi transliteration) and estimated prices. Data file: `packages/db/prisma/seed-data/ingredient-catalog.ts`, generated to SQL once. Prices are labelled "Estimated market price" everywhere.
 
 ### 1.5 Draft step numbers (trap)
+
 `onboarding.service.ts` stores steps as `ONBOARDING_STEPS.indexOf(step) + 1`. Inserting `recipes` between menu and inventory would silently shift every saved draft. Fix: a fixed code map `{details:1, floor:2, menu:3, inventory:4, team:5, review:6, recipes:7}` used by `stepToNumber`/`numberToStep`. Display order comes from `ONBOARDING_STEPS`; stored numbers never change. No data migration. Add a unit test that pins the map.
 
 ## 2. Contract (`packages/api-contract`)
@@ -169,6 +177,7 @@ New / changed files:
 ## 3. API (`apps/api`)
 
 ### 3.1 New module `src/ai/`
+
 ```
 ai/
   ai.module.ts
@@ -204,6 +213,7 @@ ai/
     ingredient-catalog.repository.ts
     recipe-template.repository.ts
 ```
+
 - All AI controllers carry the setup-gating decorator (`allow-during-setup.decorator.ts`) so the owner can use them while onboarding is pending, plus `@RequirePermissions` (`menu:scan`, `inventory:scan-invoice`, `menu:write` for recipe drafts).
 - Uploads: `FileInterceptor` from `@nestjs/platform-express` (multer, already a transitive dependency). At most 8 files, 6 MB each, JPEG/PNG/WebP only, checked by magic bytes, not by the client's MIME type. The client sends already-normalised JPEG pages (§4.2), so HEIC/PDF never reach the server.
 - Every model response is parsed by the `ai-model-output.ts` schemas; an invalid element is dropped and counted (`result.droppedRows`), never guessed. Confidence < 75 → flagged, never auto-accepted.
@@ -214,6 +224,7 @@ ai/
 - Usage: token counts from Gemini `usageMetadata` → `ai_usage`; structured log per call (model, tokens, latency, jobId) with no image or prompt content.
 
 ### 3.2 Onboarding changes (`src/onboarding/`)
+
 - `onboarding.service.ts`: fixed step-number map (§1.5); finish validation includes recipes/invoices; skipped `recipes` step ignores its data.
 - `onboarding-completion.writer.ts`:
   - `writeMenu`: create `dietType`, variants (`portionFactor` from variant name: Half 0.5, Full 1, Quarter 0.25, else 1, editable later), `recipeRequired = false` for "No recipe needed".
@@ -224,6 +235,7 @@ ai/
 - `main.ts`: raise the JSON body limit for `PUT /onboarding/draft` (Express default 100 KB; a 60-dish draft with recipes and invoices can be ~300 KB). Use 2 MB on that route only.
 
 ### 3.3 Variants across ordering, KOT and billing
+
 - `menu-items.service/repository`: CRUD variants with the item (replace-set semantics, like recipes).
 - `orders.repository.ts` (line ~200 selects `price`): also select active variants. `order-items.service.ts`: if the item has active variants, `variantId` is **required** and the unit price snapshot = variant price; `variantName` snapshot stored. The fold-into-identical-line rule includes `variantId`.
 - `orders.mapper.ts`, `bills.mapper.ts`, KOT payloads: display name = `name (variantName)` when present.
@@ -231,6 +243,7 @@ ai/
 - Tests: `orders.service.spec.ts` gains variant cases (required, price snapshot, fold rules); `bills.service.spec.ts` line naming.
 
 ### 3.4 Image lifecycle (images on server disk)
+
 - Path: `AI_UPLOAD_DIR` (default `/app/data/ai-uploads`), mounted as the `ai-uploads` Docker volume in `docker-compose.yml` (and therefore in the VPS deploy, which runs the same compose file).
 - "Done" means the owner no longer needs the photo, **not** "extraction finished": the review screen shows the photo beside the table and inline snippets for low-confidence fields. Images are deleted when any of these happens:
   1. onboarding completes, or the post-onboarding import/receipt is saved,
@@ -240,6 +253,7 @@ ai/
 - This assumes a single API instance (true today). Object storage is the follow-up when that changes.
 
 ### 3.5 Post-onboarding endpoints
+
 - `POST /menu/items/bulk-import`: creates categories/items/variants from reviewed rows; duplicate check against the live menu (`normalizeName` + category).
 - `POST /inventory/goods-receipts` (extended): supplier resolved by GSTIN → existing or created; invoice no/date/total/tax stored; lines → batches with batch no + expiry; requires `acknowledgeDuplicate` when a duplicate exists.
 - `POST /inventory/goods-receipts/checks`: duplicate-invoice match ("Already recorded on 3 Nov") and per-line price jump vs the last receipt cost (threshold 15%, env).
@@ -247,6 +261,7 @@ ai/
 - `GET /menu/items?recipeStatus=ai-unreviewed`.
 
 ### 3.6 Env (`config/env.validation.ts`, `.env.example`, compose)
+
 ```
 AI_PROVIDER=gemini|fake          (default fake in development/test)
 GEMINI_API_KEY=                  (optional; missing → AI endpoints return AI_UNAVAILABLE, UI falls back to CSV/manual)
@@ -257,36 +272,42 @@ AI_DAILY_MENU_SCANS=10           AI_DAILY_INVOICE_SCANS=20
 AI_MAX_CONCURRENT_JOBS=3
 AI_PRICE_JUMP_PERCENT=15
 ```
+
 Pick exact Gemini model IDs and check current pricing at implementation time (§7).
 
 ## 4. Web (`apps/web`)
 
 ### 4.1 Shared AI components: `src/components/AiScan/`
+
 Mapped to the "Components" boards (shadcn/ui + existing grayscale theme tokens; nothing copied from the canvas CSS):
 `CaptureTile`, `PageThumbnailStrip` (drag reorder via keyboard too, delete, retake), `QualityWarning`, `StreamingRow`, `SourceHighlight` (absolutely positioned box over the page image; glow disabled under `prefers-reduced-motion`), `SourceSnippet` (CSS crop of the page image from the box), `ConfidenceBadge` (icon + number: ≥90 / 75–89 / <75 "Check"), `TrustMarker` (AI-suggested / low confidence / edited by you / approved), `PriceSourceMarker` (≈ estimated dashed vs receipt "From invoice" solid), `DietMarker` (circle / triangle / ring + label), `CostMeter` + `CostBand`, `IngredientMatchSelect`, `InvoiceHeaderCard` + `InvoiceTotalCheck`, `MarginDiffPanel` (arrow + text, never colour only), `FloatingAiProgress`, `AiFailureState` (unreadable / not a menu / partial / AI unavailable / limit / offline).
 
 ### 4.2 Image preparation: `src/lib/scan-images.ts` (lazy-loaded)
+
 - HEIC → JPEG (`heic2any`, dynamic import), PDF → one JPEG per page (`pdfjs-dist`, dynamic import), resize to a long edge of 2000 px, JPEG quality 0.85.
 - Quality score: Laplacian variance on a 512 px grayscale copy (blur), mean brightness (dark), minimum resolution. Warning shown **before** upload, and the owner can override.
 - 2–8 pages; offline → keep the prepared blobs in memory and show "Upload paused", retry on `online`.
 
 ### 4.3 Hooks: `src/services/api/requests/ai-scans.ts` + `src/hooks/useAiJob.ts`
+
 - `useAiJob(jobId)`: TanStack Query for the job + items; subscribes to the Pusher AI channel (reusing the `useNotificationSubscription` setup); appends items to the query cache by `seq` (idempotent); falls back to polling while disconnected.
 - The active job id lives in the onboarding draft, so reopening the tab resumes the stream.
 
 ### 4.4 Onboarding (`src/containers/Onboarding/`)
-| Board | Change |
-|---|---|
-| Welcome | `Welcome.tsx`: hero "Have a photo of your menu? Start there." → `advance(null,'menu')` with `menu.mode='scan'`; Details/Floor stay "to do"; step list includes Recipes & costs. |
-| Stepper | `steps.ts`, `progress.ts`, `useStepNavigation.ts`: new `recipes` step (Optional). Match the live wizard's stepper if it differs from the canvas. |
-| Menu scan | `steps/MenuStep.tsx` → segmented control with `Scan menu photo` (default, AI mark) / CSV / manual / later. New `steps/menu/ScanCapture.tsx`, `ScanStreaming.tsx` (photo left, streaming table right, "Page 2 of 4 · 38 items found", pause, review early, edit while streaming), `ScanReview.tsx` (extends the existing review table: diet, variants, confidence, snippet, problems first, "N ready · M need attention", Accept all high-confidence, duplicates, not dishes, "Import N, leave out M"), original script next to cleaned name. Note text → "Next, we'll draft recipes and food cost for these dishes." |
-| Recipes & costs | New `steps/RecipesStep.tsx` with `recipes/RecipesNeedsMenu.tsx`, `RecipesStart.tsx` (target %, portion style), `RecipesDrafting.tsx` (live cards; review early), `RecipesReview.tsx` (split view, filters, inline line editor, live cost/pct/band via `costing.ts`, "No recipe needed", approve one / approve all, keyboard Tab/Enter/A/E scoped to the list, not a global keydown), `RecipesIngredients.tsx` (dedupe "used in 14 dishes", merge suggestions, base unit → writes inventory rows `origin:'recipe'`), `RecipesMargins.tsx` (ranked, 5 lowest, average, invoice prompt). |
-| Inventory | `steps/InventoryStep.tsx`: rows pre-filled "From your recipes"; modes Scan supplier invoice / CSV / manual / later (pre-filled rows stay in every mode). New `inventory/InvoiceScan.tsx` (reuses capture + streaming), `InvoiceMatchTable.tsx` (match dropdown with confidence or "Add as new ingredient", pack conversion shown "5 × 1 kg → 5000 g"), header + GST + total check (apply blocked on mismatch), scan another, `InvoiceMarginUpdate.tsx` ("Real costs for 9 ingredients → 23 dishes' margins updated", before → after, labels flip to From invoice). |
-| Review & finish | `steps/ReviewStep.tsx`: Recipes section (count, ingredients, average food cost %, lowest-margin dishes, ingredients still estimated). |
-| Finishing / Ready | `Finishing.tsx`: Recipes stage after Inventory. `Ready.tsx`: "Your restaurant is ready: 62 dishes, 58 recipes, 84 ingredients, average margin 67%" + floor board / menu / margin report links + still-to-do note. |
-| Floating progress | `OnboardingLayout.tsx` renders `FloatingAiProgress` when the draft has a RUNNING job. |
+
+| Board             | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Welcome           | `Welcome.tsx`: hero "Have a photo of your menu? Start there." → `advance(null,'menu')` with `menu.mode='scan'`; Details/Floor stay "to do"; step list includes Recipes & costs.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Stepper           | `steps.ts`, `progress.ts`, `useStepNavigation.ts`: new `recipes` step (Optional). Match the live wizard's stepper if it differs from the canvas.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Menu scan         | `steps/MenuStep.tsx` → segmented control with `Scan menu photo` (default, AI mark) / CSV / manual / later. New `steps/menu/ScanCapture.tsx`, `ScanStreaming.tsx` (photo left, streaming table right, "Page 2 of 4 · 38 items found", pause, review early, edit while streaming), `ScanReview.tsx` (extends the existing review table: diet, variants, confidence, snippet, problems first, "N ready · M need attention", Accept all high-confidence, duplicates, not dishes, "Import N, leave out M"), original script next to cleaned name. Note text → "Next, we'll draft recipes and food cost for these dishes." |
+| Recipes & costs   | New `steps/RecipesStep.tsx` with `recipes/RecipesNeedsMenu.tsx`, `RecipesStart.tsx` (target %, portion style), `RecipesDrafting.tsx` (live cards; review early), `RecipesReview.tsx` (split view, filters, inline line editor, live cost/pct/band via `costing.ts`, "No recipe needed", approve one / approve all, keyboard Tab/Enter/A/E scoped to the list, not a global keydown), `RecipesIngredients.tsx` (dedupe "used in 14 dishes", merge suggestions, base unit → writes inventory rows `origin:'recipe'`), `RecipesMargins.tsx` (ranked, 5 lowest, average, invoice prompt).                                |
+| Inventory         | `steps/InventoryStep.tsx`: rows pre-filled "From your recipes"; modes Scan supplier invoice / CSV / manual / later (pre-filled rows stay in every mode). New `inventory/InvoiceScan.tsx` (reuses capture + streaming), `InvoiceMatchTable.tsx` (match dropdown with confidence or "Add as new ingredient", pack conversion shown "5 × 1 kg → 5000 g"), header + GST + total check (apply blocked on mismatch), scan another, `InvoiceMarginUpdate.tsx` ("Real costs for 9 ingredients → 23 dishes' margins updated", before → after, labels flip to From invoice).                                                   |
+| Review & finish   | `steps/ReviewStep.tsx`: Recipes section (count, ingredients, average food cost %, lowest-margin dishes, ingredients still estimated).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Finishing / Ready | `Finishing.tsx`: Recipes stage after Inventory. `Ready.tsx`: "Your restaurant is ready: 62 dishes, 58 recipes, 84 ingredients, average margin 67%" + floor board / menu / margin report links + still-to-do note.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Floating progress | `OnboardingLayout.tsx` renders `FloatingAiProgress` when the draft has a RUNNING job.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ### 4.5 Outside the wizard
+
 - Menu items page (`containers/MenuItems`, `MenuItemFormSidePane`): diet marker, variants editor (name, price, portion factor), "Import from photo" → same capture/stream/review → `bulk-import`; filter "AI draft, not yet reviewed".
 - Ordering (`AddOrderItemDialog`, `OrderingMenu`, `OrderingMenuItem`): variant picker (Half / Full chips) when an item has variants; `KitchenDisplay` / `BarDisplay` / `StationDisplay` / bill views show the variant name.
 - Inventory page: "Scan invoice" → capture/stream/match → receipt form prefilled → duplicate and price-jump warnings → save → margin diff.
@@ -294,6 +315,7 @@ Mapped to the "Components" boards (shadcn/ui + existing grayscale theme tokens; 
 - Reports: margin report page (simple table + bands).
 
 ### 4.6 Responsive / accessibility
+
 Breakpoints 375 / 768 / 1280+. Capture is mobile-first (`<input type="file" accept="image/*" capture="environment" multiple>`), review is desktop-first with a stacked mobile review for small menus. Light and dark via existing theme tokens. Real buttons and inputs, `aria-live` for streaming counts, status never conveyed by colour alone.
 
 ## 5. Phases (commit groups on the one branch)
