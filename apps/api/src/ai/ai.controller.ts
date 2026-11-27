@@ -40,10 +40,6 @@ import {
   createRecipeDraftRequestSchema,
   type CreateScanFields,
   createScanFieldsSchema,
-  type IngredientPriceLookupRequest,
-  ingredientPriceLookupRequestSchema,
-  type IngredientPriceLookupResponse,
-  ingredientPriceLookupResponseSchema,
   type NotificationChannelAuthRequest,
   notificationChannelAuthRequestSchema,
   type NotificationChannelAuthResponse,
@@ -202,20 +198,6 @@ export class AiController {
     @Body(new ZodValidationPipe(createRecipeDraftRequestSchema)) input: CreateRecipeDraftRequest,
   ): Promise<AiJobDetailResponse> {
     return this.jobs.createRecipeDraft(actor, input);
-  }
-
-  @Post('ingredient-prices')
-  @HttpCode(HttpStatus.OK)
-  @RequirePermissions(Permission.MENU_WRITE)
-  @ApiOperation({ summary: 'Estimated market prices for ingredient names (catalog, then AI)' })
-  @ApiBody({ schema: zodOpenApiSchema(ingredientPriceLookupRequestSchema) })
-  @ApiOkResponse({ schema: zodOpenApiSchema(ingredientPriceLookupResponseSchema) })
-  ingredientPrices(
-    @CurrentActor() actor: Actor,
-    @Body(new ZodValidationPipe(ingredientPriceLookupRequestSchema))
-    input: IngredientPriceLookupRequest,
-  ): Promise<IngredientPriceLookupResponse> {
-    return this.jobs.ingredientPrices(actor, input.names);
   }
 
   @Get('jobs/:id')

@@ -15,11 +15,13 @@ import {
 import type { Actor } from '../common/auth/authenticated-request';
 import { PrismaService } from '../common/database/prisma.service';
 
-type IngredientCost = { price: number | null; source: 'invoice' | 'estimated' | 'none' };
+/** A real ingredient cost per base unit, or null when there's none yet. */
+type IngredientCost = number | null;
 
 /**
  * Plate cost and food-cost % from live recipes. Each ingredient is costed at its latest purchase
- * (batch) cost, then its running average cost, then its estimated market price.
+ * (batch) cost, then its running average cost. No estimates: a dish with any ingredient lacking a
+ * real cost shows what's missing instead of a misleadingly low partial cost.
  */
 @Injectable()
 export class MarginsService {
@@ -94,7 +96,7 @@ export class MarginsService {
               quantity: true,
               unit: true,
               stockItem: {
-                select: { id: true, averageUnitCost: true, estimatedUnitCost: true },
+                select: { id: true, averageUnitCost: true },
               },
             },
           },
@@ -113,16 +115,11 @@ export class MarginsService {
     const costOf = (stockItem: {
       id: string;
       averageUnitCost: { toNumber(): number } | null;
-      estimatedUnitCost: { toNumber(): number } | null;
     }): IngredientCost => {
       const override = overrides.get(stockItem.id);
-      if (override !== undefined) return { price: override, source: 'invoice' };
+      if (override !== undefined) return override;
       const real = latest.get(stockItem.id) ?? stockItem.averageUnitCost?.toNumber();
-      if (real !== undefined && real > 0) return { price: real, source: 'invoice' };
-      const estimated = stockItem.estimatedUnitCost?.toNumber();
-      if (estimated !== undefined && estimated > 0)
-        return { price: estimated, source: 'estimated' };
-      return { price: null, source: 'none' };
+      return real !== undefined && real > 0 ? real : null;
     };
 
     const target = {
@@ -137,17 +134,16 @@ export class MarginsService {
         continue;
       }
       let cost = 0;
-      let estimatedIngredients = 0;
       let missingPrices = 0;
       for (const line of item.recipeItems) {
-        const ingredient = costOf(line.stockItem);
-        if (ingredient.price === null) {
+        const price = costOf(line.stockItem);
+        if (price === null) {
           missingPrices += 1;
           continue;
         }
-        if (ingredient.source === 'estimated') estimatedIngredients += 1;
-        cost += toBaseQuantity(line.quantity.toNumber(), line.unit) * ingredient.price;
+        cost += toBaseQuantity(line.quantity.toNumber(), line.unit) * price;
       }
+      const costed = missingPrices === 0;
       const portions = item.variants.length
         ? item.variants.map((variant) => ({
             variantId: variant.id,
@@ -158,21 +154,20 @@ export class MarginsService {
         : [{ variantId: null, name: item.name, price: item.price.toNumber(), factor: 1 }];
       for (const portion of portions) {
         const plateCost = cost * portion.factor;
-        const pct = foodCostPercent(plateCost, portion.price);
+        const pct = costed ? foodCostPercent(plateCost, portion.price) : null;
         rows.push({
           menuItemId: item.id,
           variantId: portion.variantId,
           name: portion.name,
           category: item.category.name,
           sellingPrice: portion.price,
-          plateCost: Math.round(plateCost * 100) / 100,
+          plateCost: costed ? Math.round(plateCost * 100) / 100 : null,
           foodCostPercent: pct === null ? null : Math.round(pct * 10) / 10,
           marginPercent:
             pct === null
               ? null
               : Math.round((marginPercent(plateCost, portion.price) ?? 0) * 10) / 10,
           band: pct === null ? null : costBand(pct, target),
-          estimatedIngredients,
           missingPrices,
           recipeUnreviewed: item.recipeSource === 'AI_DRAFT' && item.recipeReviewedAt === null,
         });

@@ -10,8 +10,6 @@ import {
   type BulkImportMenuItemsResponse,
   bulkImportMenuItemsResponseSchema,
   type CreateRecipeDraftRequest,
-  type IngredientPriceEstimate,
-  ingredientPriceLookupResponseSchema,
   type MarginPreviewRequest,
   type MarginPreviewResponse,
   marginPreviewResponseSchema,
@@ -155,18 +153,6 @@ export async function fetchScanPageImage(jobId: string, page: number): Promise<B
     errorDisplay: 'inline',
   });
   return response.data as Blob;
-}
-
-export async function lookupIngredientPrices(
-  names: readonly string[],
-): Promise<IngredientPriceEstimate[]> {
-  if (!names.length) return [];
-  const response = await api.post(
-    '/ai/ingredient-prices',
-    { names: names.slice(0, 300) },
-    { errorDisplay: 'inline' },
-  );
-  return ingredientPriceLookupResponseSchema.parse(response.data).items;
 }
 
 export function useMarginReport(enabled = true): UseQueryResult<MarginReport> {

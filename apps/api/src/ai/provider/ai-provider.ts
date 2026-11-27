@@ -6,7 +6,7 @@
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
 
 /** What a request is for: adapters may use it (the fake picks canned output by it). */
-export type AiTask = 'menu-page' | 'invoice-page' | 'recipes' | 'ingredient-prices';
+export type AiTask = 'menu-page' | 'invoice-page' | 'recipes';
 
 export type AiImage = { mimeType: string; data: Buffer };
 

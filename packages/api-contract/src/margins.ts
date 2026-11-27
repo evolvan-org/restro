@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
 /*
- * Margin report: plate cost and food-cost % per dish (and per portion) from live recipes, using the
- * latest real purchase cost of each ingredient and its estimated price otherwise.
+ * Margin report: plate cost and food-cost % per dish (and per portion) from live recipes, using
+ * real ingredient costs only (latest purchase, else running average). A dish is costed only when
+ * every ingredient has a real cost; there are no estimated prices.
  */
 
 export const costBandSchema = z.enum(['healthy', 'watch', 'poor']);
-export const ingredientCostSourceSchema = z.enum(['invoice', 'estimated', 'none']);
 
 export const marginRowSchema = z
   .object({
@@ -15,12 +15,12 @@ export const marginRowSchema = z
     name: z.string(),
     category: z.string(),
     sellingPrice: z.number(),
-    plateCost: z.number(),
+    /** Null until every ingredient in the recipe has a real cost. */
+    plateCost: z.number().nullable(),
     foodCostPercent: z.number().nullable(),
     marginPercent: z.number().nullable(),
     band: costBandSchema.nullable(),
-    /** Ingredients priced from an estimate rather than a purchase. */
-    estimatedIngredients: z.number().int().nonnegative(),
+    /** Ingredients with no real cost yet (no purchase or opening stock cost). */
     missingPrices: z.number().int().nonnegative(),
     recipeUnreviewed: z.boolean(),
   })

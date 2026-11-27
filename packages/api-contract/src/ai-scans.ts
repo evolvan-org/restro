@@ -304,28 +304,6 @@ export const createRecipeDraftRequestSchema = z
   })
   .strict();
 
-/** Estimated market prices for ingredient names (catalog first, model for unknowns). */
-export const ingredientPriceLookupRequestSchema = z
-  .object({ names: z.array(z.string().trim().min(1).max(150)).min(1).max(300) })
-  .strict();
-
-export const ingredientPriceSourceSchema = z.enum(['catalog', 'ai', 'none']);
-export const ingredientPriceEstimateSchema = z
-  .object({
-    name: z.string(),
-    /** Catalog name it matched, so "Dahi" and "Curd" resolve to one ingredient. */
-    canonicalName: z.string().nullable(),
-    baseUnit: inventoryBaseUnitSchema,
-    /** Estimated ₹ per base unit (g, ml or unit) as a decimal string; null when unknown. */
-    pricePerBase: z.string().nullable(),
-    source: ingredientPriceSourceSchema,
-    aliases: z.array(z.string()),
-  })
-  .strict();
-export const ingredientPriceLookupResponseSchema = z
-  .object({ items: z.array(ingredientPriceEstimateSchema) })
-  .strict();
-
 // ---------------------------------------------------------------------------------------------
 // Usage, realtime and errors
 // ---------------------------------------------------------------------------------------------
@@ -389,9 +367,6 @@ export type AiJobDetailResponse = z.infer<typeof aiJobDetailResponseSchema>;
 export type CreateScanFields = z.output<typeof createScanFieldsSchema>;
 export type PortionStyle = z.infer<typeof portionStyleSchema>;
 export type CreateRecipeDraftRequest = z.infer<typeof createRecipeDraftRequestSchema>;
-export type IngredientPriceLookupRequest = z.infer<typeof ingredientPriceLookupRequestSchema>;
-export type IngredientPriceEstimate = z.infer<typeof ingredientPriceEstimateSchema>;
-export type IngredientPriceLookupResponse = z.infer<typeof ingredientPriceLookupResponseSchema>;
 export type AiUsageResponse = z.infer<typeof aiUsageResponseSchema>;
 export type AiJobEvent = z.infer<typeof aiJobEventSchema>;
 export type AiRealtimeConfig = z.infer<typeof aiRealtimeConfigSchema>;

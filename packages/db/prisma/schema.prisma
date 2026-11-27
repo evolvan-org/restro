@@ -687,20 +687,18 @@ enum Unit {
 
 /// Restaurant ingredient master shared by recipes and inventory.
 model StockItem {
-  id                String             @id @default(uuid()) @db.Uuid
-  restaurantId      String             @map("restaurant_id") @db.Uuid
-  name              String             @db.VarChar(150)
-  isActive          Boolean            @default(true) @map("is_active")
-  sku               String?            @db.VarChar(60)
-  baseUnit          InventoryBaseUnit? @map("base_unit")
-  reorderLevel      Decimal            @default(0) @map("reorder_level") @db.Decimal(12, 3)
-  currentStock      Decimal            @default(0) @map("current_stock") @db.Decimal(12, 3)
-  averageUnitCost   Decimal?           @map("average_unit_cost") @db.Decimal(18, 8)
-  /// Estimated cost per base unit, used for food cost until a real purchase cost exists.
-  estimatedUnitCost Decimal?           @map("estimated_unit_cost") @db.Decimal(18, 8)
-  openedAt          DateTime?          @map("opened_at") @db.Timestamptz(6)
-  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String             @id @default(uuid()) @db.Uuid
+  restaurantId    String             @map("restaurant_id") @db.Uuid
+  name            String             @db.VarChar(150)
+  isActive        Boolean            @default(true) @map("is_active")
+  sku             String?            @db.VarChar(60)
+  baseUnit        InventoryBaseUnit? @map("base_unit")
+  reorderLevel    Decimal            @default(0) @map("reorder_level") @db.Decimal(12, 3)
+  currentStock    Decimal            @default(0) @map("current_stock") @db.Decimal(12, 3)
+  averageUnitCost Decimal?           @map("average_unit_cost") @db.Decimal(18, 8)
+  openedAt        DateTime?          @map("opened_at") @db.Timestamptz(6)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant    Restaurant                   @relation(fields: [restaurantId], references: [id])
   recipeItems   RecipeItem[]
@@ -1222,27 +1220,20 @@ model AiUsage {
   @@map("ai_usage")
 }
 
-enum IngredientPriceSource {
-  SEED
-  AI
-}
-
 enum PortionStyle {
   LIGHT
   STANDARD
   GENEROUS
 }
 
-/// Global ingredient reference (no tenant data): canonical names, aliases and estimated market prices.
+/// Global ingredient reference (no tenant data): canonical names, aliases and stock unit. No prices:
+/// food cost comes only from a restaurant's real purchases.
 model IngredientCatalog {
-  id                    String                @id @default(uuid()) @db.Uuid
-  canonicalName         String                @unique @map("canonical_name") @db.VarChar(150)
-  baseUnit              InventoryBaseUnit     @map("base_unit")
-  aliases               String[]              @default([])
-  /// Estimated ₹ per base unit (g, ml or unit).
-  estimatedPricePerBase Decimal               @map("estimated_price_per_base") @db.Decimal(18, 8)
-  priceSource           IngredientPriceSource @default(SEED) @map("price_source")
-  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String            @id @default(uuid()) @db.Uuid
+  canonicalName String            @unique @map("canonical_name") @db.VarChar(150)
+  baseUnit      InventoryBaseUnit @map("base_unit")
+  aliases       String[]          @default([])
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("ingredient_catalog")
 }

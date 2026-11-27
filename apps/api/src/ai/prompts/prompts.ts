@@ -270,35 +270,3 @@ export const RECIPE_SCHEMA = {
   },
   required: ['recipes'],
 };
-
-// ---------------------------------------------------------------------------------------------
-// Ingredient prices (only for ingredients the seeded catalog doesn't know)
-// ---------------------------------------------------------------------------------------------
-
-export const PRICE_SYSTEM = `You estimate current wholesale prices of restaurant ingredients in Indian metro cities, in rupees.
-Give the price per kilogram for solids, per litre for liquids, or per piece for countable items, and say which with baseUnit (G for per-kg solids, ML for per-litre liquids, UNIT for per-piece). Use a typical mid-range brand. If the name is not a food ingredient, set known false.`;
-
-export function pricePrompt(names: readonly string[]): string {
-  return `Estimate prices for:\n${names.map((name) => `- ${name}`).join('\n')}`;
-}
-
-export const PRICE_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    items: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          name: str(),
-          known: { type: 'BOOLEAN' },
-          baseUnit: { type: 'STRING', enum: ['G', 'ML', 'UNIT'] },
-          price: str('Rupees per kg, per litre or per piece'),
-        },
-        required: ['name', 'known', 'baseUnit', 'price'],
-        propertyOrdering: ['name', 'known', 'baseUnit', 'price'],
-      },
-    },
-  },
-  required: ['items'],
-};

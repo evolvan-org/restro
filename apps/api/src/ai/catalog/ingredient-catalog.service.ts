@@ -1,87 +1,43 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import {
-  type IngredientPriceEstimate,
-  matchName,
-  normalizeName,
-  type PortionStyle,
-  type RecipeDraftLine,
-} from '@rms/api-contract';
+import { Injectable } from '@nestjs/common';
+import { matchName, type PortionStyle, type RecipeDraftLine } from '@rms/api-contract';
 import { type InventoryBaseUnit, Prisma } from '@rms/db';
-import { z } from 'zod';
 
 import { PrismaService } from '../../common/database/prisma.service';
-import { errorDiagnostics } from '../../common/logging/error-diagnostics';
-import { PRICE_SCHEMA, PRICE_SYSTEM, pricePrompt } from '../prompts/prompts';
-import { AI_PROVIDER, type AiProvider } from '../provider/ai-provider';
-import { parseJsonObject } from '../streaming/json-array-stream';
 
 type CatalogEntry = {
   canonicalName: string;
   baseUnit: InventoryBaseUnit;
   aliases: string[];
-  pricePerBase: Prisma.Decimal;
-  source: 'SEED' | 'AI';
 };
 
 const CACHE_TTL_MS = 10 * 60_000;
 /** A catalog name or alias must match at least this well to be treated as the same ingredient. */
 const CATALOG_MATCH_SCORE = 88;
 
-const modelPricesSchema = z.object({
-  items: z.array(
-    z.object({
-      name: z.string(),
-      known: z.boolean(),
-      baseUnit: z.enum(['G', 'ML', 'UNIT']),
-      price: z.string(),
-    }),
-  ),
-});
-
 /**
- * The global ingredient reference: canonical names, aliases and estimated market prices. Seeded;
- * ingredients it doesn't know are priced once by the model and cached here for everyone.
+ * The global ingredient reference (seeded, no tenant data): canonical names, aliases and the unit
+ * each is stocked in. It keeps drafted recipes consistent ("Dahi" and "Curd" become one name). It
+ * holds no prices: food cost comes only from a restaurant's real purchases.
  */
 @Injectable()
 export class IngredientCatalogService {
-  private readonly logger = new Logger(IngredientCatalogService.name);
   private cache: { at: number; entries: CatalogEntry[] } | null = null;
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
-    @Inject(AI_PROVIDER) private readonly provider: AiProvider,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async entries(): Promise<CatalogEntry[]> {
     if (this.cache && Date.now() - this.cache.at < CACHE_TTL_MS) return this.cache.entries;
-    const rows = await this.prisma.ingredientCatalog.findMany({
-      select: {
-        canonicalName: true,
-        baseUnit: true,
-        aliases: true,
-        estimatedPricePerBase: true,
-        priceSource: true,
-      },
+    const entries = await this.prisma.ingredientCatalog.findMany({
+      select: { canonicalName: true, baseUnit: true, aliases: true },
       orderBy: { canonicalName: 'asc' },
     });
-    const entries = rows.map((row) => ({
-      canonicalName: row.canonicalName,
-      baseUnit: row.baseUnit,
-      aliases: row.aliases,
-      pricePerBase: row.estimatedPricePerBase,
-      source: row.priceSource,
-    }));
     this.cache = { at: Date.now(), entries };
     return entries;
   }
 
   /** Canonical names the recipe prompt asks the model to reuse. */
   async canonicalNames(): Promise<string[]> {
-    return (await this.entries())
-      .filter((entry) => entry.source === 'SEED')
-      .map((entry) => entry.canonicalName);
+    return (await this.entries()).map((entry) => entry.canonicalName);
   }
 
   async match(name: string): Promise<CatalogEntry | null> {
@@ -106,103 +62,6 @@ export class IngredientCatalogService {
         return entry ? { ...line, ingredient: entry.canonicalName } : line;
       }),
     );
-  }
-
-  /** Estimated price per base unit for each name: catalog first, then the model (cached). */
-  async estimate(names: readonly string[]): Promise<{
-    items: IngredientPriceEstimate[];
-    usage: { inputTokens: number; outputTokens: number };
-  }> {
-    const unique = [...new Map(names.map((name) => [normalizeName(name), name.trim()])).values()];
-    const found = new Map<string, CatalogEntry>();
-    const unknown: string[] = [];
-    for (const name of unique) {
-      const entry = await this.match(name);
-      if (entry) found.set(name, entry);
-      else unknown.push(name);
-    }
-
-    let usage = { inputTokens: 0, outputTokens: 0 };
-    if (unknown.length && this.provider.isAvailable()) {
-      try {
-        const response = await this.provider.generate({
-          task: 'ingredient-prices',
-          model: this.config.get<string>('AI_MODEL_RECIPES') ?? 'gemini-3.5-flash-lite',
-          fallbackModel: this.config.get<string>('AI_MODEL_RECIPES_FALLBACK'),
-          system: PRICE_SYSTEM,
-          prompt: pricePrompt(unknown),
-          responseSchema: PRICE_SCHEMA,
-        });
-        usage = response.usage;
-        const parsed = modelPricesSchema.safeParse(parseJsonObject(response.text));
-        for (const item of parsed.success ? parsed.data.items : []) {
-          const price = Number(item.price);
-          const name = unknown.find(
-            (candidate) => normalizeName(candidate) === normalizeName(item.name),
-          );
-          if (!name || !item.known || !(price > 0) || price > 500_000) continue;
-          const perBase = item.baseUnit === 'UNIT' ? price : price / 1000;
-          const entry = await this.remember(name, item.baseUnit, perBase);
-          if (entry) found.set(name, entry);
-        }
-      } catch (error) {
-        this.logger.warn('Ingredient price estimate failed', errorDiagnostics(error));
-      }
-    }
-
-    const items = unique.map((name): IngredientPriceEstimate => {
-      const entry = found.get(name);
-      if (!entry) {
-        return {
-          name,
-          canonicalName: null,
-          baseUnit: 'G',
-          pricePerBase: null,
-          source: 'none',
-          aliases: [],
-        };
-      }
-      return {
-        name,
-        canonicalName: entry.canonicalName,
-        baseUnit: entry.baseUnit,
-        pricePerBase: entry.pricePerBase.toFixed(8).replace(/\.?0+$/, ''),
-        source: entry.source === 'SEED' ? 'catalog' : 'ai',
-        aliases: entry.aliases,
-      };
-    });
-    return { items, usage };
-  }
-
-  private async remember(
-    name: string,
-    baseUnit: InventoryBaseUnit,
-    pricePerBase: number,
-  ): Promise<CatalogEntry | null> {
-    const canonicalName = name.trim().slice(0, 150);
-    try {
-      const row = await this.prisma.ingredientCatalog.upsert({
-        where: { canonicalName },
-        create: {
-          canonicalName,
-          baseUnit,
-          estimatedPricePerBase: new Prisma.Decimal(pricePerBase.toFixed(8)),
-          priceSource: 'AI',
-        },
-        update: {},
-      });
-      this.cache = null;
-      return {
-        canonicalName: row.canonicalName,
-        baseUnit: row.baseUnit,
-        aliases: row.aliases,
-        pricePerBase: row.estimatedPricePerBase,
-        source: row.priceSource,
-      };
-    } catch (error) {
-      this.logger.warn('Could not cache an ingredient price', errorDiagnostics(error));
-      return null;
-    }
   }
 }
 

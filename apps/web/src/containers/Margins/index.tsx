@@ -6,7 +6,7 @@ import { Receipt, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
-import { CostBandBadge, PriceSourceChip } from '@/components/AiScan/markers';
+import { CostBandBadge } from '@/components/AiScan/markers';
 import { buttonVariants } from '@/components/ui/button';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import usePermissions from '@/hooks/auth/usePermissions';
@@ -19,7 +19,7 @@ export default function Margins(): ReactElement | null {
   const report = useMarginReport(allowed);
   if (!allowed) return null;
   const data = report.data;
-  const estimated = data?.rows.some((row) => row.estimatedIngredients > 0);
+  const needCost = data?.rows.filter((row) => row.missingPrices > 0).length ?? 0;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
@@ -70,10 +70,11 @@ export default function Margins(): ReactElement | null {
               <p className="text-2xl font-bold tabular-nums">{data.missingRecipes}</p>
             </div>
           </div>
-          {estimated && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <PriceSourceChip source="estimated" /> Some costs use estimated market prices until
-              you record a purchase.
+          {needCost > 0 && (
+            <p className="text-sm text-muted-foreground">
+              Food cost shows once every ingredient in a dish has a real cost. {needCost}{' '}
+              {needCost === 1 ? 'dish is' : 'dishes are'} waiting on ingredient costs: scan a
+              supplier invoice or record a purchase in Inventory.
             </p>
           )}
           <div className="overflow-x-auto rounded-xl border bg-card">
@@ -105,13 +106,14 @@ export default function Margins(): ReactElement | null {
                       )}
                       {row.missingPrices > 0 && (
                         <span className="ml-2 text-xs text-amber-800">
-                          {row.missingPrices} without a price
+                          Needs a cost for {row.missingPrices}{' '}
+                          {row.missingPrices === 1 ? 'ingredient' : 'ingredients'}
                         </span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{row.category}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
-                      {formatInr(row.plateCost, 2)}
+                      {row.plateCost === null ? '—' : formatInr(row.plateCost, 2)}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatInr(row.sellingPrice)}

@@ -18,7 +18,6 @@ import {
   API_ERROR_CODES,
   type CreateRecipeDraftRequest,
   type CreateScanFields,
-  type IngredientPriceLookupResponse,
   SCAN_MAX_PAGE_BYTES,
   SCAN_MAX_PAGES,
   SCAN_MIN_SHORT_EDGE,
@@ -279,15 +278,6 @@ export class AiJobsService {
   async purge(jobs: readonly { id: string; restaurantId: string }[]): Promise<void> {
     for (const job of jobs) await this.images.purge(job.restaurantId, job.id);
     await this.repository.markImagesPurged(jobs.map((job) => job.id));
-  }
-
-  async ingredientPrices(
-    actor: Actor,
-    names: readonly string[],
-  ): Promise<IngredientPriceLookupResponse> {
-    const { items, usage } = await this.catalog.estimate(names);
-    await this.quota.recordTokens(actor.restaurantId, 'RECIPE_DRAFT', usage);
-    return { items };
   }
 
   /** Same restaurant, and the person who started it (or the owner / someone allowed to scan). */

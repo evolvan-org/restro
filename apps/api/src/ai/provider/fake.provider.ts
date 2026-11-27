@@ -422,11 +422,6 @@ function recipes(prompt: string): Record<string, unknown> {
   };
 }
 
-function prices(prompt: string): Record<string, unknown> {
-  const names = [...prompt.matchAll(/^- (.+)$/gm)].map((match) => match[1]!.trim());
-  return { items: names.map((name) => ({ name, known: true, baseUnit: 'G', price: '250' })) };
-}
-
 /**
  * An extra-detail re-read, as a real model behaves: rows it doubted come back more confident (at
  * least 80) and most price misreads are resolved; one is kept, so the demo review still shows a
@@ -474,9 +469,7 @@ export class FakeProvider implements AiProvider {
         ? menuPage(request.prompt, this.scenario)
         : request.task === 'invoice-page'
           ? invoicePage(request.prompt, this.scenario)
-          : request.task === 'recipes'
-            ? recipes(request.prompt)
-            : prices(request.prompt);
+          : recipes(request.prompt);
     const text = JSON.stringify(request.imageDetail === 'ultra' ? readCloser(body) : body);
     // Roughly one row per ~400 ms, like a real streamed read.
     const chunkSize = 90;
@@ -490,7 +483,7 @@ export class FakeProvider implements AiProvider {
       if (index >= dropAt) {
         throw new AiStreamInterruptedError('Fake provider dropped the stream');
       }
-      await sleep(request.task === 'ingredient-prices' ? 0 : this.chunkDelayMs, request.signal);
+      await sleep(this.chunkDelayMs, request.signal);
       yield { text: text.slice(index, index + chunkSize) };
     }
     const usage: AiUsage = { inputTokens: 1200, outputTokens: Math.ceil(text.length / 4) };
