@@ -1,13 +1,10 @@
 'use client';
 
 import type { QrFloorResponse } from '@rms/api-contract';
-import { Permission } from '@rms/permissions';
 import { UserX } from 'lucide-react';
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useMemo } from 'react';
 
 import type { QrTileMarker } from '@/components/FloorTile/qr';
-import { AssignCaptainSheet } from '@/containers/QrOrders/AssignCaptainSheet';
-import usePermissions from '@/hooks/auth/usePermissions';
 import { useQrFloor } from '@/services/api/requests/qr-orders';
 
 /** QR markers for the floor tiles, keyed by table id; empty while QR ordering is off. */
@@ -25,9 +22,22 @@ export function useQrTileMarkers(enabled: boolean): {
   return { markers, data: floor.data };
 }
 
+/** Id of the banner message, so the header's Assign button can reference it. */
+export const QR_NO_CAPTAIN_MESSAGE_ID = 'qr-no-captain-message';
+
+/** QR tables on the board that have no captain (empty while QR ordering is off). */
+export function getQrTablesWithoutCaptain(
+  data: QrFloorResponse | undefined,
+  tableNumbers: ReadonlyMap<string, string>,
+): QrFloorResponse['tables'] {
+  if (!data?.enabled) return [];
+  return data.tables.filter((table) => table.noCaptain && tableNumbers.has(table.tableId));
+}
+
 /**
- * Floor board banner (C5a): tables with no captain can't take QR orders. Managers can assign one in
- * one tap; the legend explains the tile markers.
+ * Floor board banner (C5a): tables with no captain can't take QR orders. Message only; managers
+ * assign captains from the highlighted "Assign captains" header button. The legend explains the
+ * tile markers.
  */
 export default function QrFloorBanner({
   data,
@@ -36,10 +46,8 @@ export default function QrFloorBanner({
   data: QrFloorResponse | undefined;
   tableNumbers: ReadonlyMap<string, string>;
 }): ReactElement | null {
-  const { can } = usePermissions();
-  const [open, setOpen] = useState(false);
   if (!data?.enabled) return null;
-  const missing = data.tables.filter((table) => table.noCaptain && tableNumbers.has(table.tableId));
+  const missing = getQrTablesWithoutCaptain(data, tableNumbers);
   const first = missing[0];
   return (
     <div className="mb-4 flex flex-col gap-3">
@@ -54,20 +62,11 @@ export default function QrFloorBanner({
           role="status"
         >
           <UserX className="size-4 shrink-0" aria-hidden />
-          <span>
+          <span id={QR_NO_CAPTAIN_MESSAGE_ID}>
             {missing.length === 1
               ? `Table ${tableNumbers.get(first.tableId)} has no captain, so guests who scan it can’t order.`
               : `${missing.length} tables have no captain, so guests who scan them can’t order.`}
           </span>
-          {can(Permission.QR_ORDER_MANAGE) && (
-            <button
-              type="button"
-              className="ml-auto min-h-11 underline underline-offset-2"
-              onClick={() => setOpen(true)}
-            >
-              Assign captain
-            </button>
-          )}
         </div>
       )}
       <div className="flex flex-wrap gap-4 text-[13px] text-muted-foreground">
@@ -88,15 +87,6 @@ export default function QrFloorBanner({
           No captain · QR ordering off
         </span>
       </div>
-      {first && (
-        <AssignCaptainSheet
-          open={open}
-          onOpenChange={setOpen}
-          table={{ id: first.tableId, number: tableNumbers.get(first.tableId) ?? '' }}
-          currentCaptain={null}
-          waitingText={null}
-        />
-      )}
     </div>
   );
 }

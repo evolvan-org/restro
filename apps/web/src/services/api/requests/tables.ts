@@ -1,5 +1,8 @@
 import {
   type AssignTableCaptainRequest,
+  type AssignTablesCaptainRequest,
+  type AssignTablesCaptainResponse,
+  assignTablesCaptainResponseSchema,
   type CaptainOptionsResponse,
   captainOptionsResponseSchema,
   type CreateTableRequest,
@@ -41,10 +44,13 @@ type UpdateTableVariables = { id: string; input: UpdateTableRequest };
 type UpdateTableActiveVariables = { id: string; input: UpdateTableActiveRequest };
 type AssignTableCaptainVariables = { id: string; input: AssignTableCaptainRequest };
 
+const BOARD_QUERY_KEY = [TableQueryKey.Tables, 'board'] as const;
+const CAPTAINS_QUERY_KEY = [TableQueryKey.Tables, 'captains'] as const;
+
 export function useCaptainOptions(enabled: boolean): UseQueryResult<CaptainOptionsResponse> {
   const showApiError = useShowApiError('Unable to load captains.');
   const query = useQuery({
-    queryKey: [TableQueryKey.Tables, 'captains'],
+    queryKey: CAPTAINS_QUERY_KEY,
     queryFn: async ({ signal }): Promise<CaptainOptionsResponse> => {
       const response = await api.get('/tables/captains', { signal });
       return captainOptionsResponseSchema.parse(response.data);
@@ -94,6 +100,73 @@ export function useAssignTableCaptain(): UseMutationResult<
   });
 }
 
+function replaceBoardRows(
+  board: TableBoardResponse | undefined,
+  patch: (table: RestaurantTable) => RestaurantTable,
+): TableBoardResponse | undefined {
+  return board && { ...board, data: board.data.map(patch) };
+}
+
+/**
+ * Bulk captain change for the floor board (REST-99). The board updates optimistically; on success
+ * it takes the server's rows (applied and conflicting), on failure it rolls back.
+ */
+export function useAssignTablesCaptain(): UseMutationResult<
+  AssignTablesCaptainResponse,
+  Error,
+  AssignTablesCaptainRequest,
+  { previous: TableBoardResponse | undefined }
+> {
+  const queryClient = useQueryClient();
+  const showApiError = useShowApiError('Unable to change the captains.');
+
+  return useMutation({
+    mutationFn: async (input): Promise<AssignTablesCaptainResponse> => {
+      const response = await api.patch('/tables/captain', input);
+      return assignTablesCaptainResponseSchema.parse(response.data);
+    },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: BOARD_QUERY_KEY });
+      const previous = queryClient.getQueryData<TableBoardResponse>(BOARD_QUERY_KEY);
+      // Eligible captains plus current holders, so undo can restore a no-longer-listed captain.
+      const captains = new Map(
+        [
+          ...(previous?.data.flatMap((table) => (table.captain ? [table.captain] : [])) ?? []),
+          ...(queryClient.getQueryData<CaptainOptionsResponse>(CAPTAINS_QUERY_KEY) ?? []),
+        ].map((captain) => [captain.id, captain]),
+      );
+      const targets = new Map(
+        input.assignments.flatMap(({ captainUserId, tables }) =>
+          tables.map(({ tableId }) => [tableId, captainUserId] as const),
+        ),
+      );
+      queryClient.setQueryData<TableBoardResponse>(BOARD_QUERY_KEY, (board) =>
+        replaceBoardRows(board, (table) => {
+          if (!targets.has(table.id)) return table;
+          const captainUserId = targets.get(table.id) ?? null;
+          return {
+            ...table,
+            captainUserId,
+            captain: captainUserId ? (captains.get(captainUserId) ?? null) : null,
+          };
+        }),
+      );
+      return { previous };
+    },
+    onSuccess: (result) => {
+      const fresh = new Map([...result.updated, ...result.conflicts].map((t) => [t.id, t]));
+      queryClient.setQueryData<TableBoardResponse>(BOARD_QUERY_KEY, (board) =>
+        replaceBoardRows(board, (table) => fresh.get(table.id) ?? table),
+      );
+    },
+    onError: (error, _input, context) => {
+      queryClient.setQueryData(BOARD_QUERY_KEY, context?.previous);
+      showApiError(error);
+    },
+    onSettled: () => invalidateTablesAndQr(queryClient),
+  });
+}
+
 /** Load every active-table page so the picker cannot silently omit later tables. */
 export function useAssignableTables(enabled: boolean): UseQueryResult<RestaurantTable[]> {
   const showApiError = useShowApiError('Unable to load tables for assignment.');
@@ -127,7 +200,7 @@ export function useAssignableTables(enabled: boolean): UseQueryResult<Restaurant
 
 export function useTableBoard(enabled: boolean): UseQueryResult<TableBoardResponse> {
   return useQuery({
-    queryKey: [TableQueryKey.Tables, 'board'],
+    queryKey: BOARD_QUERY_KEY,
     queryFn: async ({ signal }): Promise<TableBoardResponse> => {
       const response = await api.get('/tables/board', { signal });
       return tableBoardResponseSchema.parse(response.data);

@@ -67,6 +67,14 @@ export function firstNameOf(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
 }
 
+/** First name plus last initial, e.g. "Raj Kumar" -> "Raj K". */
+export function shortNameOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0] ?? name;
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] : undefined;
+  return last ? `${first} ${last.toUpperCase()}` : first;
+}
+
 /** "9:06 pm" in the viewer's locale settings for India. */
 export function formatClockTime(iso: string): string {
   return new Date(iso)
