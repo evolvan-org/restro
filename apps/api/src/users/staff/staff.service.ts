@@ -14,6 +14,7 @@ import {
   type StaffEmailActionResponse,
   type StaffListQuery,
   type StaffListResponse,
+  type StaffRole,
   type StaffRolesResponse,
   type UpdateStaffRequest,
   type UpdateStaffStatusRequest,
@@ -68,9 +69,9 @@ export class StaffService {
   }
 
   async listAssignableRoles(actor: Actor): Promise<StaffRolesResponse> {
-    return (await this.repository.findRoles(actor.restaurantId)).filter((role) =>
-      canAssignRole(actor, role),
-    );
+    return (await this.repository.findRoles(actor.restaurantId))
+      .filter((role) => canAssignRole(actor, role))
+      .map(toStaffRole);
   }
 
   async create(actor: Actor, input: CreateStaffRequest): Promise<CreateStaffResponse> {
@@ -278,6 +279,14 @@ function toStaffDetails(input: CreateStaffRequest): StaffDetails {
   };
 }
 
+/**
+ * Narrows a role record to the public `{ id, name }` shape. The records also carry `isOwner` and
+ * `permissions` for authorization checks, which the strict contract schema rejects on the client.
+ */
+function toStaffRole(role: { id: string; name: string }): StaffRole {
+  return { id: role.id, name: role.name };
+}
+
 function toStaffAccount(record: StaffRecord): StaffAccount {
   return {
     id: record.id,
@@ -285,7 +294,7 @@ function toStaffAccount(record: StaffRecord): StaffAccount {
     email: record.email,
     phone: record.phone,
     status: record.status,
-    role: record.role,
+    role: toStaffRole(record.role),
     createdAt: record.createdAt.toISOString(),
   };
 }
