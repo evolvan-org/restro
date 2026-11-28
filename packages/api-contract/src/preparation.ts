@@ -48,6 +48,7 @@ export const preparationEventSchema = z
       'PRIORITY',
       'TARGET',
       'STATUS',
+      'VOID',
     ]),
     status: kotStatusSchema,
     state: preparationSchema,

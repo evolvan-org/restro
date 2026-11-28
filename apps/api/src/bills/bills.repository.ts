@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { BillCancellationReasonsResponse, BillListQuery } from '@rms/api-contract';
 import { Prisma, type ReservationStatus } from '@rms/db';
 
-import { lockOrderLifecycle } from '../common/database/order-lifecycle';
+import { lockOrderLifecycle, lockRestaurantPayments } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
 import { updateTableStatusIfCurrent } from '../common/database/table-lifecycle';
 
@@ -27,7 +27,7 @@ const orderSelect = {
       quantity: true,
       sentQuantity: true,
       nameSnapshot: true,
-      kotItems: { select: { quantity: true } },
+      kotItems: { where: { voidedAt: null }, select: { quantity: true } },
       unitPrice: true,
       menuItem: { select: { name: true } },
     },
@@ -46,6 +46,7 @@ const invoiceInclude = {
       paymentMethod: true,
       amount: true,
       tipAmount: true,
+      tenders: true,
       referenceNumber: true,
       paidAt: true,
     },
@@ -72,6 +73,7 @@ export type NewPayment = Pick<
   | 'paymentMethod'
   | 'amount'
   | 'tipAmount'
+  | 'tenders'
   | 'referenceNumber'
   | 'recordedByUserId'
   | 'status'
@@ -85,7 +87,18 @@ export class PaymentConflictError extends Error {
   }
 }
 
+const paidShareSelect = {
+  id: true,
+  paymentMethod: true,
+  paidAmount: true,
+  referenceNumber: true,
+  recordedByUserId: true,
+  paidAt: true,
+} satisfies Prisma.QrBillShareSelect;
+type PaidShare = Prisma.QrBillShareGetPayload<{ select: typeof paidShareSelect }>;
+
 export type LockedBillingContext = {
+  paidQrShares: (sessionId?: string) => Promise<PaidShare[]>;
   createPayment: (data: NewPayment) => Promise<PaymentRecord>;
   completeOrder: (
     expectedOrderStatus: OrderRecord['status'],
@@ -121,9 +134,11 @@ export class BillsRepository {
     restaurantId: string,
     target: { orderId: string } | { billId: string },
     run: (context: LockedBillingContext) => Promise<T>,
+    settlement = false,
   ): Promise<T> {
     return this.prisma.$transaction(
       async (tx) => {
+        if (settlement) await lockRestaurantPayments(tx, restaurantId);
         const candidate =
           'orderId' in target
             ? target.orderId
@@ -167,6 +182,16 @@ export class BillsRepository {
             tx.bill.create({
               data: { ...data, restaurantId, orderId: orderId!, status: 'OPEN' },
               include: billInclude,
+            }),
+          paidQrShares: (id) =>
+            tx.qrBillShare.findMany({
+              where: {
+                restaurantId,
+                status: 'PAID',
+                session: { id, restaurantId, orderId, status: 'OPEN' },
+              },
+              select: paidShareSelect,
+              orderBy: [{ paidAt: 'asc' }, { id: 'asc' }],
             }),
           createPayment: async (data) => {
             try {

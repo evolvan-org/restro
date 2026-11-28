@@ -1,4 +1,5 @@
 import type { Bill, Payment } from '@rms/api-contract';
+import { paymentTendersSchema } from '@rms/api-contract';
 
 import type { BillRecord, PaymentRecord } from './bills.repository';
 
@@ -38,6 +39,7 @@ export function toPayment(record: PaymentRecord): Payment {
     billId: record.billId,
     recordedByUserId: record.recordedByUserId,
     paymentMethod: record.paymentMethod,
+    ...(record.tenders && { tenders: paymentTendersSchema.parse(record.tenders) }),
     amount: record.amount.toFixed(2),
     tipAmount: record.tipAmount?.toFixed(2) ?? '0.00',
     status: record.status,

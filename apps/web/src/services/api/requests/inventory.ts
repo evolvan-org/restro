@@ -25,6 +25,7 @@ import {
   inventorySuppliersSchema,
   type LogInventoryWaste,
   type OpeningInventoryStock,
+  supplierPricesSchema,
   type UpdateInventoryItem,
   type UpdateInventoryPurchaseStatus,
   type UpdateInventorySupplier,
@@ -39,7 +40,7 @@ import { downloadBlob } from '@/lib/download-blob';
 
 import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 
-const inventoryKey = ['inventory'] as const;
+export const inventoryKey = ['inventory'] as const;
 
 function useInventoryQuery<T>(path: string, schema: ZodType<T>, params?: object, enabled = true) {
   return useQuery({
@@ -76,21 +77,18 @@ export function useInventoryReceipts(query: InventoryReceiptQuery) {
   return useInventoryQuery('goods-receipts', inventoryReceiptsSchema, query);
 }
 
-export function useInventoryReceipt(id: string) {
-  return useQuery({
-    queryKey: [...inventoryKey, 'goods-receipt', id],
-    retry: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    queryFn: async ({ signal }) =>
-      inventoryReceiptSchema.parse(
-        (await api.get(`/inventory/goods-receipts/${id}`, { signal })).data,
-      ),
-  });
-}
-
 export function useInventoryOptions(enabled: boolean) {
   return useInventoryQuery('options', inventoryOptionsSchema, undefined, enabled);
+}
+
+export function useLatestSupplierPrices(supplierId: string, stockItemIds: readonly string[]) {
+  const params = { supplierId, stockItemIds: [...new Set(stockItemIds)].sort().join(',') };
+  return useInventoryQuery(
+    'supplier-prices',
+    supplierPricesSchema,
+    params,
+    !!supplierId && stockItemIds.length > 0,
+  );
 }
 
 type InventoryCommand =

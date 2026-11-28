@@ -1,6 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   CaptainOrderView,
+  DiscardOrderRequest,
   KotDestination,
   KotQueueQuery,
   KotStatus,
@@ -8,21 +14,35 @@ import type {
   OrderSelectionSnapshot,
   PreparationHistoryQuery,
   ServingType,
+  VoidOrderItemRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
+import { Permission } from '@rms/permissions';
 
+import { actorCan } from '../common/auth/actor-permissions';
+import type { Actor } from '../common/auth/authenticated-request';
 import {
   INVENTORY_LOCK_WAITER_TIMEOUT_MS,
   lockRestaurantInventory,
 } from '../common/database/inventory-lock';
-import { createKotTickets } from '../common/database/kot-tickets';
+import { createKotTickets, type KotGroup } from '../common/database/kot-tickets';
+import { lockOrderLifecycle } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
-import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
+import { reconcileTableStatus, setTableLifecycleStatus } from '../common/database/table-lifecycle';
+import { recordTicketStockUsage } from '../stock/ticket-stock-usage';
+import { canVoidTicketLines } from './order-corrections';
+import { recipeObservationSelect } from './order-selections';
 
 const orderSelect = {
   id: true,
   tableId: true,
-  table: { select: { id: true, tableNumber: true } },
+  table: {
+    select: {
+      id: true,
+      tableNumber: true,
+      qrSessions: { where: { status: 'OPEN' }, select: { id: true }, take: 1 },
+    },
+  },
   reservationId: true,
   createdByUserId: true,
   status: true,
@@ -31,12 +51,26 @@ const orderSelect = {
   completedAt: true,
   createdAt: true,
   updatedAt: true,
-  kots: { select: { status: true } },
+  bill: { select: { id: true } },
+  kots: {
+    select: {
+      status: true,
+      items: { where: { voidedAt: null }, select: { id: true }, take: 1 },
+    },
+  },
   items: {
     select: {
       id: true,
       menuItemId: true,
-      kotItems: { select: { quantity: true } },
+      kotItems: {
+        where: { voidedAt: null },
+        select: {
+          quantity: true,
+          stockUsageIssue: true,
+          status: true,
+          kot: { select: { status: true, source: true } },
+        },
+      },
       menuItem: { select: { name: true, itemType: true } },
       quantity: true,
       unitPrice: true,
@@ -58,7 +92,10 @@ const kotSelect = {
   orderId: true,
   kotNumber: true,
   destination: true,
+  correctionOf: true,
   status: true,
+  printStatus: true,
+  printAttemptAt: true,
   controlVersion: true,
   acceptedAt: true,
   heldAt: true,
@@ -74,6 +111,9 @@ const kotSelect = {
       componentMenuItemId: true,
       nameSnapshot: true,
       instructionsSnapshot: true,
+      voidedAt: true,
+      voidReason: true,
+      stockUsageIssue: true,
       status: true,
       orderItem: {
         select: {
@@ -87,7 +127,7 @@ const kotSelect = {
   },
 } satisfies Prisma.KotSelect;
 
-const kotQueueSelect = {
+export const kotQueueSelect = {
   ...kotSelect,
   source: true,
   guestNotifiedAt: true,
@@ -114,7 +154,7 @@ const captainOrderSelect = {
   completedAt: true,
   table: { select: { id: true, tableNumber: true } },
   bill: { select: { billNumber: true, status: true, totalAmount: true } },
-  kots: { select: { status: true } },
+  kots: { where: { items: { some: { voidedAt: null } } }, select: { status: true } },
   items: {
     select: {
       quantity: true,
@@ -155,22 +195,12 @@ export type KotRecord = Prisma.KotGetPayload<{ select: typeof kotSelect }>;
 export type KotQueueRecord = Prisma.KotGetPayload<{ select: typeof kotQueueSelect }>;
 
 const orderingMenuSelect = {
-  id: true,
+  ...recipeObservationSelect,
   name: true,
   price: true,
   itemType: true,
   isAvailable: true,
   customizations: true,
-  recipeRequired: true,
-  recipeItems: {
-    where: { isActive: true },
-    select: {
-      quantity: true,
-      unit: true,
-      stockItem: { select: { id: true, name: true, baseUnit: true, averageUnitCost: true } },
-    },
-    orderBy: { stockItemId: 'asc' },
-  },
 } satisfies Prisma.MenuItemSelect;
 
 export type OrderingMenuRecord = Prisma.MenuItemGetPayload<{ select: typeof orderingMenuSelect }>;
@@ -315,7 +345,7 @@ export class OrdersRepository {
                 quantity: true,
                 sentQuantity: true,
                 selectionSnapshot: true,
-                kotItems: { select: { quantity: true } },
+                kotItems: { where: { voidedAt: null }, select: { quantity: true } },
               },
             });
           },
@@ -368,7 +398,7 @@ export class OrdersRepository {
                 itemTypeSnapshot: true,
                 selectionSnapshot: true,
                 specialInstructions: true,
-                kotItems: { select: { quantity: true } },
+                kotItems: { where: { voidedAt: null }, select: { quantity: true } },
                 menuItem: { select: { itemType: true } },
               },
               orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -407,6 +437,238 @@ export class OrdersRepository {
         // slower database connections instead of Prisma's default five seconds.
         timeout: captureMenuSnapshot ? INVENTORY_LOCK_WAITER_TIMEOUT_MS : 15_000,
       },
+    );
+  }
+
+  discard(actor: Actor, orderId: string, { reason }: DiscardOrderRequest): Promise<OrderRecord> {
+    const { restaurantId, userId } = actor;
+    return this.prisma.$transaction(
+      async (tx) => {
+        const locked = await lockOrderLifecycle(tx, restaurantId, orderId);
+        if (!locked) throw new NotFoundException('Order not found');
+        const order = await tx.order.findUniqueOrThrow({
+          where: { id: orderId },
+          select: {
+            status: true,
+            createdByUserId: true,
+            seatedReservationOnOpen: true,
+            discardReason: true,
+            table: {
+              select: {
+                captainUserId: true,
+                qrSessions: { where: { status: 'OPEN' }, select: { id: true }, take: 1 },
+              },
+            },
+            bill: { select: { id: true } },
+            kots: { select: { id: true }, take: 1 },
+          },
+        });
+        if (
+          !actorCan(actor, Permission.TABLE_ASSIGN_CAPTAIN) &&
+          order.createdByUserId !== userId &&
+          order.table.captainUserId !== userId
+        ) {
+          throw new ForbiddenException(
+            'Only the order creator, assigned captain, or a manager can discard this order',
+          );
+        }
+        if (order.status === 'CANCELLED' && order.discardReason) {
+          return tx.order.findUniqueOrThrow({ where: { id: orderId }, select: orderSelect });
+        }
+        if (
+          order.status !== 'OPEN' ||
+          order.kots.length ||
+          order.bill ||
+          order.table.qrSessions.length
+        ) {
+          throw new ConflictException(
+            'Only an unfired order without a bill or live QR visit can be discarded',
+          );
+        }
+        await tx.orderItem.updateMany({
+          where: { orderId, status: 'ACTIVE' },
+          data: { status: 'CANCELLED' },
+        });
+        const discarded = await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: 'CANCELLED',
+            discardReason: reason,
+            discardedByUserId: userId,
+            completedAt: new Date(),
+          },
+          select: orderSelect,
+        });
+        // Preserve guests seated independently of this order, including orders created before tracking.
+        if (order.seatedReservationOnOpen && locked.reservationId) {
+          await tx.reservation.updateMany({
+            where: {
+              id: locked.reservationId,
+              restaurantId,
+              tableId: locked.tableId,
+              status: 'SEATED',
+            },
+            data: { status: 'BOOKED' },
+          });
+        }
+        await reconcileTableStatus(tx, restaurantId, locked.tableId);
+        return discarded;
+      },
+      { timeout: 15_000 },
+    );
+  }
+
+  voidPendingItem(
+    actor: Actor,
+    orderId: string,
+    itemId: string,
+    { reason, expectedUpdatedAt }: VoidOrderItemRequest,
+  ): Promise<{ order: OrderRecord; corrections: KotRecord[] }> {
+    const { restaurantId, userId } = actor;
+    return this.prisma.$transaction(
+      async (tx) => {
+        const locked = await tx.$queryRaw<{ status: OrderRecord['status'] }[]>`
+        SELECT status FROM orders WHERE id = ${orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE
+      `;
+        if (!locked[0]) throw new NotFoundException('Order not found');
+        if (
+          locked[0].status !== 'SUBMITTED' ||
+          (await tx.bill.findFirst({
+            where: { orderId, restaurantId },
+            select: { id: true },
+          }))
+        ) {
+          throw new ConflictException('Only submitted orders can be corrected before billing');
+        }
+        const item = await tx.orderItem.findFirst({
+          where: { id: itemId, orderId },
+          select: {
+            status: true,
+            quantity: true,
+            sentQuantity: true,
+            updatedAt: true,
+            kotItems: {
+              where: { voidedAt: null },
+              select: {
+                id: true,
+                orderItemId: true,
+                quantity: true,
+                status: true,
+                componentMenuItemId: true,
+                nameSnapshot: true,
+                instructionsSnapshot: true,
+                kot: {
+                  select: {
+                    id: true,
+                    kotNumber: true,
+                    destination: true,
+                    status: true,
+                    source: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+        if (!item) throw new NotFoundException('Order item not found');
+        if (item.updatedAt.toISOString() !== expectedUpdatedAt) {
+          throw new ConflictException('This order item changed. Refresh the order and try again');
+        }
+        if (item.status !== 'ACTIVE' || !canVoidTicketLines(item.kotItems)) {
+          throw new ConflictException(
+            'Only staff-entered items still pending at every station can be voided',
+          );
+        }
+        const sent =
+          item.sentQuantity ?? item.kotItems.reduce((total, line) => total + line.quantity, 0);
+        if (sent < 1 || sent > item.quantity) {
+          throw new ConflictException('The sent quantity could not be verified');
+        }
+        const voidedAt = new Date();
+        const audit = { voidedAt, voidedByUserId: userId, voidReason: reason };
+        const correctionGroups = new Map<string, KotGroup>();
+        for (const {
+          kot,
+          orderItemId,
+          quantity,
+          componentMenuItemId,
+          nameSnapshot,
+          instructionsSnapshot,
+        } of item.kotItems) {
+          let group = correctionGroups.get(kot.id);
+          if (!group) {
+            group = { destination: kot.destination, correctionOf: kot.kotNumber, items: [] };
+            correctionGroups.set(kot.id, group);
+          }
+          group.items.push({
+            orderItemId,
+            quantity,
+            componentMenuItemId,
+            nameSnapshot,
+            instructionsSnapshot,
+            ...audit,
+          });
+        }
+        await tx.kotItem.updateMany({
+          where: { id: { in: item.kotItems.map(({ id }) => id) } },
+          data: audit,
+        });
+        for (const id of correctionGroups.keys()) {
+          const ticket = await tx.kot.update({
+            where: { id },
+            data: { controlVersion: { increment: 1 } },
+            select: {
+              status: true,
+              controlVersion: true,
+              acceptedAt: true,
+              heldAt: true,
+              holdReason: true,
+              isPriority: true,
+              targetSeconds: true,
+            },
+          });
+          const { controlVersion: version, ...state } = ticket;
+          await tx.preparationEvent.create({
+            data: {
+              ...state,
+              version,
+              restaurantId,
+              kotId: id,
+              recordedByUserId: userId,
+              action: 'VOID',
+              reason,
+              createdAt: voidedAt,
+            },
+          });
+        }
+        const remaining = item.quantity - sent;
+        await tx.orderItem.update({
+          where: { id: itemId },
+          data: remaining
+            ? { quantity: remaining, sentQuantity: 0 }
+            : { status: 'CANCELLED', sentQuantity: 0 },
+        });
+        const hasSentItems = await tx.orderItem.findFirst({
+          where: { orderId, status: 'ACTIVE', kotItems: { some: { voidedAt: null } } },
+          select: { id: true },
+        });
+        if (!hasSentItems) {
+          await tx.order.update({ where: { id: orderId }, data: { status: 'OPEN' } });
+        }
+        const corrections = await createKotTickets(tx, {
+          restaurantId,
+          orderId,
+          createdByUserId: userId,
+          groups: [...correctionGroups.values()],
+          select: kotSelect,
+        });
+        const order = await tx.order.findUniqueOrThrow({
+          where: { id: orderId },
+          select: orderSelect,
+        });
+        return { order, corrections };
+      },
+      { timeout: 15_000 },
     );
   }
 
@@ -529,10 +791,6 @@ export class OrdersRepository {
     );
   }
 
-  findPrintTicket(restaurantId: string, id: string): Promise<KotQueueRecord | null> {
-    return this.prisma.kot.findFirst({ where: { id, restaurantId }, select: kotQueueSelect });
-  }
-
   findActiveKotBoard(
     restaurantId: string,
     destination: KotDestination,
@@ -575,101 +833,124 @@ export class OrdersRepository {
     id: string,
     action: (context: LockedKotContext) => Promise<T>,
     recordedByUserId: string,
+    completing = false,
   ): Promise<T> {
-    return this.prisma.$transaction(async (tx) => {
-      const candidate = await tx.kot.findFirst({
-        where: { id, restaurantId },
-        select: { orderId: true },
-      });
-      if (candidate) {
-        // Share the existing order lock with firing/completion before locking the ticket.
-        await tx.$queryRaw`SELECT id FROM orders WHERE id = ${candidate.orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-        await tx.$queryRaw`SELECT id FROM kots WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
-      }
-      const ticket = await tx.kot.findFirst({
-        where: { id, restaurantId },
-        select: kotQueueSelect,
-      });
-      const recordEvent = async (
-        action: string,
-        current: KotQueueRecord,
-        reason?: string,
-      ): Promise<void> => {
-        await tx.preparationEvent.create({
-          data: {
-            restaurantId,
-            kotId: id,
-            recordedByUserId,
-            action,
-            status: current.status,
-            version: current.controlVersion,
-            acceptedAt: current.acceptedAt,
-            heldAt: current.heldAt,
-            holdReason: current.holdReason,
-            isPriority: current.isPriority,
-            targetSeconds: current.targetSeconds,
-            reason,
-            // Capture time after the row locks; transaction-start timestamps can precede
-            // an earlier version committed by another operator while this writer waited.
-            createdAt: new Date(),
-          },
+    return this.prisma.$transaction(
+      async (tx) => {
+        if (completing) await lockRestaurantInventory(tx, restaurantId);
+        const candidate = await tx.kot.findFirst({
+          where: { id, restaurantId },
+          select: { orderId: true },
         });
-      };
-      const baseline = async (): Promise<void> => {
-        if (ticket && !(await tx.preparationEvent.count({ where: { restaurantId, kotId: id } }))) {
-          await recordEvent('BASELINE', ticket);
+        if (candidate) {
+          // Share the existing order lock with firing/completion before locking the ticket.
+          await tx.$queryRaw`SELECT id FROM orders WHERE id = ${candidate.orderId}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
+          await tx.$queryRaw`SELECT id FROM kots WHERE id = ${id}::uuid AND restaurant_id = ${restaurantId}::uuid FOR UPDATE`;
         }
-      };
-      return action({
-        kot: ticket,
-        setPreparation: async (action, change, reason) => {
-          await baseline();
-          const updated = await tx.kot.update({
-            where: { id, restaurantId },
-            data: { ...change, controlVersion: { increment: 1 } },
-            select: kotQueueSelect,
-          });
-          await recordEvent(action, updated, reason);
-          return updated;
-        },
-        setStatus: async (status) => {
-          await baseline();
-          await tx.kot.update({
-            where: { id, restaurantId },
+        const ticket = await tx.kot.findFirst({
+          where: { id, restaurantId },
+          select: kotQueueSelect,
+        });
+        const recordEvent = async (
+          action: string,
+          current: KotQueueRecord,
+          reason?: string,
+        ): Promise<void> => {
+          await tx.preparationEvent.create({
             data: {
-              status,
-              completedAt: status === 'COMPLETED' ? new Date() : null,
-              ...(status === 'PREPARING' && !ticket?.acceptedAt ? { acceptedAt: new Date() } : {}),
-              controlVersion: { increment: 1 },
+              restaurantId,
+              kotId: id,
+              recordedByUserId,
+              action,
+              status: current.status,
+              version: current.controlVersion,
+              acceptedAt: current.acceptedAt,
+              heldAt: current.heldAt,
+              holdReason: current.holdReason,
+              isPriority: current.isPriority,
+              targetSeconds: current.targetSeconds,
+              reason,
+              // Capture time after the row locks; transaction-start timestamps can precede
+              // an earlier version committed by another operator while this writer waited.
+              createdAt: new Date(),
             },
           });
-          await tx.kotItem.updateMany({
-            where: { kotId: id, kot: { restaurantId } },
-            data: { status },
-          });
-          // The guest hears "Your food is on its way" only when every ticket of the round is
-          // Ready, so "Guest notified · h:mm pm" is stamped on all of them at that moment.
-          const roundId = ticket?.qrRound ? ticket.qrRoundId : null;
-          if (status === 'READY' && roundId) {
-            const waiting = await tx.kot.count({
-              where: { restaurantId, qrRoundId: roundId, status: { in: ['PENDING', 'PREPARING'] } },
-            });
-            if (waiting === 0) {
-              await tx.kot.updateMany({
-                where: { restaurantId, qrRoundId: roundId, guestNotifiedAt: null },
-                data: { guestNotifiedAt: new Date() },
-              });
-            }
+        };
+        const baseline = async (): Promise<void> => {
+          if (
+            ticket &&
+            !(await tx.preparationEvent.count({ where: { restaurantId, kotId: id } }))
+          ) {
+            await recordEvent('BASELINE', ticket);
           }
-          const updated = await tx.kot.findFirstOrThrow({
-            where: { id, restaurantId },
-            select: kotQueueSelect,
-          });
-          await recordEvent('STATUS', updated);
-          return updated;
-        },
-      });
-    });
+        };
+        return action({
+          kot: ticket,
+          setPreparation: async (action, change, reason) => {
+            await baseline();
+            const updated = await tx.kot.update({
+              where: { id, restaurantId },
+              data: { ...change, controlVersion: { increment: 1 } },
+              select: kotQueueSelect,
+            });
+            await recordEvent(action, updated, reason);
+            return updated;
+          },
+          setStatus: async (status) => {
+            await baseline();
+            if (status === 'COMPLETED' && ticket?.status === 'READY') {
+              await recordTicketStockUsage(
+                tx,
+                restaurantId,
+                ticket.id,
+                ticket.kotNumber,
+                recordedByUserId,
+              );
+            }
+            await tx.kot.update({
+              where: { id, restaurantId },
+              data: {
+                status,
+                completedAt: status === 'COMPLETED' ? new Date() : null,
+                ...(status === 'PREPARING' && !ticket?.acceptedAt
+                  ? { acceptedAt: new Date() }
+                  : {}),
+                controlVersion: { increment: 1 },
+              },
+            });
+            await tx.kotItem.updateMany({
+              where: { kotId: id, voidedAt: null, kot: { restaurantId } },
+              data: { status },
+            });
+            // The guest hears "Your food is on its way" only when every ticket of the round is
+            // Ready, so "Guest notified · h:mm pm" is stamped on all of them at that moment.
+            const roundId = ticket?.qrRound ? ticket.qrRoundId : null;
+            if (status === 'READY' && roundId) {
+              const waiting = await tx.kot.count({
+                where: {
+                  restaurantId,
+                  qrRoundId: roundId,
+                  status: { in: ['PENDING', 'PREPARING'] },
+                },
+              });
+              if (waiting === 0) {
+                await tx.kot.updateMany({
+                  where: { restaurantId, qrRoundId: roundId, guestNotifiedAt: null },
+                  data: { guestNotifiedAt: new Date() },
+                });
+              }
+            }
+            const updated = await tx.kot.findFirstOrThrow({
+              where: { id, restaurantId },
+              select: kotQueueSelect,
+            });
+            await recordEvent('STATUS', updated);
+            return updated;
+          },
+        });
+      },
+      completing ? { timeout: INVENTORY_LOCK_WAITER_TIMEOUT_MS } : undefined,
+    );
   }
 
   async preparationHistory(restaurantId: string, kotId: string, query: PreparationHistoryQuery) {
@@ -740,7 +1021,12 @@ export class OrdersRepository {
         existingOrder,
         create: (details) =>
           tx.order.create({
-            data: { restaurantId, tableId, ...details },
+            data: {
+              restaurantId,
+              tableId,
+              ...details,
+              seatedReservationOnOpen: reservation?.status === 'BOOKED',
+            },
             select: orderSelect,
           }),
         seatAndOccupy: async () => {

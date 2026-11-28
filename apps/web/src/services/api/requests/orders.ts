@@ -8,6 +8,7 @@ import {
   completeOrderResponseSchema,
   type CreateOrderRequest,
   createOrderRequestSchema,
+  discardOrderRequestSchema,
   fireOrderRequestSchema,
   type FireOrderResponse,
   fireOrderResponseSchema,
@@ -29,6 +30,7 @@ import {
   updateOrderItemInstructionsRequestSchema,
   type UpdateOrderItemQuantityRequest,
   updateOrderItemQuantityRequestSchema,
+  voidOrderItemRequestSchema,
 } from '@rms/api-contract';
 import { MAX_PAGE_SIZE } from '@rms/shared';
 import {
@@ -45,7 +47,9 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 
+import { KotQueryKey } from '../types/KotQueryKey';
 import { OrderQueryKey } from '../types/OrderQueryKey';
+import { ReservationQueryKey } from '../types/ReservationQueryKey';
 import { TableQueryKey } from '../types/TableQueryKey';
 
 export function useOrderingTable(
@@ -152,6 +156,53 @@ export function useFireOrder(): UseMutationResult<FireOrderResponse, Error, stri
       showApiError(error);
       await queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] });
     },
+  });
+}
+
+export function useCorrectOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      orderId: string;
+      reason: string;
+      item?: Pick<OrderItem, 'id' | 'updatedAt'>;
+    }) => {
+      const { orderId, reason, item } = input;
+      const result = item
+        ? await api.patch(
+            `/orders/${orderId}/items/${item.id}/void`,
+            voidOrderItemRequestSchema.parse({ reason, expectedUpdatedAt: item.updatedAt }),
+            { errorDisplay: 'inline' },
+          )
+        : await api.patch(
+            `/orders/${orderId}/discard`,
+            discardOrderRequestSchema.parse({ reason }),
+            { errorDisplay: 'inline' },
+          );
+      return orderSchema.parse(result.data);
+    },
+    onSuccess: async (order) => {
+      const queryKey = [OrderQueryKey.Current, order.tableId];
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, order.status === 'CANCELLED' ? null : order);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: [TableQueryKey.Tables] }),
+        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Captain] }),
+        queryClient.invalidateQueries({ queryKey: [OrderQueryKey.List] }),
+        ...(order.status === 'CANCELLED'
+          ? [
+              queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Reservations] }),
+              queryClient.invalidateQueries({ queryKey: [ReservationQueryKey.Reservations] }),
+            ]
+          : [
+              queryClient.invalidateQueries({ queryKey: [KotQueryKey.Queue] }),
+              queryClient.invalidateQueries({ queryKey: [KotQueryKey.History] }),
+            ]),
+      ]);
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: [OrderQueryKey.Current] }),
   });
 }
 

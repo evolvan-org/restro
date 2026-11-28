@@ -9,6 +9,7 @@
   border: 1px solid var(--border);
   font: 11px/1.4 monospace;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .document[data-paper='58'] {
   width: min(100%, 54mm);

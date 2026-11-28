@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 import useShowApiError from '@/hooks/api/useShowApiError';
 import { api } from '@/lib/api';
 
+import { KotQueryKey } from '../types/KotQueryKey';
+
 export function useThermalDocument(kind: ThermalKind, id: string, enabled: boolean) {
   return useQuery({
     queryKey: ['thermal-document', kind, id],
@@ -30,6 +32,7 @@ export function useThermalDocument(kind: ThermalKind, id: string, enabled: boole
 }
 
 export function useDirectThermalPrint(kind: ThermalKind, id: string) {
+  const client = useQueryClient();
   const showError = useShowApiError('Unable to send the print job.');
   return useMutation({
     mutationFn: async (input: ThermalPrintRequest) => {
@@ -39,6 +42,9 @@ export function useDirectThermalPrint(kind: ThermalKind, id: string) {
     onError: showError,
     onSuccess: ({ message }) => {
       toast.success(message);
+    },
+    onSettled: () => {
+      if (kind === 'ticket') return client.invalidateQueries({ queryKey: [KotQueryKey.Queue] });
     },
   });
 }

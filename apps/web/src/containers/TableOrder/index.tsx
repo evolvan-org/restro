@@ -2,13 +2,14 @@
 
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { currentOrderQuerySchema, type MenuItem } from '@rms/api-contract';
+import { currentOrderQuerySchema, type MenuItem, type OrderItem } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { ArrowLeft, ShoppingCart, Utensils } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 
 import AddOrderItemDialog from '@/components/AddOrderItemDialog';
 import OrderingMenu from '@/components/OrderingMenu';
@@ -25,6 +26,7 @@ import { getApiErrorMessage } from '@/lib/api-error';
 import { useGenerateBill, useOrderBill } from '@/services/api/requests/bills';
 import {
   useAddOrderItem,
+  useCorrectOrder,
   useCurrentOrder,
   useFireOrder,
   useOpenOrder,
@@ -42,6 +44,7 @@ import {
   toCreateOrderRequest,
 } from './mappers';
 import styles from './order.module.css';
+import OrderCorrectionDialog from './OrderCorrectionDialog';
 
 type Props = { tableId: string };
 
@@ -82,12 +85,15 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
     useUpdateOrderItemInstructions();
   const { mutateAsync: sendOrder, ...fireOrder } = useFireOrder();
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
+  const [correction, setCorrection] = useState<{ orderId: string; item?: OrderItem } | null>(null);
+  const correctOrder = useCorrectOrder();
   const isMutating =
     addItem.isPending ||
     removeItem.isPending ||
     updateQuantity.isPending ||
     updateInstructions.isPending ||
     fireOrder.isPending ||
+    correctOrder.isPending ||
     isGeneratingBill;
   const canUpdate = can(Permission.ORDER_UPDATE);
   const canWrite = can(Permission.ORDER_WRITE);
@@ -199,6 +205,17 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
             </div>
           )}
         </div>
+        {order?.canDiscard && canUpdate && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isMutating || isSendDialogOpen}
+            onClick={() => setCorrection({ orderId: order.id })}
+          >
+            Discard order
+          </Button>
+        )}
       </div>
 
       {!isValidId && <p role="alert">Invalid table link.</p>}
@@ -373,6 +390,11 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                           {(!canEdit || item.sentQuantity > 0) && item.specialInstructions && (
                             <p className="break-words">{item.specialInstructions}</p>
                           )}
+                          {item.stockUsageIssues?.map((issue) => (
+                            <p key={issue} className="break-words text-destructive">
+                              Stock usage skipped. {issue}
+                            </p>
+                          ))}
                           {item.sentQuantity > 0 && (
                             <Badge variant="secondary">
                               {item.sentQuantity === item.quantity
@@ -380,18 +402,25 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
                                 : `${item.sentQuantity} of ${item.quantity} sent to kitchen`}
                             </Badge>
                           )}
-                          {canEdit && (
+                          {item.canVoid && can(Permission.ORDER_VOID_ITEM) && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              disabled={isMutating || item.sentQuantity > 0}
+                              aria-label={'Void ' + item.name}
+                              disabled={isMutating || isSendDialogOpen || dirtyEditors.has(item.id)}
+                              onClick={() => setCorrection({ orderId: order.id, item })}
+                            >
+                              Void item
+                            </Button>
+                          )}
+                          {canEdit && item.sentQuantity === 0 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isMutating}
                               aria-label={`Remove ${item.name} from order`}
-                              title={
-                                item.sentQuantity > 0
-                                  ? 'Items sent to the kitchen cannot be removed'
-                                  : undefined
-                              }
                               onClick={async () => {
                                 try {
                                   await removeOrderItem({ orderId: order.id, itemId: item.id });
@@ -526,6 +555,21 @@ export default function TableOrder({ tableId }: Props): ReactElement | null {
             onClose={() => setSelectedItem(null)}
             onAdd={async (input) => {
               await addOrderItem({ ...input, orderId: order.id });
+            }}
+          />
+        )}
+        {correction && (
+          <OrderCorrectionDialog
+            itemName={correction.item?.name}
+            pending={correctOrder.isPending}
+            onClose={() => setCorrection(null)}
+            onConfirm={async (reason) => {
+              await correctOrder.mutateAsync({ ...correction, reason });
+              if (!correction.item) {
+                setMobileCartOpen(false);
+                setDirtyEditors(new Set());
+              }
+              toast.success(correction.item ? 'Pending item voided.' : 'Order discarded.');
             }}
           />
         )}

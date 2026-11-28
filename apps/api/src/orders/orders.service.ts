@@ -12,6 +12,7 @@ import {
   type CaptainOrderListResponse,
   type CompleteOrderResponse,
   type CreateOrderRequest,
+  type DiscardOrderRequest,
   type FireOrderResponse,
   KOT_STATUS_TRANSITIONS,
   type KotBoardQuery,
@@ -28,6 +29,7 @@ import {
   type PreparationHistoryResponse,
   type UpdateKotStatusRequest,
   type UpdateKotStatusResponse,
+  type VoidOrderItemRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 import { Permission } from '@rms/permissions';
@@ -37,6 +39,7 @@ import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
+import { ThermalPrintingService } from '../thermal-printing/thermal-printing.service';
 import {
   sentQuantity,
   toCaptainOrderSummary,
@@ -54,6 +57,7 @@ export class OrdersService {
     private readonly repository: OrdersRepository,
     private readonly notifications: NotificationsService,
     private readonly qrRealtime: QrRealtimePublisher,
+    private readonly printing: ThermalPrintingService,
   ) {}
 
   async create(actor: Actor, input: CreateOrderRequest): Promise<Order> {
@@ -94,6 +98,29 @@ export class OrdersService {
     return toOrder(record);
   }
 
+  async discard(actor: Actor, orderId: string, input: DiscardOrderRequest): Promise<Order> {
+    return toOrder(await this.repository.discard(actor, orderId, input));
+  }
+
+  async voidItem(
+    actor: Actor,
+    orderId: string,
+    itemId: string,
+    input: VoidOrderItemRequest,
+  ): Promise<Order> {
+    const { order, corrections } = await this.repository.voidPendingItem(
+      actor,
+      orderId,
+      itemId,
+      input,
+    );
+    this.printing.scheduleAutomatic(
+      actor.restaurantId,
+      corrections.filter((ticket) => ticket.printStatus === 'QUEUED').map((ticket) => ticket.id),
+    );
+    return toOrder(order);
+  }
+
   async complete(actor: Actor, orderId: string): Promise<CompleteOrderResponse> {
     const order = await this.repository.findCompletedPaidOrder(actor.restaurantId, orderId);
     if (order) return toOrder(order);
@@ -101,12 +128,6 @@ export class OrdersService {
     const existing = await this.repository.findById(actor.restaurantId, orderId);
     if (!existing) throw new NotFoundException('Order not found');
     throw new ConflictException('Record a successful bill payment to complete this order');
-  }
-
-  async printTicket(actor: Actor, id: string): Promise<ReturnType<typeof toKotQueueItem>> {
-    const ticket = await this.repository.findPrintTicket(actor.restaurantId, id);
-    if (!ticket) throw new NotFoundException('KOT not found');
-    return toKotQueueItem(ticket);
   }
 
   async kotBoard(actor: Actor, query: KotBoardQuery): Promise<KotBoardResponse> {
@@ -141,6 +162,14 @@ export class OrdersService {
             'This ticket has changed on another screen. Refresh and try again.',
           );
         }
+        if (context.kot.items.length && context.kot.items.every((item) => item.voidedAt)) {
+          if (context.kot.status === 'PENDING' && input.status === 'COMPLETED') {
+            return context.setStatus('COMPLETED');
+          }
+          throw new ConflictException(
+            'This ticket was voided. Acknowledge it on the station screen',
+          );
+        }
         if (context.kot.heldAt) {
           throw new ConflictException('Release this ticket from hold before advancing it');
         }
@@ -152,6 +181,7 @@ export class OrdersService {
         return context.setStatus(input.status);
       },
       actor.userId,
+      input.status === 'COMPLETED',
     );
     if (input.status === 'READY') {
       await this.notifications.ticketReady(actor.restaurantId, record.id);
@@ -183,8 +213,11 @@ export class OrdersService {
         if (kot.controlVersion !== input.expectedVersion) {
           throw new ConflictException('This ticket changed. Refresh and try again.');
         }
-        if (kot.status === 'COMPLETED')
-          throw new ConflictException('Completed tickets cannot be changed');
+        if (
+          kot.status === 'COMPLETED' ||
+          (kot.items.length && kot.items.every((item) => item.voidedAt))
+        )
+          throw new ConflictException('Completed or fully voided tickets cannot be changed');
         switch (input.action) {
           case 'ACCEPT':
             if (kot.status !== 'PENDING')
@@ -369,6 +402,10 @@ export class OrdersService {
       }
       throw error;
     }
+    this.printing.scheduleAutomatic(
+      actor.restaurantId,
+      kots.filter((kot) => kot.printStatus === 'QUEUED').map((kot) => kot.id),
+    );
     const order = await this.repository.findById(actor.restaurantId, orderId);
     if (!order) throw new NotFoundException('Order not found');
     await this.notifications.ticketSent(

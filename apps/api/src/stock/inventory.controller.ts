@@ -24,7 +24,6 @@ import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
-  ApiParam,
   ApiProduces,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -79,6 +78,10 @@ import {
   logInventoryWasteSchema,
   type OpeningInventoryStock,
   openingStockSchema,
+  type SupplierPrice,
+  type SupplierPriceQuery,
+  supplierPriceQuerySchema,
+  supplierPricesSchema,
   type UpdateInventoryItem,
   updateInventoryItemSchema,
   type UpdateInventoryPurchaseStatus,
@@ -211,6 +214,16 @@ export class InventoryController {
     return this.inventory.purchases(actor, query);
   }
 
+  @Get('supplier-prices')
+  @ApiZodQuery(supplierPriceQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(supplierPricesSchema) })
+  latestSupplierPrices(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(supplierPriceQuerySchema)) query: SupplierPriceQuery,
+  ): Promise<SupplierPrice[]> {
+    return this.inventory.latestSupplierPrices(actor, query);
+  }
+
   @Get('goods-receipts')
   @ApiZodQuery(inventoryReceiptQuerySchema)
   @ApiOkResponse({ schema: zodOpenApiSchema(inventoryReceiptsSchema) })
@@ -219,17 +232,6 @@ export class InventoryController {
     @Query(new ZodValidationPipe(inventoryReceiptQuerySchema)) query: InventoryReceiptQuery,
   ): Promise<Paginated<InventoryReceipt>> {
     return this.inventory.receipts(actor, query);
-  }
-
-  @Get('goods-receipts/:id')
-  @Header('Cache-Control', 'private, no-store')
-  @ApiParam({ name: 'id', format: 'uuid' })
-  @ApiOkResponse({ schema: zodOpenApiSchema(inventoryReceiptSchema) })
-  receipt(
-    @CurrentActor() actor: Actor,
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-  ): Promise<InventoryReceipt> {
-    return this.inventory.receipt(actor, id);
   }
 
   @Post('items')

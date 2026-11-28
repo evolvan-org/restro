@@ -3,8 +3,10 @@ import { Prisma } from '@rms/db';
 
 import { roleAccessSelect } from '../common/auth/role-access';
 import { createKotTickets, groupByDestination } from '../common/database/kot-tickets';
+import { lockRestaurantPayments } from '../common/database/order-lifecycle';
 import { PrismaService } from '../common/database/prisma.service';
 import { setTableLifecycleStatus } from '../common/database/table-lifecycle';
+import { recipeObservation, recipeObservationSelect } from '../orders/order-selections';
 
 const roundCardSelect = {
   id: true,
@@ -297,7 +299,7 @@ export class QrStaffRepository {
         unitPrice: true,
         specialInstructions: true,
         menuItemId: true,
-        menuItem: { select: { name: true, itemType: true } },
+        menuItem: { select: { ...recipeObservationSelect, name: true, itemType: true } },
       },
       orderBy: { id: 'asc' },
     });
@@ -375,6 +377,12 @@ export class QrStaffRepository {
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           specialInstructions: line.specialInstructions,
+          recipeSnapshot: {
+            version: 1,
+            menu: recipeObservation(line.menuItem),
+            components: [],
+            customizationCostKnown: true,
+          },
           status: 'ACTIVE',
         },
         select: { id: true },
@@ -812,8 +820,10 @@ export class QrStaffRepository {
     restaurantId: string,
     sessionId: string,
     run: (tx: Tx, found: boolean) => Promise<T>,
+    collectingPayment = false,
   ): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
+      if (collectingPayment) await lockRestaurantPayments(tx, restaurantId);
       const rows = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM qr_sessions
         WHERE id = ${sessionId}::uuid AND restaurant_id = ${restaurantId}::uuid
@@ -884,17 +894,6 @@ export class QrStaffRepository {
         recordedByUserId: data.userId,
         paidAt: data.now,
       },
-    });
-  }
-
-  findPaidShares(
-    sessionId: string,
-  ): Promise<
-    { paymentMethod: 'CASH' | 'CARD' | 'UPI' | null; paidAmount: Prisma.Decimal | null }[]
-  > {
-    return this.prisma.qrBillShare.findMany({
-      where: { sessionId, status: 'PAID' },
-      select: { paymentMethod: true, paidAmount: true },
     });
   }
 

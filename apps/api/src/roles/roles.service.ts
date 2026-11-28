@@ -139,7 +139,7 @@ export class RolesService {
     this.assertEditable(actor, role);
     if (role.isSystem) throw new ForbiddenException('Default roles cannot be deleted');
     // Deleting revokes every permission the role holds from its users, so it is a revoke too.
-    this.assertCanChange(actor, grantedKeys(role));
+    this.assertCanChange(actor, catalogKeys(role));
 
     let reassignTo: string | null = null;
     if (role._count.users > 0) {
@@ -149,7 +149,7 @@ export class RolesService {
       if (target.isOwner && !actor.isOwner) {
         throw new ForbiddenException('Only an Owner can assign the Owner role');
       }
-      this.assertCanChange(actor, grantedKeys(target));
+      this.assertCanChange(actor, catalogKeys(target));
       reassignTo = target.id;
     }
 
@@ -250,10 +250,12 @@ function unique(keys: readonly string[]): string[] {
 }
 
 function diff(role: RoleRecord, next: string[]) {
-  const current = new Set(grantedKeys(role));
+  const current = new Set<string>(catalogKeys(role));
   const wanted = new Set(next);
+  // Stored grants outside the catalog confer no access. Preserve them when editing active grants.
+  const retired = grantedKeys(role).filter((key) => !current.has(key));
   return {
-    next,
+    next: [...next, ...retired],
     added: next.filter((key) => !current.has(key)),
     removed: [...current].filter((key) => !wanted.has(key)),
   };

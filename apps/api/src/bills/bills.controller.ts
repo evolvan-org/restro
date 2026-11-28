@@ -158,7 +158,7 @@ export class BillsController {
   @RequirePermissions(Permission.PAYMENT_WRITE)
   @ApiOperation({
     summary:
-      'Record a full manual payment; marks the bill PAID, completes the order and flags the table for cleaning',
+      'Record a full manual settlement using one or multiple methods, complete the order and flag the table for cleaning',
   })
   @ApiBody({ schema: zodOpenApiSchema(recordPaymentRequestSchema) })
   @ApiCreatedResponse({ schema: zodOpenApiSchema(recordPaymentResponseSchema) })

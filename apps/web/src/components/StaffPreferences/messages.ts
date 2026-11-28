@@ -3,13 +3,11 @@ export type StaffLocale = keyof typeof localeNames;
 
 const translations: Record<string, readonly [string, string]> = {
   Account: ['Cuenta', 'Compte'],
-  Attendance: ['Asistencia', 'Présences'],
   Billing: ['Facturación', 'Facturation'],
   'Bar display': ['Pantalla de bar', 'Écran du bar'],
   'Contact support': ['Contactar con soporte', 'Contacter le support'],
   Dashboard: ['Panel', 'Tableau de bord'],
   'Dining sections': ['Zonas del comedor', 'Salles'],
-  'Food incidents': ['Incidentes alimentarios', 'Incidents alimentaires'],
   General: ['General', 'Général'],
   Inventory: ['Inventario', 'Stocks'],
   'Kitchen display': ['Pantalla de cocina', 'Écran de cuisine'],
@@ -41,7 +39,6 @@ const translations: Record<string, readonly [string, string]> = {
   Reservations: ['Reservas', 'Réservations'],
   'Restaurant settings': ['Configuración del restaurante', 'Paramètres du restaurant'],
   SERVICE: ['SERVICIO', 'SERVICE'],
-  'Staff schedule': ['Horario del personal', 'Planning du personnel'],
   'Station displays': ['Pantallas de estación', 'Écrans de poste'],
   'Table statuses': ['Estados de mesa', 'Statuts des tables'],
   Tables: ['Mesas', 'Tables'],

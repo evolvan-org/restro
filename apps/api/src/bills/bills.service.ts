@@ -13,10 +13,12 @@ import type {
   BillListQuery,
   BillListResponse,
   CancelBillRequest,
+  PaymentTender,
   RecordPaymentRequest,
   RecordPaymentResponse,
   UpdateBillRequest,
 } from '@rms/api-contract';
+import { paymentTendersSchema } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 import { Permission } from '@rms/permissions';
 import { buildPageMeta } from '@rms/shared';
@@ -120,8 +122,9 @@ export class BillsService {
     actor: Actor,
     billId: string,
     input: RecordPaymentRequest,
+    qrSessionId?: string,
   ): Promise<RecordPaymentResponse> {
-    const { response, closedSessions } = await this.settle(actor, billId, input);
+    const { response, closedSessions } = await this.settle(actor, billId, input, qrSessionId);
     if (closedSessions.length) {
       // Guest phones at a QR table move to "All paid"; the table session is over.
       await this.qrRealtime.publish(actor.restaurantId, closedSessions, {
@@ -136,66 +139,123 @@ export class BillsService {
     actor: Actor,
     billId: string,
     input: RecordPaymentRequest,
+    qrSessionId?: string,
   ): Promise<{ response: RecordPaymentResponse; closedSessions: string[] }> {
-    return this.repository.withLockedOrder(actor.restaurantId, { billId }, async (context) => {
-      const bill = this.requireBill(context.bill);
-      if (bill.status === 'PAID') throw new ConflictException('Bill is already paid');
-      if (bill.status !== 'OPEN')
-        throw new ConflictException('Payments can only be recorded against open bills');
-      const { order } = context;
-      if (order?.status !== 'SUBMITTED')
-        throw new ConflictException('Only a submitted order can be settled');
-      this.requireSentItems(order);
-      if (!billingSubtotal(order.items).equals(bill.subtotal))
-        throw new ConflictException(
-          'Order items have changed. Resync the bill before recording payment.',
-        );
-      const tip = new Prisma.Decimal(input.tipAmount ?? '0.00');
-      const paymentTotal = bill.totalAmount.plus(tip);
-      if (paymentTotal.greaterThan('9999999999.99')) {
-        throw new BadRequestException({
-          message: ['tipAmount: Total with tip exceeds the payment limit'],
-        });
-      }
-      if (!new Prisma.Decimal(input.amount).equals(paymentTotal))
-        throw new BadRequestException({
-          message: ['amount: Payment must equal the bill total plus the optional tip'],
-        });
-      const paidAt = new Date();
-      let payment: RecordPaymentResponse['payment'];
-      try {
-        payment = toPayment(
-          await context.createPayment({
-            paymentMethod: input.paymentMethod,
-            amount: paymentTotal,
-            ...(input.tipAmount !== undefined && { tipAmount: tip }),
-            referenceNumber: input.paymentMethod === 'CASH' ? null : input.referenceNumber || null,
-            recordedByUserId: actor.userId,
-            status: 'COMPLETED',
-            paidAt,
-          }),
-        );
-      } catch (error) {
-        if (error instanceof PaymentConflictError) throw new ConflictException(error.message);
-        throw error;
-      }
-      const updated = await context.update({ status: 'PAID', paidAt });
-      const completedAt = new Date();
-      if (!(await context.completeOrder(order.status, completedAt))) {
-        throw new ConflictException('Order status changed. Refresh the bill and try again.');
-      }
-      if (order.reservationId) await context.completeReservation(order.reservationId, 'SEATED');
-      await this.markTableForCleaning(context, order.table.id);
-      const closedSessions = await context.closeQrSessions(completedAt);
-      return {
-        response: {
-          payment,
-          bill: toBill(updated),
-          order: { id: order.id, status: 'COMPLETED', completedAt: completedAt.toISOString() },
-        },
-        closedSessions,
-      };
-    });
+    return this.repository.withLockedOrder(
+      actor.restaurantId,
+      { billId },
+      async (context) => {
+        const bill = this.requireBill(context.bill);
+        if (bill.status === 'PAID') throw new ConflictException('Bill is already paid');
+        if (bill.status !== 'OPEN')
+          throw new ConflictException('Payments can only be recorded against open bills');
+        const { order } = context;
+        if (order?.status !== 'SUBMITTED')
+          throw new ConflictException('Only a submitted order can be settled');
+        this.requireSentItems(order);
+        if (!billingSubtotal(order.items).equals(bill.subtotal))
+          throw new ConflictException(
+            'Order items have changed. Resync the bill before recording payment.',
+          );
+        const tip = new Prisma.Decimal(input.tipAmount ?? '0.00');
+        const paymentTotal = bill.totalAmount.plus(tip);
+        if (paymentTotal.greaterThan('9999999999.99')) {
+          throw new BadRequestException({
+            message: ['tipAmount: Total with tip exceeds the payment limit'],
+          });
+        }
+        if (!new Prisma.Decimal(input.amount).equals(paymentTotal))
+          throw new BadRequestException({
+            message: ['amount: Payment must equal the bill total plus the optional tip'],
+          });
+        const paidShares = await context.paidQrShares(qrSessionId);
+        if (!qrSessionId && paidShares.length) {
+          throw new ConflictException('This bill has QR payments. Finish collecting in QR orders.');
+        }
+        const tenders: PaymentTender[] | undefined = qrSessionId
+          ? paidShares.map((share) => {
+              if (!share.paymentMethod || !share.paidAmount?.gt(0)) {
+                throw new ConflictException(
+                  'A recorded QR payment is missing its amount or method',
+                );
+              }
+              return {
+                method: share.paymentMethod,
+                amount: share.paidAmount.toFixed(2),
+                referenceNumber: share.paymentMethod === 'CASH' ? null : share.referenceNumber,
+                qrShareId: share.id,
+                ...(share.recordedByUserId && { recordedByUserId: share.recordedByUserId }),
+                ...(share.paidAt && { paidAt: share.paidAt.toISOString() }),
+              };
+            })
+          : input.tenders?.map((line) => ({
+              method: line.method,
+              amount: new Prisma.Decimal(line.amount).toFixed(2),
+              referenceNumber: line.method === 'CASH' ? null : line.referenceNumber || null,
+            }));
+        let paymentMethod = input.paymentMethod;
+        if (tenders) {
+          const totals = new Map<PaymentTender['method'], Prisma.Decimal>();
+          for (const { amount, method } of tenders) {
+            totals.set(method, (totals.get(method) ?? new Prisma.Decimal(0)).plus(amount));
+          }
+          if (!qrSessionId && totals.size !== tenders.length) {
+            throw new BadRequestException('Choose each payment method only once');
+          }
+          const sum = [...totals.values()].reduce(
+            (total, amount) => total.plus(amount),
+            new Prisma.Decimal(0),
+          );
+          if (!tenders.length || !sum.equals(paymentTotal)) {
+            throw new BadRequestException('The tender amounts must add up to the full amount due');
+          }
+          let largest = new Prisma.Decimal(0);
+          for (const [method, amount] of totals) {
+            if (amount.gt(largest)) {
+              largest = amount;
+              paymentMethod = method;
+            }
+          }
+        }
+        const paidAt = new Date();
+        let payment: RecordPaymentResponse['payment'];
+        try {
+          payment = toPayment(
+            await context.createPayment({
+              paymentMethod,
+              ...(tenders && { tenders }),
+              amount: paymentTotal,
+              ...(input.tipAmount !== undefined && { tipAmount: tip }),
+              referenceNumber:
+                tenders || paymentMethod === 'CASH' ? null : input.referenceNumber || null,
+              recordedByUserId: actor.userId,
+              status: 'COMPLETED',
+              paidAt,
+            }),
+          );
+        } catch (error) {
+          if (error instanceof PaymentConflictError) throw new ConflictException(error.message);
+          throw error;
+        }
+        const updated = await context.update({ status: 'PAID', paidAt });
+        const completedAt = new Date();
+        if (!(await context.completeOrder(order.status, completedAt))) {
+          throw new ConflictException('Order status changed. Refresh the bill and try again.');
+        }
+        if (order.reservationId) await context.completeReservation(order.reservationId, 'SEATED');
+        await this.markTableForCleaning(context, order.table.id);
+        const closedSessions = await context.closeQrSessions(completedAt);
+        return {
+          response: {
+            payment,
+            bill: toBill(updated),
+            order: { id: order.id, status: 'COMPLETED', completedAt: completedAt.toISOString() },
+          },
+          closedSessions,
+        };
+      },
+      true,
+    );
   }
 
   private async markTableForCleaning(
@@ -239,6 +299,7 @@ export class BillsService {
       payment: payment
         ? {
             method: payment.paymentMethod,
+            ...(payment.tenders && { tenders: paymentTendersSchema.parse(payment.tenders) }),
             tipAmount: payment.tipAmount?.toFixed(2) ?? '0.00',
             amount: payment.amount?.toFixed(2) ?? bill.totalAmount.toFixed(2),
             referenceNumber: payment.referenceNumber,

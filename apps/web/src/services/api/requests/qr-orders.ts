@@ -276,6 +276,21 @@ export function useCollectQrAtTable(
   });
 }
 
+export function useFinalizeQrPayment(
+  sessionId: string,
+): UseMutationResult<QrStaffBill, unknown, void> {
+  const invalidate = useInvalidateQr();
+  const showApiError = useShowApiError('Unable to close the paid bill.');
+  return useMutation({
+    mutationFn: async () =>
+      qrStaffBillSchema.parse(
+        (await api.post(`/qr-orders/sessions/${sessionId}/finalize-payment`)).data,
+      ),
+    onSettled: invalidate,
+    onError: showApiError,
+  });
+}
+
 export function useAssignQrCaptain(): UseMutationResult<
   QrAssignCaptainResponse,
   unknown,

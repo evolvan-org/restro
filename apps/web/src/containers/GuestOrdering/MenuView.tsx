@@ -12,6 +12,7 @@ import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { QrStatusPill, VegMark } from '@/components/QrStatus';
 import { formatRupees } from '@/lib/qr';
 
+import GuestFeedback from './GuestFeedback';
 import { type Brand, BrandHeader, DishTile, Stepper } from './parts';
 
 /**
@@ -22,6 +23,7 @@ import { type Brand, BrandHeader, DishTile, Stepper } from './parts';
 export default function MenuView({
   brand,
   tableNumber,
+  token,
   captainName,
   menu,
   session,
@@ -38,6 +40,7 @@ export default function MenuView({
 }: {
   brand: Brand;
   tableNumber: string;
+  token: string;
   captainName: string | null;
   menu: QrMenuResponse;
   session: QrSessionResponse | null;
@@ -121,6 +124,10 @@ export default function MenuView({
           )
         }
       />
+
+      <div className="px-4">
+        <GuestFeedback token={token} />
+      </div>
 
       {mode === 'order' && onTrackOrder && session && session.rounds.length > 0 && (
         <OrderStrip

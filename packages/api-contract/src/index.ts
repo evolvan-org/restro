@@ -31,17 +31,13 @@ export * from './bill-cancellation-reasons';
 export * from './bill-summary';
 export * from './dashboard';
 export * from './reports';
-export * from './food-incidents';
 export * from './onboarding';
 export * from './qr-ordering';
+export * from './qr-feedback';
 
 export * from './preparation';
 
 export * from './operating-tasks';
-
-export * from './attendance';
-
-export * from './workforce';
 
 export * from './authenticator';
 export * from './thermal-printing';

@@ -26,6 +26,7 @@ import { BOARD_REFRESH_MS } from '@/lib/board-refresh';
 
 import { KotQueryKey } from '../types/KotQueryKey';
 import { OrderQueryKey } from '../types/OrderQueryKey';
+import { inventoryKey } from './inventory';
 
 type TransitionVariables = { id: string; input: TransitionKotStatusRequest };
 type TransitionContext = { previous: KotQueueItem | undefined };
@@ -86,7 +87,9 @@ export function useTransitionKot(
             {
               ...ticket,
               status: input.status,
-              items: ticket.items.map((item) => ({ ...item, status: input.status })),
+              items: ticket.items.map((item) =>
+                item.void ? item : { ...item, status: input.status },
+              ),
             },
           ];
         }),
@@ -97,6 +100,9 @@ export function useTransitionKot(
       queryClient.setQueryData<KotQueueItem[]>(queryKey, (tickets) =>
         tickets?.map((ticket) => (ticket.id === updated.id ? updated : ticket)),
       );
+      if (updated.status === 'COMPLETED') {
+        void queryClient.invalidateQueries({ queryKey: inventoryKey });
+      }
     },
     onError: (error, { id }, context) => {
       // Restore only this ticket; another card may have advanced concurrently.

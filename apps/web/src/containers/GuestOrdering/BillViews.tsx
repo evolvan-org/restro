@@ -17,6 +17,7 @@ import { QrStatusPill } from '@/components/QrStatus';
 import { formatClockTime, formatRupees } from '@/lib/qr';
 
 import { signed } from './CartView';
+import GuestFeedback from './GuestFeedback';
 import { Stepper, TopBar } from './parts';
 
 const METHOD: Record<'UPI' | 'CASH' | 'CARD', string> = {
@@ -643,10 +644,12 @@ export function PaidView({
   bill,
   restaurantName,
   tableNumber,
+  token,
 }: {
   bill: QrGuestBill;
   restaurantName: string;
   tableNumber: string;
+  token: string;
 }): ReactElement {
   function downloadReceipt(): void {
     const lines = [
@@ -758,6 +761,7 @@ export function PaidView({
         <button type="button" className="gb o" onClick={downloadReceipt}>
           <Download size={20} aria-hidden /> Download receipt
         </button>
+        <GuestFeedback token={token} />
       </div>
       <p
         className="gm row"

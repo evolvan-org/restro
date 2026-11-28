@@ -31,6 +31,8 @@ import type {
   InventorySupplierQuery,
   LogInventoryWaste,
   OpeningInventoryStock,
+  SupplierPrice,
+  SupplierPriceQuery,
   UpdateInventoryItem,
   UpdateInventoryPurchaseStatus,
   UpdateInventorySupplier,
@@ -164,12 +166,6 @@ export class InventoryService {
       query,
       toInventoryPurchase,
     );
-  }
-
-  async receipt(actor: Actor, id: string): Promise<InventoryReceipt> {
-    const receipt = await this.repository.receipt(actor.restaurantId, id);
-    if (!receipt) throw new NotFoundException('Goods receipt not found');
-    return toInventoryReceipt(receipt);
   }
 
   async receipts(actor: Actor, query: InventoryReceiptQuery): Promise<Paginated<InventoryReceipt>> {
@@ -610,7 +606,7 @@ export class InventoryService {
       ? await inventory.createBatch({
           stockItemId: item.id,
           quantityReceived: quantity,
-          quantityRemaining: quantity,
+          quantityRemaining: Decimal.max(0, Decimal.min(quantity, balance)),
           unitCost,
           batchNumber: input.batchNumber,
           expiryDate: input.expiryDate,
@@ -627,13 +623,15 @@ export class InventoryService {
       kind: input.kind,
       reason: input.reason,
     });
-    const averageUnitCost = balance.isZero()
+    const averageUnitCost = quantity.isZero()
       ? item.averageUnitCost
-      : new Decimal(item.currentStock)
-          .mul(item.averageUnitCost ?? ZERO)
-          .plus(quantity.mul(input.unitCost))
-          .div(balance)
-          .toDecimalPlaces(8, Decimal.ROUND_HALF_UP);
+      : item.currentStock.lte(0)
+        ? unitCost
+        : new Decimal(item.currentStock)
+            .mul(item.averageUnitCost ?? ZERO)
+            .plus(quantity.mul(input.unitCost))
+            .div(balance)
+            .toDecimalPlaces(8, Decimal.ROUND_HALF_UP);
     return inventory.updateItem(item.id, { currentStock: balance, averageUnitCost });
   }
 
@@ -670,6 +668,30 @@ export class InventoryService {
       throw new ConflictException('Batch quantities do not reconcile with the stock balance');
     return inventory.updateItem(item.id, {
       currentStock: new Decimal(item.currentStock).minus(quantity),
+    });
+  }
+
+  async latestSupplierPrices(actor: Actor, query: SupplierPriceQuery): Promise<SupplierPrice[]> {
+    const lines = await this.repository.latestSupplierPrices(
+      actor.restaurantId,
+      query.supplierId,
+      query.stockItemIds,
+    );
+    return lines.flatMap((line) => {
+      const unit = line.unit ?? line.stockItem.baseUnit;
+      if (!unit) return [];
+      return [
+        {
+          stockItemId: line.stockItemId,
+          unitCost: line.unitCost.toFixed(),
+          unit,
+          packageSize:
+            line.packageQuantity && line.packageUnit
+              ? { quantity: line.packageQuantity.toFixed(), unit: line.packageUnit }
+              : null,
+          receivedAt: line.receipt.createdAt.toISOString(),
+        },
+      ];
     });
   }
 

@@ -1,5 +1,16 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import {
+  formatThermalReceipt,
+  formatThermalTicket,
+  sampleThermalReceipt,
+  sampleThermalTicket,
   type ThermalConfiguration,
   type ThermalConnectorTarget,
   type ThermalDestination,
@@ -12,6 +23,7 @@ import {
   thermalProfileSchema,
   type ThermalSettings,
   type ThermalTestRequest,
+  thermalTicketLayoutSchema,
   thermalUsbDeviceSchema,
 } from '@rms/api-contract';
 import type { ThermalPrinter } from '@rms/db';
@@ -19,7 +31,7 @@ import { encode } from 'iconv-lite';
 
 import { BillsService } from '../bills/bills.service';
 import type { Actor } from '../common/auth/authenticated-request';
-import { OrdersService } from '../orders/orders.service';
+import { toKotQueueItem } from '../orders/orders.mapper';
 import { ThermalPrintConnectorService } from './thermal-print-connector.service';
 import { ThermalPrintingRepository } from './thermal-printing.repository';
 
@@ -27,19 +39,24 @@ type Job = Pick<ThermalDocument, 'title' | 'lines'> & { destination: ThermalDest
 
 @Injectable()
 export class ThermalPrintingService {
+  private readonly logger = new Logger(ThermalPrintingService.name);
+  private readonly automaticQueue = new Map<string, Promise<void>>();
+
   constructor(
     private readonly bills: BillsService,
-    private readonly orders: OrdersService,
     private readonly connector: ThermalPrintConnectorService,
     private readonly repository: ThermalPrintingRepository,
   ) {}
 
   async preview(actor: Actor, kind: ThermalKind, id: string): Promise<ThermalDocument> {
-    const { destination, ...document } = await this.job(actor, kind, id);
-    const settings = await this.destinationSettings(actor, destination);
+    const {
+      job: { title, lines },
+      settings,
+    } = await this.load(actor, kind, id);
     const { connection, paper, codePage, columns } = settings;
     return {
-      ...document,
+      title,
+      lines,
       transport: settings.transports,
       profile: { connection, paper, codePage, columns },
     };
@@ -60,7 +77,20 @@ export class ThermalPrintingService {
     destination: ThermalDestination,
     input: ThermalSettings,
   ): Promise<ThermalConfiguration> {
-    const record = await this.repository.save(actor.restaurantId, destination, input);
+    const isStation = destination !== 'RECEIPT';
+    const current = isStation ? await this.repository.find(actor.restaurantId, destination) : null;
+    const autoPrint = isStation && (input.autoPrint ?? current?.autoPrint ?? false);
+    const usbDevice =
+      input.usbDevice === undefined ? (current?.usbDevice ?? undefined) : input.usbDevice;
+    if (autoPrint && input.connection === 'network' && !input.network)
+      throw new BadRequestException('Enter a network address before enabling print on send');
+    if (autoPrint && input.connection === 'usb' && !usbDevice)
+      throw new BadRequestException('Enter a USB printer device before enabling print on send');
+    const record = await this.repository.save(actor.restaurantId, destination, {
+      ...input,
+      usbDevice,
+      autoPrint,
+    });
     return this.configuration(destination, record);
   }
 
@@ -85,16 +115,24 @@ export class ThermalPrintingService {
   ): Promise<{ message: string }> {
     const settings = await this.destinationSettings(actor, destination);
     const columns = printColumns(request, settings);
+    const now = new Date().toISOString();
+    const sample =
+      destination === 'RECEIPT'
+        ? sampleThermalReceipt(settings.ticketLayout, now)
+        : sampleThermalTicket(destination, settings.ticketLayout, now);
     return this.deliver(
       actor.restaurantId,
       {
         destination,
         title: 'RESTRO PRINTER TEST',
         lines: [
+          sample.title,
+          ...sample.lines,
+          '',
           destination + ' / ' + request.paper + ' mm / ' + settings.codePage,
           '1234567890'.repeat(8).slice(0, columns),
           'Accents: áéíóú ñ ü ¿? €',
-          new Date().toISOString(),
+          now,
         ],
       },
       request,
@@ -136,6 +174,8 @@ export class ThermalPrintingService {
       network: network.success ? network.data : null,
       usbDevice: device.success ? device.data : null,
       transports,
+      ticketLayout: thermalTicketLayoutSchema.parse(record?.ticketLayout ?? 'STANDARD'),
+      autoPrint: destination !== 'RECEIPT' && (record?.autoPrint ?? false),
     };
   }
 
@@ -145,13 +185,66 @@ export class ThermalPrintingService {
     id: string,
     request: ThermalPrintRequest,
   ): Promise<{ message: string }> {
-    const job = await this.job(actor, kind, id);
-    return this.deliver(
-      actor.restaurantId,
-      job,
-      request,
-      await this.destinationSettings(actor, job.destination),
-    );
+    const { job, settings } = await this.load(actor, kind, id);
+    if (kind === 'receipt') return this.deliver(actor.restaurantId, job, request, settings);
+    this.target(settings, request.transport);
+    const started = await this.repository.claimTicketPrint(actor.restaurantId, id, false);
+    if (!started) throw new ConflictException('This ticket already has a print in progress');
+    await this.sendStationTicket(actor.restaurantId, id, started, job, request, settings);
+    return { message: 'Sent to the printer' };
+  }
+
+  scheduleAutomatic(restaurantId: string, ticketIds: readonly string[]): void {
+    if (ticketIds.length === 0) return;
+    const previous = this.automaticQueue.get(restaurantId) ?? Promise.resolve();
+    const pending = previous.then(async () => {
+      for (const id of ticketIds) {
+        try {
+          const started = await this.repository.claimTicketPrint(restaurantId, id, true);
+          if (!started) continue;
+          const { job, settings } = await this.loadStationTicket(restaurantId, id);
+          if (!settings.autoPrint) {
+            await this.repository.finishTicketPrint(restaurantId, id, started, false);
+            continue;
+          }
+          await this.sendStationTicket(
+            restaurantId,
+            id,
+            started,
+            job,
+            {
+              paper: settings.paper,
+              transport: settings.connection,
+            },
+            settings,
+          );
+        } catch {
+          this.logger.warn('Automatic ticket print was not confirmed for ticket ' + id);
+        }
+      }
+    });
+    this.automaticQueue.set(restaurantId, pending);
+    void pending.finally(() => {
+      if (this.automaticQueue.get(restaurantId) === pending)
+        this.automaticQueue.delete(restaurantId);
+    });
+  }
+
+  private async sendStationTicket(
+    restaurantId: string,
+    id: string,
+    started: Date,
+    job: Job,
+    request: ThermalPrintRequest,
+    settings: ThermalConfiguration,
+  ): Promise<void> {
+    try {
+      await this.deliver(restaurantId, job, request, settings);
+    } catch (error) {
+      await this.repository.finishTicketPrint(restaurantId, id, started, false);
+      throw error;
+    }
+    await this.repository.finishTicketPrint(restaurantId, id, started, true);
   }
 
   private async deliver(
@@ -178,50 +271,46 @@ export class ThermalPrintingService {
     throw new ServiceUnavailableException('No printer is configured for this connection');
   }
 
-  private async job(actor: Actor, kind: ThermalKind, id: string): Promise<Job> {
-    let destination: ThermalDestination;
-    let title: string;
-    let lines: string[];
-    if (kind === 'receipt') {
-      const invoice = await this.bills.invoice(actor, id);
-      const { bill, restaurant, payment } = invoice;
-      destination = 'RECEIPT';
-      title = restaurant.name;
-      lines = [
-        ...(restaurant.address ? [restaurant.address] : []),
-        ...(restaurant.gstNumber ? ['GSTIN ' + restaurant.gstNumber] : []),
-        bill.billNumber + ' / Table ' + bill.table.tableNumber,
-        bill.status === 'PAID' ? 'PAID' : 'PROFORMA / UNPAID',
-        new Date(bill.generatedAt).toLocaleString('en-IN', { timeZone: bill.timezone }),
-        '',
-        ...bill.lines.map((line) => line.quantity + ' x ' + line.name + '  ' + line.amount),
-        '',
-        'Subtotal ' + bill.subtotal,
-        'Discount ' + bill.discountAmount,
-        'CGST ' + invoice.cgst.amount + ' / SGST ' + invoice.sgst.amount,
-        'Bill total ' + bill.currency + ' ' + bill.totalAmount,
-        ...(payment
-          ? [
-              ...(payment.tipAmount === '0.00' ? [] : ['Tip ' + payment.tipAmount]),
-              'Received ' + bill.currency + ' ' + payment.amount + ' (' + payment.method + ')',
-            ]
-          : []),
-      ];
-    } else {
-      const ticket = await this.orders.printTicket(actor, id);
-      destination = ticket.destination;
-      title = destination + ' TICKET';
-      lines = [
-        ticket.kotNumber + ' / Table ' + ticket.table.tableNumber,
-        new Date(ticket.createdAt).toISOString(),
-        '',
-        ...ticket.items.flatMap((item) => [
-          item.quantity + ' x ' + item.name,
-          ...(item.specialInstructions ? ['  ' + item.specialInstructions] : []),
-        ]),
-      ];
-    }
-    return { destination, title, lines };
+  private async loadStationTicket(
+    restaurantId: string,
+    id: string,
+  ): Promise<{
+    job: Job;
+    settings: ThermalConfiguration;
+  }> {
+    const record = await this.repository.findTicket(restaurantId, id);
+    if (!record) throw new NotFoundException('KOT not found');
+    const ticket = toKotQueueItem(record);
+    const settings = this.configuration(
+      ticket.destination,
+      await this.repository.find(restaurantId, ticket.destination),
+    );
+    return {
+      job: {
+        destination: ticket.destination,
+        ...formatThermalTicket(ticket, settings.ticketLayout),
+      },
+      settings,
+    };
+  }
+
+  private async load(
+    actor: Actor,
+    kind: ThermalKind,
+    id: string,
+  ): Promise<{
+    job: Job;
+    settings: ThermalConfiguration;
+  }> {
+    if (kind === 'ticket') return this.loadStationTicket(actor.restaurantId, id);
+    const [invoice, settings] = await Promise.all([
+      this.bills.invoice(actor, id),
+      this.destinationSettings(actor, 'RECEIPT'),
+    ]);
+    return {
+      job: { destination: 'RECEIPT', ...formatThermalReceipt(invoice, settings.ticketLayout) },
+      settings,
+    };
   }
 }
 

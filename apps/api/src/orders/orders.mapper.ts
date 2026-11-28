@@ -1,6 +1,8 @@
 import {
   type CaptainOrderSummary,
   type Kot,
+  KOT_PRINT_ATTEMPT_TIMEOUT_MS,
+  KOT_PRINT_QUEUE_TIMEOUT_MS,
   type KotQueueItem,
   type Order,
   type OrderListItem,
@@ -9,6 +11,7 @@ import {
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 
+import { canVoidTicketLines } from './order-corrections';
 import type {
   CaptainOrderRecord,
   KotQueueRecord,
@@ -18,10 +21,19 @@ import type {
 } from './orders.repository';
 
 export function toOrder(record: OrderRecord): Order {
-  const { kots, ...order } = record;
+  const {
+    kots,
+    bill,
+    table: { qrSessions, ...table },
+    ...order
+  } = record;
+  const servingTickets = kots.filter((kot) => kot.items.length > 0);
   return {
     ...order,
-    readyToServe: kots.length > 0 && kots.every((ticket) => ticket.status === 'COMPLETED'),
+    table,
+    canDiscard: order.status === 'OPEN' && !bill && kots.length === 0 && qrSessions.length === 0,
+    readyToServe:
+      servingTickets.length > 0 && servingTickets.every((ticket) => ticket.status === 'COMPLETED'),
     total: orderTotal(record.items),
     openedAt: record.openedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
@@ -31,6 +43,16 @@ export function toOrder(record: OrderRecord): Order {
       ({ menuItem, kotItems, nameSnapshot, itemTypeSnapshot, selectionSnapshot, ...item }) => ({
         ...item,
         sentQuantity: sentQuantity(kotItems, item.sentQuantity),
+        stockUsageIssues: [
+          ...new Set(
+            kotItems.flatMap(({ stockUsageIssue }) => (stockUsageIssue ? [stockUsageIssue] : [])),
+          ),
+        ],
+        canVoid:
+          order.status === 'SUBMITTED' &&
+          !bill &&
+          item.status === 'ACTIVE' &&
+          canVoidTicketLines(kotItems),
         name: nameSnapshot ?? menuItem.name,
         itemType: itemTypeSnapshot ?? menuItem.itemType,
         selections:
@@ -50,18 +72,42 @@ export function toKot(record: KotRecord): Kot {
     orderId: record.orderId,
     kotNumber: record.kotNumber,
     destination: record.destination,
+    ...(record.correctionOf && { correctionOf: record.correctionOf }),
     status: record.status,
     preparation: toPreparation(record),
+    printStatus: ticketPrintStatus(record),
     createdAt: record.createdAt.toISOString(),
     items: record.items.map(
-      ({ orderItem, componentMenuItemId, nameSnapshot, instructionsSnapshot, ...item }) => ({
+      ({
+        orderItem,
+        componentMenuItemId,
+        nameSnapshot,
+        instructionsSnapshot,
+        voidedAt,
+        voidReason,
+        ...item
+      }) => ({
         ...item,
         menuItemId: componentMenuItemId ?? orderItem.menuItemId,
         name: nameSnapshot ?? orderItem.menuItem.name,
         specialInstructions: instructionsSnapshot ?? orderItem.specialInstructions,
+        ...(voidedAt && { void: { reason: voidReason ?? '', at: voidedAt.toISOString() } }),
       }),
     ),
   };
+}
+
+function ticketPrintStatus(record: KotRecord): Kot['printStatus'] {
+  const status = record.printStatus ?? null;
+  const now = Date.now();
+  if (status === 'QUEUED' && record.createdAt.getTime() <= now - KOT_PRINT_QUEUE_TIMEOUT_MS)
+    return 'UNCONFIRMED';
+  if (
+    status === 'PRINTING' &&
+    (record.printAttemptAt?.getTime() ?? 0) <= now - KOT_PRINT_ATTEMPT_TIMEOUT_MS
+  )
+    return 'UNCONFIRMED';
+  return status;
 }
 
 export function toPreparation(record: {

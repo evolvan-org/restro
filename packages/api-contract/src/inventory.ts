@@ -20,7 +20,13 @@ const decimal = z.string();
 const dateOnly = dateOnlySchema;
 
 export const inventoryBaseUnitSchema = z.enum(['G', 'ML', 'UNIT']);
-export const inventoryMovementKindSchema = z.enum(['OPENING', 'ADJUSTMENT', 'RECEIPT', 'WASTE']);
+export const inventoryMovementKindSchema = z.enum([
+  'OPENING',
+  'ADJUSTMENT',
+  'RECEIPT',
+  'WASTE',
+  'USAGE',
+]);
 export const inventoryItemFilterSchema = z.object({
   q: z.string().trim().max(150).optional(),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'LOW_STOCK']).default('ACTIVE'),
@@ -121,6 +127,7 @@ export const inventoryMovementSchema = z.object({
   reason: z.string(),
   actorName: z.string(),
   receiptId: id.nullable(),
+  kotItemId: id.nullable().optional(),
   createdAt: timestamp,
 });
 export const inventoryMovementsSchema = paginatedResponseSchema(inventoryMovementSchema);
@@ -215,6 +222,26 @@ function checkPackageSize(line: z.infer<typeof supplyLineSchema>, context: z.Ref
       : 'Choose a package unit to set package contents',
   });
 }
+
+export const supplierPriceQuerySchema = z.object({
+  supplierId: id,
+  stockItemIds: z
+    .string()
+    .max(50 * 37)
+    .transform((value) => value.split(','))
+    .pipe(z.array(id).min(1).max(50)),
+});
+export const supplierPricesSchema = z.array(
+  z.object({
+    stockItemId: id,
+    unitCost: decimal,
+    unit: inventorySupplyUnitSchema,
+    packageSize: inventoryPackageSizeSchema.nullable(),
+    receivedAt: timestamp,
+  }),
+);
+export type SupplierPriceQuery = z.infer<typeof supplierPriceQuerySchema>;
+export type SupplierPrice = z.infer<typeof supplierPricesSchema>[number];
 
 const purchaseLineSchema = supplyLineSchema.superRefine(checkPackageSize);
 const supplyLineResponseFields = {

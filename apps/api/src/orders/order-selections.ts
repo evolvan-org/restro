@@ -21,8 +21,24 @@ function multiplyQuantity(left: number, right: number): number {
   return left * right;
 }
 
+export const recipeObservationSelect = {
+  id: true,
+  recipeRequired: true,
+  recipeItems: {
+    where: { isActive: true },
+    select: {
+      quantity: true,
+      unit: true,
+      stockItem: { select: { id: true, name: true, baseUnit: true, averageUnitCost: true } },
+    },
+    orderBy: { stockItemId: 'asc' },
+  },
+} satisfies Prisma.MenuItemSelect;
+
 /** All cost facts are observed at ordering time; unknown cost is retained as null. */
-function recipeObservation(item: OrderingMenuRecord): Prisma.InputJsonObject {
+export function recipeObservation(
+  item: Prisma.MenuItemGetPayload<{ select: typeof recipeObservationSelect }>,
+) {
   let known = item.recipeItems.length > 0;
   let cost = new Prisma.Decimal(0);
   const ingredients = item.recipeItems.map((line) => {

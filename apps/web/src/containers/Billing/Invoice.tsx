@@ -96,9 +96,25 @@ export default function Invoice({ id }: { id: string }): ReactElement | null {
                     </p>
                   </>
                 )}
-                <p>Paid{invoice.payment && ` by ${invoice.payment.method}`}</p>
-                {invoice.payment?.referenceNumber && (
-                  <p className="break-all">Reference: {invoice.payment.referenceNumber}</p>
+                {invoice.payment?.tenders?.length ? (
+                  <ul aria-label="Payments received" className="space-y-1">
+                    {invoice.payment.tenders.map((tender, index) => (
+                      <li
+                        className="break-words"
+                        key={tender.qrShareId ?? `${tender.method}-${index}`}
+                      >
+                        {tender.method} {bill.currency} {tender.amount}
+                        {tender.referenceNumber && ` · ${tender.referenceNumber}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <>
+                    <p>Paid{invoice.payment && ` by ${invoice.payment.method}`}</p>
+                    {invoice.payment?.referenceNumber && (
+                      <p className="break-all">Reference: {invoice.payment.referenceNumber}</p>
+                    )}
+                  </>
                 )}
                 {(invoice.payment?.paidAt ?? bill.paidAt) && (
                   <p>

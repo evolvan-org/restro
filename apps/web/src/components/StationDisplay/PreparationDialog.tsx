@@ -26,6 +26,7 @@ const actionLabels = {
   PRIORITY: 'Priority changed',
   TARGET: 'Target changed',
   STATUS: 'Stage changed',
+  VOID: 'Pending item voided',
 };
 
 export default function PreparationDialog({

@@ -93,6 +93,31 @@ export class InventoryRepository {
     ]);
   }
 
+  latestSupplierPrices(restaurantId: string, supplierId: string, stockItemIds: string[]) {
+    return this.prisma.inventoryReceiptLine.findMany({
+      where: {
+        stockItemId: { in: stockItemIds },
+        stockItem: { restaurantId },
+        receipt: { restaurantId, supplierId },
+      },
+      orderBy: [
+        { receipt: { createdAt: 'desc' } },
+        { receipt: { number: 'desc' } },
+        { id: 'desc' },
+      ],
+      distinct: ['stockItemId'],
+      select: {
+        stockItemId: true,
+        unitCost: true,
+        unit: true,
+        packageUnit: true,
+        packageQuantity: true,
+        receipt: { select: { createdAt: true } },
+        stockItem: { select: { baseUnit: true } },
+      },
+    });
+  }
+
   private itemFilters(
     restaurantId: string,
     { q, status }: InventoryItemFilter,
@@ -214,13 +239,6 @@ export class InventoryRepository {
     return this.prisma.inventoryPurchaseOrder.findUnique({
       where: { id, restaurantId },
       select: { id: true },
-    });
-  }
-
-  receipt(restaurantId: string, id: string): Promise<InventoryReceiptRecord | null> {
-    return this.prisma.inventoryReceipt.findUnique({
-      where: { id, restaurantId },
-      include: receiptInclude,
     });
   }
 

@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
-import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { BillsModule } from './bills/bills.module';
 import { validateEnv } from './config/env.validation';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { FoodIncidentsModule } from './food-incidents/food-incidents.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
@@ -22,7 +20,6 @@ import { StockModule } from './stock/stock.module';
 import { TableModule } from './table/table.module';
 import { ThermalPrintingModule } from './thermal-printing/thermal-printing.module';
 import { UsersModule } from './users/users.module';
-import { WorkforceModule } from './workforce/workforce.module';
 
 @Module({
   imports: [
@@ -34,12 +31,9 @@ import { WorkforceModule } from './workforce/workforce.module';
     }),
     StatusModule,
     AuthModule,
-    AttendanceModule,
-    FoodIncidentsModule,
     DashboardModule,
     ReportsModule,
     UsersModule,
-    WorkforceModule,
     RolesModule,
     RestaurantModule,
     TableModule,

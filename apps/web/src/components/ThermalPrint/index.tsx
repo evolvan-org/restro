@@ -1,6 +1,6 @@
 'use client';
 
-import type { ThermalKind, ThermalPrintRequest } from '@rms/api-contract';
+import type { Kot, ThermalKind, ThermalPrintRequest } from '@rms/api-contract';
 import { Printer } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -27,9 +27,11 @@ type PrintSettings = { paper: ThermalPrintRequest['paper']; copy: boolean };
 export default function ThermalPrint({
   id,
   kind,
+  printStatus,
 }: {
   id: string;
   kind: ThermalKind;
+  printStatus?: Kot['printStatus'];
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const { register, control, setValue } = useForm<PrintSettings>({
@@ -40,6 +42,7 @@ export default function ThermalPrint({
   const documentQuery = useThermalDocument(kind, id, open);
   const { mutateAsync: sendToPrinter, isPending } = useDirectThermalPrint(kind, id);
   const printDocument = documentQuery.data;
+  const queued = printStatus === 'QUEUED' || printStatus === 'PRINTING';
 
   const savedPaper = printDocument?.profile.paper;
 
@@ -66,7 +69,7 @@ export default function ThermalPrint({
     style.textContent =
       '@page { margin: 0 } body { box-sizing: border-box; width: ' +
       width +
-      '; margin: 0; padding: 3mm; font: 11px/1.4 monospace; overflow-wrap: anywhere; } ' +
+      '; margin: 0; padding: 3mm; font: 11px/1.4 monospace; overflow-wrap: anywhere; white-space: pre-wrap; } ' +
       'h1, p { margin: 0; } h1 { font-size: 14px; } p { break-inside: avoid; }';
     page.head.append(style);
     const heading = page.createElement('h1');
@@ -96,7 +99,7 @@ export default function ThermalPrint({
         render={
           <Button type="button" variant="outline">
             <Printer aria-hidden />
-            Thermal print
+            {printStatus === 'UNCONFIRMED' ? 'Retry thermal print' : 'Thermal print'}
           </Button>
         }
       />
@@ -133,21 +136,31 @@ export default function ThermalPrint({
                 <p key={index}>{line || '\u00a0'}</p>
               ))}
             </article>
+            {printStatus === 'UNCONFIRMED' && (
+              <p className="text-sm text-muted-foreground">
+                Check the printer before retrying. The previous copy may have printed.
+              </p>
+            )}
+            {queued && (
+              <p role="status" className="text-sm">
+                This ticket already has a print in progress.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={browserPrint} disabled={isPending}>
+              <Button onClick={browserPrint} disabled={isPending || queued}>
                 Print from browser
               </Button>
               <Button
                 variant="outline"
                 onClick={() => void direct('network')}
-                disabled={isPending || !printDocument.transport.includes('network')}
+                disabled={isPending || queued || !printDocument.transport.includes('network')}
               >
                 Network printer
               </Button>
               <Button
                 variant="outline"
                 onClick={() => void direct('usb')}
-                disabled={isPending || !printDocument.transport.includes('usb')}
+                disabled={isPending || queued || !printDocument.transport.includes('usb')}
               >
                 USB printer
               </Button>

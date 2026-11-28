@@ -1,16 +1,20 @@
 'use client';
 
 import {
+  sampleThermalReceipt,
+  sampleThermalTicket,
   type ThermalConfiguration,
   type ThermalDestination,
   type ThermalSettings,
   thermalSettingsSchema,
+  type ThermalTicketLayout,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { Download, Printer, RefreshCw } from 'lucide-react';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import printStyles from '@/components/ThermalPrint/thermal.module.css';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -33,11 +37,16 @@ const connectorCommand =
 const connections = ['usb', 'network'] as const;
 const widths = ['58', '80'] as const;
 
-type PrinterForm = Omit<ThermalSettings, 'network' | 'columns' | 'usbDevice'> & {
+type PrinterForm = Omit<
+  ThermalSettings,
+  'network' | 'columns' | 'usbDevice' | 'ticketLayout' | 'autoPrint'
+> & {
   host: string;
   port: string;
   usbDevice: string;
   columns: string;
+  ticketLayout: ThermalTicketLayout;
+  autoPrint: boolean;
 };
 
 function defaults(config: ThermalConfiguration): PrinterForm {
@@ -49,6 +58,8 @@ function defaults(config: ThermalConfiguration): PrinterForm {
     host: config.network?.host ?? '',
     port: config.network?.port.toString() ?? '9100',
     usbDevice: config.usbDevice ?? '',
+    ticketLayout: config.ticketLayout,
+    autoPrint: config.autoPrint,
   };
 }
 
@@ -64,7 +75,16 @@ function PrinterProfile({
   const { register, control, handleSubmit, reset, setError, formState } = useForm<PrinterForm>({
     defaultValues: defaults(config),
   });
-  const [connection, paper] = useWatch({ control, name: ['connection', 'paper'] });
+  const [connection, paper, layout] = useWatch({
+    control,
+    name: ['connection', 'paper', 'ticketLayout'],
+  });
+  const receipt = config.destination === 'RECEIPT';
+  const sampleAt = '2026-01-01T12:34:00.000Z';
+  const sample =
+    config.destination === 'RECEIPT'
+      ? sampleThermalReceipt(layout, sampleAt)
+      : sampleThermalTicket(config.destination, layout, sampleAt);
   const update = useUpdateThermalSettings();
   const check = useCheckThermalConnection();
   const test = useThermalTestPrint();
@@ -86,6 +106,8 @@ function PrinterProfile({
       columns: values.columns === '' ? null : Number(values.columns),
       network: values.host.trim() ? { host: values.host, port: Number(values.port) } : null,
       usbDevice: values.usbDevice.trim() || null,
+      ticketLayout: values.ticketLayout,
+      autoPrint: values.autoPrint,
     });
 
     if (!settings.success) {
@@ -247,6 +269,42 @@ function PrinterProfile({
               <span className="block text-destructive">{errors.columns.message}</span>
             )}
           </label>
+        </div>
+        <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+          <div className="space-y-4">
+            <label className="block space-y-1 text-sm">
+              <span className="block font-medium">
+                {receipt ? 'Receipt layout' : 'Ticket layout'}
+              </span>
+              <NativeSelect className="w-full" {...register('ticketLayout')}>
+                <NativeSelectOption value="STANDARD">Standard</NativeSelectOption>
+                <NativeSelectOption value="COMPACT">Compact</NativeSelectOption>
+                <NativeSelectOption value="DETAILED">Detailed</NativeSelectOption>
+              </NativeSelect>
+            </label>
+            {!receipt && (
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" {...register('autoPrint')} />
+                <span>
+                  <span className="block font-medium">Print on send</span>
+                  <span className="block text-muted-foreground">
+                    Print new tickets through the connector when staff send an order or approve a QR
+                    order.
+                  </span>
+                </span>
+              </label>
+            )}
+          </div>
+          <article
+            className={printStyles.document}
+            data-paper={paper}
+            aria-label={receipt ? 'Sample receipt preview' : 'Sample ticket preview'}
+          >
+            <h3 className="font-bold">{sample.title}</h3>
+            {sample.lines.map((line, index) => (
+              <p key={index}>{line || '\u00a0'}</p>
+            ))}
+          </article>
         </div>
       </fieldset>
 

@@ -119,6 +119,7 @@ export default function GuestOrdering({ token }: { token: string }): ReactElemen
   else if (data.state !== 'OPEN')
     content = (
       <MenuView
+        token={token}
         brand={brand}
         tableNumber={data.table.number}
         captainName={null}
@@ -298,7 +299,9 @@ function OrderingApp({
   const pendingShare = bill?.shares.find((share) => share.id === pendingShareId) ?? null;
 
   if (data.status === 'CLOSED' && bill) {
-    return <PaidView bill={bill} restaurantName={brand.name} tableNumber={tableNumber} />;
+    return (
+      <PaidView token={token} bill={bill} restaurantName={brand.name} tableNumber={tableNumber} />
+    );
   }
 
   async function sendOrder(note: string): Promise<void> {
@@ -417,6 +420,7 @@ function OrderingApp({
   } else {
     body = (
       <MenuView
+        token={token}
         brand={brand}
         tableNumber={tableNumber}
         captainName={captainName}
