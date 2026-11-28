@@ -37,6 +37,8 @@ import {
   createOrderRequestSchema,
   type CurrentOrderQuery,
   currentOrderQuerySchema,
+  type DiscardOrderRequest,
+  discardOrderRequestSchema,
   errorResponseSchema,
   type FireOrderRequest,
   fireOrderRequestSchema,
@@ -58,6 +60,8 @@ import {
   updateOrderItemInstructionsRequestSchema,
   type UpdateOrderItemQuantityRequest,
   updateOrderItemQuantityRequestSchema,
+  type VoidOrderItemRequest,
+  voidOrderItemRequestSchema,
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 
@@ -82,6 +86,35 @@ export class OrdersController {
     private readonly service: OrdersService,
     private readonly items: OrderItemsService,
   ) {}
+
+  @Patch(':orderId/discard')
+  @RequirePermissions(Permission.ORDER_UPDATE)
+  @ApiOperation({ summary: 'Discard an unfired order and reconcile its table' })
+  @ApiBody({ schema: zodOpenApiSchema(discardOrderRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderSchema) })
+  discard(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body(new ZodValidationPipe(discardOrderRequestSchema)) input: DiscardOrderRequest,
+  ): Promise<Order> {
+    return this.service.discard(actor, orderId, input);
+  }
+
+  @Patch(':orderId/items/:itemId/void')
+  @RequirePermissions(Permission.ORDER_VOID_ITEM)
+  @ApiOperation({
+    summary: 'Void the pending staff-entered quantities of an order line before billing',
+  })
+  @ApiBody({ schema: zodOpenApiSchema(voidOrderItemRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(orderSchema) })
+  voidItem(
+    @CurrentActor() actor: Actor,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body(new ZodValidationPipe(voidOrderItemRequestSchema)) input: VoidOrderItemRequest,
+  ): Promise<Order> {
+    return this.service.voidItem(actor, orderId, itemId, input);
+  }
 
   @Patch(':orderId/complete')
   @Header('Cache-Control', 'no-store')

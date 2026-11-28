@@ -2,18 +2,30 @@
 
 import { Permission } from '@rms/permissions';
 import { cn } from 'cn';
-import { ArrowUpRight, ChefHat, ExternalLink, GlassWater, PanelLeft, Settings } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChefHat,
+  ExternalLink,
+  GlassWater,
+  LifeBuoy,
+  PanelLeft,
+  Settings,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactElement, useEffect, useState } from 'react';
 
+import RestaurantLogo from '@/components/RestaurantLogo';
+import { useStaffLanguage } from '@/components/StaffPreferences';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import usePermissions from '@/hooks/auth/usePermissions';
 import { formatRoleLabel } from '@/lib/utils';
+import { useNotifications } from '@/services/api/requests/notifications';
 import { useSetupChecklist } from '@/services/api/requests/onboarding';
 import { useProfile } from '@/services/api/requests/profile';
 import { useQrSummary } from '@/services/api/requests/qr-orders';
+import { useRestaurantLogo } from '@/services/api/requests/restaurant-settings';
 
 import { NAV_GROUPS, type NavItem } from './navigation';
 
@@ -92,6 +104,7 @@ function SidebarBrand({
   collapsed?: boolean;
   onNavigate?: () => void;
 }): ReactElement {
+  const hasLogo = Boolean(useRestaurantLogo().data?.logo);
   return (
     <Link
       href="/dashboard"
@@ -99,7 +112,11 @@ function SidebarBrand({
       title="Restaurant Management System"
       className="flex items-center gap-2.5 font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/50"
     >
-      <BrandMark />
+      {hasLogo ? (
+        <RestaurantLogo className="size-8 shrink-0 rounded object-contain" />
+      ) : (
+        <BrandMark />
+      )}
       {!collapsed && <span className="truncate text-sm font-semibold">Restaurant MS</span>}
     </Link>
   );
@@ -118,9 +135,18 @@ function SidebarNav({
 }): ReactElement {
   const pathname = usePathname();
   const { can } = usePermissions();
+  const t = useStaffLanguage();
+  const notifications = useNotifications().data?.data;
+  const attention = {
+    '/orders':
+      notifications?.filter(({ type, readAt }) => !readAt && type === 'kot.ready').length ?? 0,
+    '/reservations':
+      notifications?.filter(({ type, readAt }) => !readAt && type === 'reservation.created')
+        .length ?? 0,
+  } as Partial<Record<string, number>>;
   const missingRecipes =
     useSetupChecklist(can(Permission.MENU_WRITE)).data?.missingRecipeCount ?? 0;
-  const qrWaiting = useQrSummary(can(Permission.QR_ORDER_READ)).data?.myWaitingCount ?? 0;
+  const qrWaiting = useQrSummary(can(Permission.QR_ORDER_READ), false).data?.myWaitingCount ?? 0;
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
@@ -131,7 +157,10 @@ function SidebarNav({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <nav aria-label="Primary" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
+    <nav
+      aria-label={t('Primary')}
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2"
+    >
       {visibleGroups.map((group, groupIdx) => {
         const groupKey = group.label ?? `group-${groupIdx}`;
         return (
@@ -142,7 +171,7 @@ function SidebarNav({
               ) : null
             ) : group.label ? (
               <div className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60 select-none">
-                {group.label}
+                {t(group.label)}
               </div>
             ) : null}
             <div className="flex flex-col gap-1">
@@ -152,7 +181,7 @@ function SidebarNav({
                     ? missingRecipes
                     : badge === 'qr-waiting'
                       ? qrWaiting
-                      : 0;
+                      : (attention[href] ?? 0);
                 const active =
                   isActiveRoute(pathname, href) ||
                   Boolean(activePaths?.some((path) => isActiveRoute(pathname, path)));
@@ -162,7 +191,7 @@ function SidebarNav({
                     href={href}
                     onClick={onNavigate}
                     aria-current={active ? 'page' : undefined}
-                    title={collapsed ? label : undefined}
+                    title={collapsed ? t(label) : undefined}
                     className={cn(
                       'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
                       collapsed && 'justify-center px-0',
@@ -173,7 +202,7 @@ function SidebarNav({
                   >
                     <span className="relative shrink-0">
                       <Icon className="size-5" aria-hidden />
-                      {badge === 'qr-waiting' && count > 0 && collapsed && (
+                      {count > 0 && collapsed && (
                         <span
                           className="absolute -top-1.5 -right-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white"
                           style={{ background: 'var(--qs-es)' }}
@@ -184,12 +213,14 @@ function SidebarNav({
                       )}
                     </span>
                     <span className={cn('truncate', collapsed && 'sr-only')}>
-                      {label}
-                      {badge === 'qr-waiting' && count > 0 && (
-                        <span className="sr-only">, {count} waiting</span>
+                      {t(label)}
+                      {count > 0 && (
+                        <span className="sr-only">
+                          , {t('Needs attention')}: {count}
+                        </span>
                       )}
                     </span>
-                    {badge === 'qr-waiting' && count > 0 && !collapsed && (
+                    {count > 0 && !collapsed && (
                       <span
                         className="ml-auto flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-2 text-[11px] font-semibold text-white"
                         style={{ background: 'var(--qs-es)' }}
@@ -217,13 +248,14 @@ const STATION_LINKS = [
 /** Launchers for the full-screen station displays; they always open in a new tab. */
 function StationDisplayLinks({ collapsed }: { collapsed?: boolean }): ReactElement | null {
   const { can } = usePermissions();
+  const t = useStaffLanguage();
   if (!can(Permission.KOT_READ)) return null;
 
   return (
     <div className="flex flex-col gap-0.5 border-b border-sidebar-border pb-2">
       {!collapsed && (
         <span className="px-3 pt-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60 select-none">
-          Station displays
+          {t('Station displays')}
         </span>
       )}
       {STATION_LINKS.map(({ label, href, icon: Icon }) => (
@@ -232,7 +264,7 @@ function StationDisplayLinks({ collapsed }: { collapsed?: boolean }): ReactEleme
           href={href}
           target="_blank"
           rel="noopener"
-          aria-label={`${label}, opens in a new tab`}
+          aria-label={`${t(label)}, ${t('opens in a new tab')}`}
           title={`${label} (opens in new tab)`}
           className={cn(
             'group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
@@ -248,7 +280,7 @@ function StationDisplayLinks({ collapsed }: { collapsed?: boolean }): ReactEleme
             />
           ) : (
             <>
-              <span className="flex-1 truncate">{label}</span>
+              <span className="flex-1 truncate">{t(label)}</span>
               <ExternalLink className="size-4 shrink-0 text-sidebar-foreground/60" aria-hidden />
             </>
           )}
@@ -272,6 +304,9 @@ function SidebarFooter({
   const { data: profile } = useProfile();
   const { can } = usePermissions();
 
+  const t = useStaffLanguage();
+  const support = process.env.NEXT_PUBLIC_SUPPORT_URL?.trim();
+  const supportHref = support && /^(https:\/\/|mailto:)/i.test(support) ? support : undefined;
   const canManageRestaurant = can(Permission.SETTINGS_READ);
   const isSettingsActive = isActiveRoute(pathname, '/restaurant/settings');
   const roleLabel = profile?.role ? formatRoleLabel(profile.role) : '';
@@ -285,7 +320,7 @@ function SidebarFooter({
           href="/restaurant/settings"
           onClick={onNavigate}
           aria-current={isSettingsActive ? 'page' : undefined}
-          title={collapsed ? 'Restaurant settings' : undefined}
+          title={collapsed ? t('Restaurant settings') : undefined}
           className={cn(
             'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
             collapsed && 'justify-center px-0',
@@ -295,9 +330,26 @@ function SidebarFooter({
           )}
         >
           <Settings className="size-5 shrink-0" aria-hidden />
-          <span className={cn('truncate', collapsed && 'sr-only')}>Restaurant settings</span>
+          <span className={cn('truncate', collapsed && 'sr-only')}>{t('Restaurant settings')}</span>
         </Link>
       )}
+
+      {
+        <a
+          href={supportHref ?? '/support'}
+          target={supportHref ? '_blank' : undefined}
+          rel={supportHref ? 'noopener noreferrer' : undefined}
+          onClick={onNavigate}
+          title={collapsed ? t('Contact support') : undefined}
+          className={cn(
+            'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
+            collapsed && 'justify-center px-0',
+          )}
+        >
+          <LifeBuoy className="size-5 shrink-0" aria-hidden />
+          <span className={cn('truncate', collapsed && 'sr-only')}>{t('Contact support')}</span>
+        </a>
+      }
 
       <Link
         href="/profile"

@@ -81,11 +81,32 @@ export const billCancellationReasonSchema = z
 export const billCancellationReasonsResponseSchema = z.array(billCancellationReasonSchema);
 export type BillCancellationReasonsResponse = z.infer<typeof billCancellationReasonsResponseSchema>;
 
+export const paymentTenderInputSchema = z
+  .object({
+    method: paymentMethodSchema,
+    amount: billMoneySchema.refine((amount) => Number(amount) > 0, 'Enter an amount over zero'),
+    referenceNumber: z.string().trim().max(255).optional(),
+  })
+  .strict();
+
+export const paymentTenderSchema = paymentTenderInputSchema
+  .extend({
+    referenceNumber: z.string().nullable(),
+    recordedByUserId: z.string().uuid().optional(),
+    paidAt: z.string().datetime().optional(),
+    qrShareId: z.string().uuid().optional(),
+  })
+  .strict();
+export const paymentTendersSchema = z.array(paymentTenderSchema).min(1);
+export type PaymentTender = z.infer<typeof paymentTenderSchema>;
+
 export const recordPaymentRequestSchema = z
   .object({
     paymentMethod: paymentMethodSchema,
     amount: billMoneySchema,
+    tipAmount: billMoneySchema.optional(),
     referenceNumber: z.string().trim().max(255).optional(),
+    tenders: z.array(paymentTenderInputSchema).min(2).max(3).optional(),
   })
   .strict();
 
@@ -96,9 +117,11 @@ export const paymentSchema = z
     recordedByUserId: z.string().uuid(),
     paymentMethod: paymentMethodSchema,
     amount: billMoneySchema,
+    tipAmount: billMoneySchema,
     status: z.enum(['PENDING', 'COMPLETED', 'FAILED']),
     referenceNumber: z.string().nullable(),
     paidAt: z.string().datetime().nullable(),
+    tenders: paymentTendersSchema.optional(),
   })
   .strict();
 
@@ -132,8 +155,11 @@ export const billInvoiceSchema = z
     payment: z
       .object({
         method: paymentMethodSchema,
+        tipAmount: billMoneySchema,
+        amount: billMoneySchema,
         referenceNumber: z.string().nullable(),
         paidAt: z.string().datetime().nullable(),
+        tenders: paymentTendersSchema.optional(),
       })
       .strict()
       .nullable(),

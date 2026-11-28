@@ -1,6 +1,10 @@
 import {
   type CreateMenuItemRequest,
+  type MenuCustomizations,
   type MenuItem,
+  type MenuItemHistoryQuery,
+  type MenuItemHistoryResponse,
+  menuItemHistoryResponseSchema,
   type MenuItemListQuery,
   menuItemListResponseSchema,
   menuItemSchema,
@@ -36,6 +40,48 @@ type UpdateVariables = { id: string; input: UpdateMenuItemRequest };
 type AvailabilityVariables = { id: string; input: UpdateMenuItemAvailabilityRequest };
 type PriceVariables = { id: string; input: UpdateMenuItemPriceRequest };
 type ClassificationVariables = { id: string; input: UpdateMenuItemClassificationRequest };
+
+export function useMenuCustomizationOptions(): UseQueryResult<MenuItem[]> {
+  return useQuery({
+    queryKey: [MenuItemQueryKey.Items, 'customization-options'],
+    queryFn: async ({ signal }): Promise<MenuItem[]> =>
+      menuItemListResponseSchema.parse(
+        (await api.get('/menu-items', { params: { activeOnly: true }, signal })).data,
+      ),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
+export function useConfigureMenuItem(): UseMutationResult<
+  MenuItem,
+  Error,
+  { id: string; input: MenuCustomizations }
+> {
+  const client = useQueryClient();
+  const showApiError = useShowApiError('Unable to save menu choices.');
+  return useMutation<MenuItem, Error, { id: string; input: MenuCustomizations }>({
+    mutationFn: async ({ id, input }): Promise<MenuItem> =>
+      menuItemSchema.parse((await api.put(`/menu-items/${id}/customizations`, input)).data),
+    onError: showApiError,
+    onSuccess: () => client.invalidateQueries({ queryKey: [MenuItemQueryKey.Items] }),
+  });
+}
+
+export function useMenuItemHistory(
+  id: string,
+  query: MenuItemHistoryQuery,
+): UseQueryResult<MenuItemHistoryResponse> {
+  return useQuery({
+    queryKey: [MenuItemQueryKey.Items, 'history', id, query],
+    queryFn: async ({ signal }): Promise<MenuItemHistoryResponse> => {
+      const response = await api.get(`/menu-items/${id}/history`, { params: query, signal });
+      return menuItemHistoryResponseSchema.parse(response.data);
+    },
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
 
 /** Lists items (active and inactive unless `activeOnly`) with their recipes. */
 export function useMenuItems(

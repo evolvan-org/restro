@@ -25,6 +25,7 @@ import {
   inventorySuppliersSchema,
   type LogInventoryWaste,
   type OpeningInventoryStock,
+  supplierPricesSchema,
   type UpdateInventoryItem,
   type UpdateInventoryPurchaseStatus,
   type UpdateInventorySupplier,
@@ -39,7 +40,7 @@ import { downloadBlob } from '@/lib/download-blob';
 
 import { MenuItemQueryKey } from '../types/MenuItemQueryKey';
 
-const inventoryKey = ['inventory'] as const;
+export const inventoryKey = ['inventory'] as const;
 
 function useInventoryQuery<T>(path: string, schema: ZodType<T>, params?: object, enabled = true) {
   return useQuery({
@@ -78,6 +79,16 @@ export function useInventoryReceipts(query: InventoryReceiptQuery) {
 
 export function useInventoryOptions(enabled: boolean) {
   return useInventoryQuery('options', inventoryOptionsSchema, undefined, enabled);
+}
+
+export function useLatestSupplierPrices(supplierId: string, stockItemIds: readonly string[]) {
+  const params = { supplierId, stockItemIds: [...new Set(stockItemIds)].sort().join(',') };
+  return useInventoryQuery(
+    'supplier-prices',
+    supplierPricesSchema,
+    params,
+    !!supplierId && stockItemIds.length > 0,
+  );
 }
 
 type InventoryCommand =

@@ -47,6 +47,10 @@ import {
   qrChannelAuthResponseSchema,
   type QrCollectAtTableRequest,
   qrCollectAtTableRequestSchema,
+  type QrFeedbackListQuery,
+  qrFeedbackListQuerySchema,
+  type QrFeedbackListResponse,
+  qrFeedbackListResponseSchema,
   type QrFloorResponse,
   qrFloorResponseSchema,
   type QrQueueQuery,
@@ -86,6 +90,7 @@ import { PermissionsGuard } from '../common/auth/permissions.guard';
 import { RequirePermissions } from '../common/auth/require-permissions.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { apiError, ApiZodQuery, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import { QrFeedbackService } from './qr-feedback.service';
 import { QrSettingsService } from './qr-settings.service';
 import { QrStaffService } from './qr-staff.service';
 
@@ -105,7 +110,21 @@ export class QrOrdersController {
   constructor(
     private readonly service: QrStaffService,
     private readonly settings: QrSettingsService,
+    private readonly feedback: QrFeedbackService,
   ) {}
+
+  @Get('feedback')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.QR_SETTINGS_WRITE)
+  @ApiOperation({ summary: 'List guest feedback for the caller’s restaurant' })
+  @ApiZodQuery(qrFeedbackListQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(qrFeedbackListResponseSchema) })
+  listFeedback(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(qrFeedbackListQuerySchema)) query: QrFeedbackListQuery,
+  ): Promise<QrFeedbackListResponse> {
+    return this.feedback.list(actor.restaurantId, query);
+  }
 
   @Get()
   @Header('Cache-Control', 'no-store')
@@ -236,6 +255,18 @@ export class QrOrdersController {
     @Body(new ZodValidationPipe(qrCollectAtTableRequestSchema)) input: QrCollectAtTableRequest,
   ): Promise<QrStaffBill> {
     return this.service.collectAtTable(actor, id, input);
+  }
+
+  @Post('sessions/:id/finalize-payment')
+  @HttpCode(200)
+  @RequirePermissions(Permission.QR_ORDER_APPROVE, Permission.PAYMENT_WRITE)
+  @ApiOperation({ summary: 'Close a QR bill using payments that have already been recorded' })
+  @ApiOkResponse({ schema: zodOpenApiSchema(qrStaffBillSchema) })
+  finalizePayment(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QrStaffBill> {
+    return this.service.finalizePaidBill(actor, id);
   }
 
   @Post('shares/:id/payment')

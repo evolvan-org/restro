@@ -4,9 +4,11 @@ import type { MenuItem, ServingType } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { DEFAULT_PAGE_SIZE } from '@rms/shared';
 import { Archive, Loader2, Pencil, Plus, Search, ToggleLeft, ToggleRight } from 'lucide-react';
-import { type ReactElement, useEffect } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import MenuCustomizationsDialog from '@/components/MenuCustomizationsDialog';
+import MenuItemHistoryDialog from '@/components/MenuItemHistoryDialog';
 import MenuItemPriceEditor from '@/components/MenuItemPriceEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,6 +57,9 @@ export default function MenuItems(): ReactElement | null {
   const { can } = usePermissions();
   const canRead = can(Permission.MENU_READ);
   const canWrite = can(Permission.MENU_WRITE);
+  // Selected record identifies the history dialog opened by an explicit user interaction.
+  const [historyItem, setHistoryItem] = useState<MenuItem | null>(null);
+  const [customizationItem, setCustomizationItem] = useState<MenuItem | null>(null);
 
   const filters = useForm<MenuItemFilters>({
     defaultValues: { q: '', categoryId: '', itemType: '', isAvailable: '', page: 1 },
@@ -271,6 +276,26 @@ export default function MenuItems(): ReactElement | null {
                     {canWrite && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {item.isActive && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Configure choices for ${item.name}`}
+                              onClick={() => setCustomizationItem(item)}
+                            >
+                              Choices
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`View history of ${item.name}`}
+                            onClick={() => setHistoryItem(item)}
+                          >
+                            History
+                          </Button>
                           <Button
                             type="button"
                             variant="ghost"
@@ -344,6 +369,15 @@ export default function MenuItems(): ReactElement | null {
             </Button>
           </div>
         </div>
+      )}
+      {canWrite && historyItem && (
+        <MenuItemHistoryDialog item={historyItem} onClose={() => setHistoryItem(null)} />
+      )}
+      {canWrite && customizationItem && (
+        <MenuCustomizationsDialog
+          item={customizationItem}
+          onClose={() => setCustomizationItem(null)}
+        />
       )}
     </main>
   );

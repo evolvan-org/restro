@@ -7,6 +7,9 @@ import {
   paginationQuerySchema,
 } from './common';
 import { servingTypeSchema } from './serving-types';
+import { kotStatusSchema, preparationSchema } from './preparation';
+import { orderSelectionSnapshotSchema } from './order-selections';
+import { thermalTicketPrintStatusSchema } from './thermal-printing';
 
 export const orderStatusSchema = z.enum(['OPEN', 'SUBMITTED', 'COMPLETED', 'CANCELLED']);
 
@@ -25,7 +28,10 @@ export const orderItemSchema = z
     lineTotal: z.string().describe('Quantity times snapshotted unit price, with 2 fraction digits'),
     unitPrice: z.string().describe('Price snapshot as a decimal string with 2 fraction digits'),
     specialInstructions: z.string().nullable(),
+    selections: orderSelectionSnapshotSchema.nullable().optional(),
     status: z.enum(['ACTIVE', 'CANCELLED']),
+    canVoid: z.boolean().optional(),
+    stockUsageIssues: z.array(z.string()).optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -39,6 +45,7 @@ export const orderSchema = z
     reservationId: z.string().uuid().nullable(),
     createdByUserId: z.string().uuid(),
     status: orderStatusSchema,
+    canDiscard: z.boolean().optional(),
     readyToServe: z
       .boolean()
       .describe('True when at least one KOT exists and all KOTs are COMPLETED; derived read only'),
@@ -63,6 +70,15 @@ export const currentOrderQuerySchema = z
   .object({ tableId: z.string().uuid('Table id must be a UUID') })
   .strict();
 
+const orderCorrectionReason = z.string().trim().min(1, 'Enter a reason').max(255);
+
+export const discardOrderRequestSchema = z.object({ reason: orderCorrectionReason }).strict();
+export const voidOrderItemRequestSchema = z
+  .object({ reason: orderCorrectionReason, expectedUpdatedAt: z.string().datetime() })
+  .strict();
+export type DiscardOrderRequest = z.infer<typeof discardOrderRequestSchema>;
+export type VoidOrderItemRequest = z.infer<typeof voidOrderItemRequestSchema>;
+
 export const completeOrderResponseSchema = orderSchema;
 
 /** Preserve the standard error fields while allowing the client to resume the existing order. */
@@ -85,6 +101,12 @@ export type OrderAlreadyOpenError = z.infer<typeof orderAlreadyOpenErrorSchema>;
 export const addOrderItemRequestSchema = z
   .object({
     menuItemId: z.string().uuid(),
+    variantId: z.string().uuid().optional(),
+    modifierIds: z
+      .array(z.string().uuid())
+      .max(400)
+      .refine((ids) => new Set(ids).size === ids.length, 'Select each option only once')
+      .optional(),
     quantity: z.number().int().min(1).max(2147483647),
     specialInstructions: z.string().max(255).optional(),
   })
@@ -121,7 +143,7 @@ export type UpdateOrderItemInstructionsRequest = z.infer<
 >;
 
 export const kotDestinationSchema = z.enum(['KITCHEN', 'BAR']);
-export const kotStatusSchema = z.enum(['PENDING', 'PREPARING', 'READY', 'COMPLETED']);
+export { kotStatusSchema } from './preparation';
 
 export const kotItemSchema = z
   .object({
@@ -132,6 +154,8 @@ export const kotItemSchema = z
     quantity: z.number().int().positive(),
     specialInstructions: z.string().nullable(),
     status: kotStatusSchema,
+    stockUsageIssue: z.string().nullable().optional(),
+    void: z.object({ reason: z.string(), at: z.string().datetime() }).strict().optional(),
   })
   .strict();
 
@@ -141,7 +165,10 @@ export const kotSchema = z
     orderId: z.string().uuid(),
     kotNumber: z.string().regex(/^KOT-\d{6,}$/),
     destination: kotDestinationSchema,
+    correctionOf: z.string().optional(),
     status: kotStatusSchema,
+    preparation: preparationSchema.optional(),
+    printStatus: thermalTicketPrintStatusSchema.nullable().optional(),
     createdAt: z.string().datetime(),
     items: z.array(kotItemSchema),
   })

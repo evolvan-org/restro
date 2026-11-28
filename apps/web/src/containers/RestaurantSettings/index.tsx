@@ -32,6 +32,8 @@ function toFormValues(settings: RestaurantSettingsResponse): UpdateRestaurantSet
   return { ...settings, gstNumber: settings.gstNumber ?? '', address: settings.address ?? '' };
 }
 
+import LogoSettings from './LogoSettings';
+
 function useCurrencyOptions(selected: string): { code: string; label: string }[] {
   return useMemo(() => {
     const names = new Intl.DisplayNames('en', { type: 'currency' });
@@ -311,6 +313,7 @@ export default function RestaurantSettings({
           </form>
         </CardContent>
       </Card>
+      {showGeneral && <LogoSettings />}
       {view === 'all' && canRead && <BillCancellationReasons canEdit={canEdit} />}
     </div>
   );

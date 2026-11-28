@@ -396,6 +396,7 @@ const movementLabels: Record<InventoryMovement['kind'], string> = {
   ADJUSTMENT: 'Adjustment',
   RECEIPT: 'Receipt',
   WASTE: 'Waste',
+  USAGE: 'Recipe usage',
 };
 
 export function MovementList({

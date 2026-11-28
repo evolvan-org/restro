@@ -6,6 +6,7 @@ export const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(1),
+  AUTHENTICATOR_ENCRYPTION_KEY: z.string().min(32).optional(),
   RATE_LIMIT_HASH_SECRET: z.string().min(16),
   EMAIL_PROVIDER_API_KEY: z.string().min(1),
   EMAIL_FROM_ADDRESS: z.string().email(),

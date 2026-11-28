@@ -42,6 +42,11 @@ export const Permission = {
   MENU_READ: 'menu:read',
   MENU_WRITE: 'menu:write',
 
+  // Daily operating checks. Existing roles receive these only through explicit role configuration.
+  TASK_READ: 'task:read',
+  TASK_MANAGE: 'task:manage',
+  TASK_COMPLETE: 'task:complete',
+
   // Stock
   STOCK_READ: 'stock:read',
   INVENTORY_MANAGE: 'inventory:manage',
@@ -55,6 +60,7 @@ export const Permission = {
   ORDER_READ: 'order:read',
   ORDER_WRITE: 'order:write',
   ORDER_UPDATE: 'order:update',
+  ORDER_VOID_ITEM: 'order:void-item',
 
   // Kitchen order tickets
   KOT_READ: 'kot:read',

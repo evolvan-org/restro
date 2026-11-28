@@ -4,7 +4,17 @@ type DatabaseClient = Prisma.TransactionClient;
 
 export type KotGroup = {
   destination: KotDestination;
-  items: { orderItemId: string; quantity: number }[];
+  correctionOf?: string;
+  items: {
+    orderItemId: string;
+    quantity: number;
+    componentMenuItemId?: string | null;
+    nameSnapshot?: string | null;
+    instructionsSnapshot?: string | null;
+    voidedAt?: Date;
+    voidedByUserId?: string;
+    voidReason?: string;
+  }[];
 };
 
 /**
@@ -33,29 +43,55 @@ export async function createKotTickets<TSelect extends Prisma.KotSelect>(
       AND kot_number ~ '^KOT-[0-9]+$'
   `;
   const firstNumber = Number(rows[0]?.currentNumber ?? 0n) + 1;
+  const autoPrinters = await tx.thermalPrinter.findMany({
+    where: {
+      restaurantId,
+      destination: { in: groups.map(({ destination }) => destination) },
+      autoPrint: true,
+    },
+    select: { destination: true },
+  });
+  const autoDestinations = new Set(autoPrinters.map(({ destination }) => destination));
+  const sentAt = new Date();
   return Promise.all(
-    groups.map(
-      (group, index) =>
-        tx.kot.create({
-          data: {
-            restaurantId,
-            orderId,
-            createdByUserId,
-            kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
-            destination: group.destination,
-            status: 'PENDING',
-            ...(qr && {
-              source: 'QR' as const,
-              qrRoundId: qr.roundId,
-              approvedByUserId: qr.approvedByUserId,
-            }),
-            items: {
-              create: group.items.map((item) => ({ ...item, status: 'PENDING' as const })),
+    groups.map((group, index) => {
+      const status = group.correctionOf ? 'COMPLETED' : 'PENDING';
+      return tx.kot.create({
+        data: {
+          restaurantId,
+          orderId,
+          createdByUserId,
+          kotNumber: `KOT-${String(firstNumber + index).padStart(6, '0')}`,
+          destination: group.destination,
+          status,
+          correctionOf: group.correctionOf,
+          completedAt: group.correctionOf ? sentAt : null,
+          printStatus: autoDestinations.has(group.destination) ? 'QUEUED' : null,
+          createdAt: sentAt,
+          ...(qr && {
+            source: 'QR' as const,
+            qrRoundId: qr.roundId,
+            approvedByUserId: qr.approvedByUserId,
+          }),
+          items: {
+            create: group.items.map((item) => ({ ...item, status })),
+          },
+          preparationEvents: {
+            create: {
+              restaurantId,
+              recordedByUserId: createdByUserId,
+              action: group.correctionOf ? 'VOID' : 'SENT',
+              reason: group.correctionOf ? group.items[0]?.voidReason : undefined,
+              status,
+              version: 0,
+              isPriority: false,
+              createdAt: sentAt,
             },
           },
-          select,
-        }) as unknown as Promise<Prisma.KotGetPayload<{ select: TSelect }>>,
-    ),
+        },
+        select,
+      }) as unknown as Promise<Prisma.KotGetPayload<{ select: TSelect }>>;
+    }),
   );
 }
 

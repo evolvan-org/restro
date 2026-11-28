@@ -1889,6 +1889,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@noble/hashes@npm:2.4.0":
+  version: 2.4.0
+  resolution: "@noble/hashes@npm:2.4.0"
+  checksum: 10c0/f5820a38c52886073a69722a030688ad188bbacb822d01554545371259961c2b916266c57c013c2ce5a0d78aec977142fc68fd2a79be4c97b0644fcee9bb35f6
+  languageName: node
+  linkType: hard
+
 "@nodelib/fs.scandir@npm:2.1.5":
   version: 2.1.5
   resolution: "@nodelib/fs.scandir@npm:2.1.5"
@@ -2231,9 +2238,11 @@ __metadata:
     bcrypt: "npm:^6.0.0"
     eslint: "npm:^8.57.1"
     eslint-plugin-simple-import-sort: "npm:^12.1.1"
+    iconv-lite: "npm:^0.7.2"
     jest: "npm:^30.5.2"
     jsonwebtoken: "npm:^9.0.3"
     nestjs-zod: "npm:^5.5.0"
+    otpauth: "npm:^9.6.0"
     pusher: "npm:^5.3.4"
     reflect-metadata: "npm:^0.2.2"
     rxjs: "npm:^7.8.1"
@@ -9503,6 +9512,15 @@ __metadata:
   version: 1.0.2
   resolution: "os-tmpdir@npm:1.0.2"
   checksum: 10c0/f438450224f8e2687605a8dd318f0db694b6293c5d835ae509a69e97c8de38b6994645337e5577f5001115470414638978cc49da1cdcc25106dad8738dc69990
+  languageName: node
+  linkType: hard
+
+"otpauth@npm:^9.6.0":
+  version: 9.6.0
+  resolution: "otpauth@npm:9.6.0"
+  dependencies:
+    "@noble/hashes": "npm:2.4.0"
+  checksum: 10c0/f6b603b02d84f4e2d897391c5a9f8601e7556fed1743a6fed11d36805b941825155df20811282975eb2aed28833b0ac7c2d448f436f4cfb0e2a8255130e8ca5e
   languageName: node
   linkType: hard
 

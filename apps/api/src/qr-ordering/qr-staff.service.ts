@@ -38,7 +38,8 @@ import { roleCan } from '../common/auth/role-access';
 import { errorDiagnostics } from '../common/logging/error-diagnostics';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
-import { computeTotals, dominantMethod, lineSubtotal, toTotalsDto } from './qr-billing';
+import { ThermalPrintingService } from '../thermal-printing/thermal-printing.service';
+import { computeTotals, lineSubtotal, toTotalsDto } from './qr-billing';
 import { QrGuestRepository } from './qr-guest.repository';
 import { QrNotifier } from './qr-notifier.service';
 import { type QrRoundCardRecord, QrStaffRepository } from './qr-staff.repository';
@@ -60,6 +61,7 @@ export class QrStaffService {
     private readonly realtime: QrRealtimePublisher,
     private readonly bills: BillsService,
     private readonly notifications: NotificationsService,
+    private readonly printing: ThermalPrintingService,
   ) {}
 
   /** Owner captain of the round, or anyone who can manage QR ordering (managers). */
@@ -193,6 +195,7 @@ export class QrStaffService {
       }
       throw error;
     }
+    this.printing.scheduleAutomatic(actor.restaurantId, outcome.kotIds);
     await this.notifications.ticketSent(actor.restaurantId, outcome.kotIds);
     await this.notifier.live(actor.restaurantId, [outcome.sessionId], {
       kind: 'round.approved',
@@ -266,6 +269,11 @@ export class QrStaffService {
     };
   }
 
+  async finalizePaidBill(actor: Actor, sessionId: string): Promise<QrStaffBill> {
+    await this.requireSessionActor(actor, sessionId);
+    return this.afterPayment(actor, sessionId, true);
+  }
+
   /** Staff confirm a share they have verified (UPI against the restaurant QR, cash or card). */
   async recordSharePayment(
     actor: Actor,
@@ -276,17 +284,22 @@ export class QrStaffService {
     if (!share) throw new NotFoundException('Share not found');
     await this.requireSessionActor(actor, share.sessionId);
     const amount = this.positiveAmount(input.amount);
-    await this.repository.withLockedSession(actor.restaurantId, share.sessionId, async (tx) => {
-      await this.assertWithinRemaining(actor, share.sessionId, amount);
-      const count = await this.repository.markSharePaid(tx, shareId, {
-        method: input.method,
-        amount,
-        referenceNumber: input.referenceNumber?.trim() || null,
-        userId: actor.userId,
-        now: new Date(),
-      });
-      if (!count) throw new ConflictException('This share is already paid');
-    });
+    await this.repository.withLockedSession(
+      actor.restaurantId,
+      share.sessionId,
+      async (tx) => {
+        await this.assertWithinRemaining(actor, share.sessionId, amount);
+        const count = await this.repository.markSharePaid(tx, shareId, {
+          method: input.method,
+          amount,
+          referenceNumber: input.referenceNumber?.trim() || null,
+          userId: actor.userId,
+          now: new Date(),
+        });
+        if (!count) throw new ConflictException('This share is already paid');
+      },
+      true,
+    );
     return this.afterPayment(actor, share.sessionId);
   }
 
@@ -298,20 +311,25 @@ export class QrStaffService {
   ): Promise<QrStaffBill> {
     await this.requireSessionActor(actor, sessionId);
     const amount = this.positiveAmount(input.amount);
-    await this.repository.withLockedSession(actor.restaurantId, sessionId, async (tx, found) => {
-      if (!found) throw new NotFoundException('Bill not found');
-      await this.assertWithinRemaining(actor, sessionId, amount);
-      await this.repository.createPaidShare(tx, {
-        restaurantId: actor.restaurantId,
-        sessionId,
-        label: 'Collected at table',
-        method: input.method,
-        amount,
-        referenceNumber: input.referenceNumber?.trim() || null,
-        userId: actor.userId,
-        now: new Date(),
-      });
-    });
+    await this.repository.withLockedSession(
+      actor.restaurantId,
+      sessionId,
+      async (tx, found) => {
+        if (!found) throw new NotFoundException('Bill not found');
+        await this.assertWithinRemaining(actor, sessionId, amount);
+        await this.repository.createPaidShare(tx, {
+          restaurantId: actor.restaurantId,
+          sessionId,
+          label: 'Collected at table',
+          method: input.method,
+          amount,
+          referenceNumber: input.referenceNumber?.trim() || null,
+          userId: actor.userId,
+          now: new Date(),
+        });
+      },
+      true,
+    );
     return this.afterPayment(actor, sessionId);
   }
 
@@ -537,39 +555,28 @@ export class QrStaffService {
    * (the bill model holds one settlement), which completes the order, schedules the table for
    * cleaning and closes the QR session.
    */
-  private async afterPayment(actor: Actor, sessionId: string): Promise<QrStaffBill> {
+  private async afterPayment(actor: Actor, sessionId: string, retry = false): Promise<QrStaffBill> {
     const restaurant = await this.restaurant(actor);
     const session = await this.guests.findSessionView(actor.restaurantId, sessionId);
     if (!session) throw new NotFoundException('Bill not found');
     const computed = computeSessionBill(session, restaurant.defaultGstRate);
-    await this.notifier.live(actor.restaurantId, [sessionId], { kind: 'bill.changed' });
-    if (computed.settled || !session.order || computed.remaining.gt(0)) {
+    if (!retry) await this.notifier.live(actor.restaurantId, [sessionId], { kind: 'bill.changed' });
+    if (computed.settled) return this.bill(actor, sessionId);
+    if (!session.order || !computed.paid.gt(0) || !computed.paid.equals(computed.totals.payable)) {
+      if (retry) throw new ConflictException('The recorded QR payments must match the amount due');
       return this.bill(actor, sessionId);
     }
     try {
       const bill = await this.bills.generate(actor, session.order.id);
-      const paid = await this.repository.findPaidShares(sessionId);
-      const method =
-        dominantMethod(
-          paid
-            .filter((share) => share.paymentMethod && share.paidAmount)
-            .map((share) => ({
-              method: share.paymentMethod as 'CASH' | 'CARD' | 'UPI',
-              amount: share.paidAmount as Prisma.Decimal,
-            })),
-        ) ?? 'CASH';
-      const breakdown = paid
-        .map(
-          (share) => `${share.paymentMethod} ${formatRupees((share.paidAmount ?? 0).toString())}`,
-        )
-        .join(', ');
-      await this.bills.recordPayment(actor, bill.id, {
-        paymentMethod: method,
-        amount: bill.totalAmount,
-        referenceNumber: `QR split: ${breakdown} (collected ${formatRupees(
-          computed.paid.toFixed(2),
-        )})`.slice(0, 255),
-      });
+      await this.bills.recordPayment(
+        actor,
+        bill.id,
+        {
+          paymentMethod: 'CASH', // The settlement derives the method and allocations from paid shares.
+          amount: bill.totalAmount,
+        },
+        sessionId,
+      );
     } catch (error) {
       // Two captains confirming the last shares at once: the other request already settled the
       // bill. That is success, not an error to retry.
@@ -578,7 +585,8 @@ export class QrStaffService {
         return this.bill(actor, sessionId);
       }
       this.logger.warn('QR bill could not be settled automatically', errorDiagnostics(error));
-      const reason = error instanceof HttpException ? error.message : 'Try again from Billing.';
+      const reason =
+        error instanceof HttpException ? error.message : 'Use Close paid bill to retry.';
       throw new ConflictException(`Payment recorded, but the bill couldn’t be closed: ${reason}`);
     }
     return this.bill(actor, sessionId);

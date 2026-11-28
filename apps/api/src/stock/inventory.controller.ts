@@ -78,6 +78,10 @@ import {
   logInventoryWasteSchema,
   type OpeningInventoryStock,
   openingStockSchema,
+  type SupplierPrice,
+  type SupplierPriceQuery,
+  supplierPriceQuerySchema,
+  supplierPricesSchema,
   type UpdateInventoryItem,
   updateInventoryItemSchema,
   type UpdateInventoryPurchaseStatus,
@@ -208,6 +212,16 @@ export class InventoryController {
     @Query(new ZodValidationPipe(inventoryPurchaseQuerySchema)) query: InventoryPurchaseQuery,
   ): Promise<Paginated<InventoryPurchase>> {
     return this.inventory.purchases(actor, query);
+  }
+
+  @Get('supplier-prices')
+  @ApiZodQuery(supplierPriceQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(supplierPricesSchema) })
+  latestSupplierPrices(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(supplierPriceQuerySchema)) query: SupplierPriceQuery,
+  ): Promise<SupplierPrice[]> {
+    return this.inventory.latestSupplierPrices(actor, query);
   }
 
   @Get('goods-receipts')

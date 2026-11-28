@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Patch, Put, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -11,6 +11,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  type RestaurantLogoResponse,
+  restaurantLogoResponseSchema,
   type RestaurantSettingsResponse,
   restaurantSettingsResponseSchema,
   type UpdateRestaurantSettingsRequest,
@@ -35,6 +37,24 @@ import { RestaurantSettingsService } from './restaurant-settings.service';
 @Controller('restaurant/settings')
 export class RestaurantSettingsController {
   constructor(private readonly restaurantSettingsService: RestaurantSettingsService) {}
+
+  @Get('logo')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOkResponse({ schema: zodOpenApiSchema(restaurantLogoResponseSchema) })
+  logo(@CurrentActor() actor: Actor): Promise<RestaurantLogoResponse> {
+    return this.restaurantSettingsService.logo(actor);
+  }
+
+  @Put('logo')
+  @RequirePermissions(Permission.RESTAURANT_WRITE)
+  @ApiBody({ schema: zodOpenApiSchema(restaurantLogoResponseSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(restaurantLogoResponseSchema) })
+  setLogo(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(restaurantLogoResponseSchema)) input: RestaurantLogoResponse,
+  ): Promise<RestaurantLogoResponse> {
+    return this.restaurantSettingsService.setLogo(actor, input);
+  }
 
   @Get()
   @RequirePermissions(Permission.SETTINGS_READ)

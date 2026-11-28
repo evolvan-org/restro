@@ -12,6 +12,7 @@ import {
   type CaptainOrderListResponse,
   type CompleteOrderResponse,
   type CreateOrderRequest,
+  type DiscardOrderRequest,
   type FireOrderResponse,
   KOT_STATUS_TRANSITIONS,
   type KotBoardQuery,
@@ -21,8 +22,14 @@ import {
   type Order,
   type OrderListQuery,
   type OrderListResponse,
+  orderSelectionSnapshotSchema,
+  type PreparationControlRequest,
+  preparationEventSchema,
+  type PreparationHistoryQuery,
+  type PreparationHistoryResponse,
   type UpdateKotStatusRequest,
   type UpdateKotStatusResponse,
+  type VoidOrderItemRequest,
 } from '@rms/api-contract';
 import { Prisma } from '@rms/db';
 import { Permission } from '@rms/permissions';
@@ -32,6 +39,7 @@ import { actorCan } from '../common/auth/actor-permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
+import { ThermalPrintingService } from '../thermal-printing/thermal-printing.service';
 import {
   sentQuantity,
   toCaptainOrderSummary,
@@ -39,8 +47,9 @@ import {
   toKotQueueItem,
   toOrder,
   toOrderListItem,
+  toPreparation,
 } from './orders.mapper';
-import { type KotRecord, OrdersRepository } from './orders.repository';
+import { type KotRecord, type NewKotLine, OrdersRepository } from './orders.repository';
 
 @Injectable()
 export class OrdersService {
@@ -48,6 +57,7 @@ export class OrdersService {
     private readonly repository: OrdersRepository,
     private readonly notifications: NotificationsService,
     private readonly qrRealtime: QrRealtimePublisher,
+    private readonly printing: ThermalPrintingService,
   ) {}
 
   async create(actor: Actor, input: CreateOrderRequest): Promise<Order> {
@@ -86,6 +96,29 @@ export class OrdersService {
       },
     );
     return toOrder(record);
+  }
+
+  async discard(actor: Actor, orderId: string, input: DiscardOrderRequest): Promise<Order> {
+    return toOrder(await this.repository.discard(actor, orderId, input));
+  }
+
+  async voidItem(
+    actor: Actor,
+    orderId: string,
+    itemId: string,
+    input: VoidOrderItemRequest,
+  ): Promise<Order> {
+    const { order, corrections } = await this.repository.voidPendingItem(
+      actor,
+      orderId,
+      itemId,
+      input,
+    );
+    this.printing.scheduleAutomatic(
+      actor.restaurantId,
+      corrections.filter((ticket) => ticket.printStatus === 'QUEUED').map((ticket) => ticket.id),
+    );
+    return toOrder(order);
   }
 
   async complete(actor: Actor, orderId: string): Promise<CompleteOrderResponse> {
@@ -129,6 +162,17 @@ export class OrdersService {
             'This ticket has changed on another screen. Refresh and try again.',
           );
         }
+        if (context.kot.items.length && context.kot.items.every((item) => item.voidedAt)) {
+          if (context.kot.status === 'PENDING' && input.status === 'COMPLETED') {
+            return context.setStatus('COMPLETED');
+          }
+          throw new ConflictException(
+            'This ticket was voided. Acknowledge it on the station screen',
+          );
+        }
+        if (context.kot.heldAt) {
+          throw new ConflictException('Release this ticket from hold before advancing it');
+        }
         if (!KOT_STATUS_TRANSITIONS[context.kot.status].includes(input.status)) {
           throw new ConflictException(
             `A KOT cannot move from ${context.kot.status} to ${input.status}`,
@@ -136,6 +180,8 @@ export class OrdersService {
         }
         return context.setStatus(input.status);
       },
+      actor.userId,
+      input.status === 'COMPLETED',
     );
     if (input.status === 'READY') {
       await this.notifications.ticketReady(actor.restaurantId, record.id);
@@ -151,6 +197,79 @@ export class OrdersService {
       });
     }
     return toKotQueueItem(record);
+  }
+
+  async controlPreparation(
+    actor: Actor,
+    kotId: string,
+    input: PreparationControlRequest,
+  ): Promise<UpdateKotStatusResponse> {
+    const record = await this.repository.withLockedKot(
+      actor.restaurantId,
+      kotId,
+      async (context) => {
+        const kot = context.kot;
+        if (!kot) throw new NotFoundException('KOT not found');
+        if (kot.controlVersion !== input.expectedVersion) {
+          throw new ConflictException('This ticket changed. Refresh and try again.');
+        }
+        if (
+          kot.status === 'COMPLETED' ||
+          (kot.items.length && kot.items.every((item) => item.voidedAt))
+        )
+          throw new ConflictException('Completed or fully voided tickets cannot be changed');
+        switch (input.action) {
+          case 'ACCEPT':
+            if (kot.status !== 'PENDING')
+              throw new ConflictException('Only a new ticket can be explicitly accepted');
+            if (kot.acceptedAt) throw new ConflictException('This ticket is already accepted');
+            if (kot.heldAt) throw new ConflictException('Release this ticket before accepting it');
+            return context.setPreparation('ACCEPT', { acceptedAt: new Date() });
+          case 'HOLD':
+            if (kot.heldAt) throw new ConflictException('This ticket is already on hold');
+            if (kot.status === 'READY') throw new ConflictException('Ready tickets cannot be held');
+            return context.setPreparation(
+              'HOLD',
+              { heldAt: new Date(), holdReason: input.reason },
+              input.reason,
+            );
+          case 'RELEASE':
+            if (!kot.heldAt) throw new ConflictException('This ticket is not on hold');
+            return context.setPreparation('RELEASE', { heldAt: null, holdReason: null });
+          case 'PRIORITY':
+            if (kot.isPriority === input.isPriority)
+              throw new ConflictException('Priority is unchanged');
+            return context.setPreparation('PRIORITY', { isPriority: input.isPriority });
+          case 'TARGET':
+            if (kot.targetSeconds === input.targetSeconds)
+              throw new ConflictException('Target is unchanged');
+            return context.setPreparation('TARGET', { targetSeconds: input.targetSeconds });
+        }
+      },
+      actor.userId,
+    );
+    return toKotQueueItem(record);
+  }
+
+  async preparationHistory(
+    actor: Actor,
+    kotId: string,
+    query: PreparationHistoryQuery,
+  ): Promise<PreparationHistoryResponse> {
+    const result = await this.repository.preparationHistory(actor.restaurantId, kotId, query);
+    if (!result) throw new NotFoundException('KOT not found');
+    return {
+      data: result.items.map((event) => ({
+        id: event.id,
+        action: preparationEventSchema.shape.action.parse(event.action),
+        status: event.status,
+        state: toPreparation({ ...event, controlVersion: event.version }),
+        reason: event.reason,
+        recordedBy: event.recordedBy,
+        createdAt: event.createdAt.toISOString(),
+      })),
+      meta: buildPageMeta(query.page, query.pageSize, result.total),
+    };
   }
 
   /** Scoped on the server to tables the caller captains; never trusts a client-side filter. */
@@ -213,16 +332,54 @@ export class OrdersService {
 
         // A line may be partly sent: only the quantity not yet on a KOT goes out now.
         const unsentItems = (await context.findActiveItems())
-          .map((item) => ({ ...item, quantity: item.quantity - sentQuantity(item.kotItems) }))
+          .map((item) => ({
+            ...item,
+            orderedQuantity: item.quantity,
+            quantity: item.quantity - sentQuantity(item.kotItems, item.sentQuantity),
+          }))
           .filter((item) => item.quantity > 0);
         if (!unsentItems.length) throw new ConflictException('No unsent items to send');
 
-        const kitchenItems = unsentItems
-          .filter((item) => item.menuItem.itemType === 'FOOD')
-          .map((item) => ({ orderItemId: item.id, quantity: item.quantity }));
-        const barItems = unsentItems
-          .filter((item) => item.menuItem.itemType === 'BAR')
-          .map((item) => ({ orderItemId: item.id, quantity: item.quantity }));
+        const kitchenItems: NewKotLine[] = [];
+        const barItems: NewKotLine[] = [];
+        for (const item of unsentItems) {
+          const selection =
+            item.selectionSnapshot == null
+              ? null
+              : orderSelectionSnapshotSchema.parse(item.selectionSnapshot);
+          const notes =
+            [
+              item.specialInstructions,
+              ...(selection?.modifiers.map((option) => option.kitchenNote || option.name) ?? []),
+            ]
+              .filter((note): note is string => Boolean(note))
+              .join('; ') || null;
+          const components = selection?.components.length
+            ? selection.components
+            : [
+                {
+                  menuItemId: item.menuItemId,
+                  name: item.nameSnapshot,
+                  itemType: item.itemTypeSnapshot ?? item.menuItem.itemType,
+                  quantity: 1,
+                },
+              ];
+          for (const component of components) {
+            if (component.quantity > Math.floor(2147483647 / item.quantity)) {
+              throw new BadRequestException('Combo quantity exceeds the supported maximum');
+            }
+            const line: NewKotLine = {
+              orderItemId: item.id,
+              componentMenuItemId: component.menuItemId,
+              quantity: component.quantity * item.quantity,
+              nameSnapshot: selection?.components.length
+                ? `${component.name} — ${item.nameSnapshot ?? 'Combo'}`
+                : (item.nameSnapshot ?? undefined),
+              instructionsSnapshot: notes,
+            };
+            (component.itemType === 'FOOD' ? kitchenItems : barItems).push(line);
+          }
+        }
         const groups = [
           ...(kitchenItems.length
             ? [{ destination: 'KITCHEN' as const, items: kitchenItems }]
@@ -231,6 +388,9 @@ export class OrdersService {
         ];
 
         const kots = await context.createKots(actor.userId, groups);
+        await context.markSent(
+          unsentItems.map(({ id, orderedQuantity }) => ({ id, quantity: orderedQuantity })),
+        );
         await context.submit();
         return kots;
       });
@@ -242,6 +402,10 @@ export class OrdersService {
       }
       throw error;
     }
+    this.printing.scheduleAutomatic(
+      actor.restaurantId,
+      kots.filter((kot) => kot.printStatus === 'QUEUED').map((kot) => kot.id),
+    );
     const order = await this.repository.findById(actor.restaurantId, orderId);
     if (!order) throw new NotFoundException('Order not found');
     await this.notifications.ticketSent(

@@ -58,6 +58,7 @@ export function toInventoryMovement(row: InventoryMovementRecord): InventoryMove
     reason: row.reason,
     actorName: row.actor.name,
     receiptId: row.receiptId,
+    kotItemId: row.kotItemId,
     createdAt: row.createdAt.toISOString(),
   };
 }

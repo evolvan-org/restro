@@ -8,6 +8,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { OperatingTasksModule } from './operating-tasks/operating-tasks.module';
 import { OrdersModule } from './orders/orders.module';
 import { QrOrderingModule } from './qr-ordering/qr-ordering.module';
 import { ReportsModule } from './reports/reports.module';
@@ -17,6 +18,7 @@ import { RolesModule } from './roles/roles.module';
 import { StatusModule } from './status/status.module';
 import { StockModule } from './stock/stock.module';
 import { TableModule } from './table/table.module';
+import { ThermalPrintingModule } from './thermal-printing/thermal-printing.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -38,7 +40,9 @@ import { UsersModule } from './users/users.module';
     MenuModule,
     NotificationsModule,
     OrdersModule,
+    OperatingTasksModule,
     BillsModule,
+    ThermalPrintingModule,
     StockModule,
     ReservationsModule,
     OnboardingModule,

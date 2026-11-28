@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { authenticatorCodeSchema } from './authenticator';
 import { messageResponseSchema } from './common';
 import { userEmailSchema, userNameSchema, userPasswordSchema } from './user-fields';
 
 export const loginRequestSchema = z.object({
   email: userEmailSchema,
   password: z.string().min(1),
+  verificationCode: authenticatorCodeSchema.optional(),
 });
 
 export const onboardingStateSchema = z.enum(['PENDING', 'COMPLETED']);

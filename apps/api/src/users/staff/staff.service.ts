@@ -279,12 +279,8 @@ function toStaffDetails(input: CreateStaffRequest): StaffDetails {
   };
 }
 
-/**
- * Narrows a role record to the public `{ id, name }` shape. The records also carry `isOwner` and
- * `permissions` for authorization checks, which the strict contract schema rejects on the client.
- */
-function toStaffRole(role: { id: string; name: string }): StaffRole {
-  return { id: role.id, name: role.name };
+function toStaffRole({ id, name }: RoleRecord): StaffRole {
+  return { id, name };
 }
 
 function toStaffAccount(record: StaffRecord): StaffAccount {

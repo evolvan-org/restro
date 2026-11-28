@@ -30,6 +30,12 @@ import {
   kotQueueQuerySchema,
   type KotQueueResponse,
   kotQueueResponseSchema,
+  type PreparationControlRequest,
+  preparationControlRequestSchema,
+  type PreparationHistoryQuery,
+  preparationHistoryQuerySchema,
+  type PreparationHistoryResponse,
+  preparationHistoryResponseSchema,
   type UpdateKotStatusRequest,
   updateKotStatusRequestSchema,
   type UpdateKotStatusResponse,
@@ -54,6 +60,38 @@ import { OrdersService } from './orders.service';
 @Controller('kots')
 export class KotsController {
   constructor(private readonly service: OrdersService) {}
+
+  @Patch(':id/preparation')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.KOT_UPDATE_STATUS)
+  @ApiOperation({ summary: 'Accept, hold, release, prioritise or set a target for a ticket' })
+  @ApiBody({ schema: zodOpenApiSchema(preparationControlRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(updateKotStatusResponseSchema) })
+  @ApiBadRequestResponse(apiError('Invalid preparation action'))
+  @ApiNotFoundResponse(apiError('KOT not found in the caller restaurant'))
+  @ApiConflictResponse(apiError('Ticket changed or the action is not allowed in its current state'))
+  controlPreparation(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(preparationControlRequestSchema)) input: PreparationControlRequest,
+  ): Promise<UpdateKotStatusResponse> {
+    return this.service.controlPreparation(actor, id, input);
+  }
+
+  @Get(':id/preparation-history')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions(Permission.KOT_READ)
+  @ApiOperation({ summary: 'Read the immutable preparation timeline for a ticket' })
+  @ApiZodQuery(preparationHistoryQuerySchema)
+  @ApiOkResponse({ schema: zodOpenApiSchema(preparationHistoryResponseSchema) })
+  @ApiNotFoundResponse(apiError('KOT not found in the caller restaurant'))
+  preparationHistory(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(preparationHistoryQuerySchema)) query: PreparationHistoryQuery,
+  ): Promise<PreparationHistoryResponse> {
+    return this.service.preparationHistory(actor, id, query);
+  }
 
   @Get('board')
   @Header('Cache-Control', 'no-store')

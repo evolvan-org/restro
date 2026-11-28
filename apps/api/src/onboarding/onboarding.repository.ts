@@ -109,7 +109,12 @@ export class OnboardingRepository {
         this.prisma.stockItem.count({ where: { restaurantId, isActive: true } }),
         this.prisma.user.count({ where: { restaurantId, role: { isOwner: false } } }),
         this.prisma.menuItem.count({
-          where: { restaurantId, isActive: true, recipeRequired: true, recipeItems: { none: {} } },
+          where: {
+            restaurantId,
+            isActive: true,
+            recipeRequired: true,
+            recipeItems: { none: { isActive: true } },
+          },
         }),
       ]);
     return {

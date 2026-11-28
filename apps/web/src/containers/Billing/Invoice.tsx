@@ -5,6 +5,8 @@ import { ArrowLeft, Printer } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactElement } from 'react';
 
+import RestaurantLogo from '@/components/RestaurantLogo';
+import ThermalPrint from '@/components/ThermalPrint';
 import { Button } from '@/components/ui/button';
 import usePermissionGuard from '@/hooks/auth/usePermissionGuard';
 import { useBillInvoice } from '@/services/api/requests/bills';
@@ -34,6 +36,7 @@ export default function Invoice({ id }: { id: string }): ReactElement | null {
           >
             <Printer aria-hidden /> Print invoice
           </Button>
+          {invoice && !query.isError && <ThermalPrint id={id} kind="receipt" />}
         </div>
         <QueryState
           pending={query.isPending}
@@ -43,6 +46,7 @@ export default function Invoice({ id }: { id: string }): ReactElement | null {
         {invoice && bill && !query.isError && (
           <article className={styles.invoice} aria-label="Invoice">
             <header className="space-y-2 border-b pb-6">
+              <RestaurantLogo className="size-14 object-contain" />
               <h1 className="break-words text-2xl font-semibold">{invoice.restaurant.name}</h1>
               {invoice.restaurant.address && (
                 <p className="break-words whitespace-pre-line text-sm">
@@ -82,9 +86,35 @@ export default function Invoice({ id }: { id: string }): ReactElement | null {
             </dl>
             {bill.status === 'PAID' && (
               <footer className="mt-8 border-t pt-4 text-sm">
-                <p>Paid{invoice.payment && ` by ${invoice.payment.method}`}</p>
-                {invoice.payment?.referenceNumber && (
-                  <p className="break-all">Reference: {invoice.payment.referenceNumber}</p>
+                {invoice.payment && invoice.payment.tipAmount !== '0.00' && (
+                  <>
+                    <p>
+                      Tip: {bill.currency} {invoice.payment.tipAmount}
+                    </p>
+                    <p>
+                      Total received: {bill.currency} {invoice.payment.amount}
+                    </p>
+                  </>
+                )}
+                {invoice.payment?.tenders?.length ? (
+                  <ul aria-label="Payments received" className="space-y-1">
+                    {invoice.payment.tenders.map((tender, index) => (
+                      <li
+                        className="break-words"
+                        key={tender.qrShareId ?? `${tender.method}-${index}`}
+                      >
+                        {tender.method} {bill.currency} {tender.amount}
+                        {tender.referenceNumber && ` · ${tender.referenceNumber}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <>
+                    <p>Paid{invoice.payment && ` by ${invoice.payment.method}`}</p>
+                    {invoice.payment?.referenceNumber && (
+                      <p className="break-all">Reference: {invoice.payment.referenceNumber}</p>
+                    )}
+                  </>
                 )}
                 {(invoice.payment?.paidAt ?? bill.paidAt) && (
                   <p>

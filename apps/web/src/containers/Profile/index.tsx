@@ -21,6 +21,8 @@ import useShowApiError from '@/hooks/api/useShowApiError';
 import { formatRoleLabel } from '@/lib/utils';
 import { useChangePassword, useProfile, useUpdateProfile } from '@/services/api/requests/profile';
 
+import Authenticator from './Authenticator';
+
 export default function Profile(): ReactElement {
   const profile = useProfile();
   const {
@@ -273,6 +275,7 @@ export default function Profile(): ReactElement {
             </form>
           </CardContent>
         </Card>
+        <Authenticator />
       </div>
     </main>
   );

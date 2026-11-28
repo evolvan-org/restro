@@ -1,0 +1,16 @@
+.document {
+  max-height: 16rem;
+  overflow: auto;
+  margin-inline: auto;
+  width: min(100%, 76mm);
+  padding: 3mm;
+  background: white;
+  color: black;
+  border: 1px solid var(--border);
+  font: 11px/1.4 monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.document[data-paper='58'] {
+  width: min(100%, 54mm);
+}

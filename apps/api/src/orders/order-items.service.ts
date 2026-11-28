@@ -4,15 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type {
-  AddOrderItemRequest,
-  OrderItem,
-  OrderItemMutationResponse,
-  UpdateOrderItemInstructionsRequest,
-  UpdateOrderItemQuantityRequest,
+import {
+  type AddOrderItemRequest,
+  type OrderItem,
+  type OrderItemMutationResponse,
+  orderSelectionSnapshotSchema,
+  type UpdateOrderItemInstructionsRequest,
+  type UpdateOrderItemQuantityRequest,
 } from '@rms/api-contract';
 
 import type { Actor } from '../common/auth/authenticated-request';
+import { buildOrderLine } from './order-selections';
 import { sentQuantity, toOrder } from './orders.mapper';
 import { type LockedOrderContext, OrdersRepository } from './orders.repository';
 
@@ -27,36 +29,44 @@ export class OrderItemsService {
     orderId: string,
     input: AddOrderItemRequest,
   ): Promise<OrderItemMutationResponse> {
-    return this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
-      this.requireMutable(context);
-      const menuItem = await context.findMenuItem(input.menuItemId);
-      if (!menuItem) throw new NotFoundException('Menu item not found');
-      if (!menuItem.isAvailable) throw new BadRequestException('Menu item is unavailable');
-      const specialInstructions = input.specialInstructions?.trim() || null;
-      // Fold into an identical active line (same item, note and price snapshot) so repeated
-      // additions raise its quantity. Units already sent stay on their KOT; the next send
-      // carries only the difference.
-      const existing = await context.findMergeableItem({
-        menuItemId: menuItem.id,
-        specialInstructions,
-        unitPrice: menuItem.price,
-      });
-      if (existing) {
-        const quantity = existing.quantity + input.quantity;
-        if (quantity > MAX_QUANTITY) {
-          throw new BadRequestException('Quantity exceeds the maximum for a single line');
+    return this.repository.withLockedOrder(
+      actor.restaurantId,
+      orderId,
+      async (context) => {
+        this.requireMutable(context);
+        const menuItem = await context.findMenuItem(input.menuItemId);
+        if (!menuItem) throw new NotFoundException('Menu item not found');
+        if (!menuItem.isAvailable) throw new BadRequestException('Menu item is unavailable');
+        const line = await buildOrderLine(menuItem, input, context.findMenuItem);
+        // Fold into an identical active line (same item, note and price snapshot) so repeated
+        // additions raise its quantity. Units already sent stay on their KOT; the next send
+        // carries only the difference.
+        const existing = await context.findMergeableItem({
+          menuItemId: menuItem.id,
+          specialInstructions: line.specialInstructions,
+          unitPrice: line.unitPrice,
+          configurationKey: line.configurationKey,
+        });
+        if (existing) {
+          const quantity = existing.quantity + input.quantity;
+          if (quantity > MAX_QUANTITY) {
+            throw new BadRequestException('Quantity exceeds the maximum for a single line');
+          }
+          if (
+            line.selectionSnapshot.components.some(
+              (component) => component.quantity > Math.floor(MAX_QUANTITY / quantity),
+            )
+          ) {
+            throw new BadRequestException('Combo quantity exceeds the supported maximum');
+          }
+          await context.update(existing.id, { quantity });
+          return this.response(context, existing.id);
         }
-        await context.update(existing.id, { quantity });
-        return this.response(context, existing.id);
-      }
-      const itemId = await context.add({
-        menuItemId: menuItem.id,
-        quantity: input.quantity,
-        specialInstructions,
-        unitPrice: menuItem.price,
-      });
-      return this.response(context, itemId);
-    });
+        const itemId = await context.add(line);
+        return this.response(context, itemId);
+      },
+      true,
+    );
   }
 
   remove(actor: Actor, orderId: string, itemId: string): Promise<OrderItemMutationResponse> {
@@ -79,8 +89,19 @@ export class OrderItemsService {
   ): Promise<OrderItem> {
     return this.edit(actor, orderId, itemId, input, (item) => {
       // Sent units are fixed on their KOT, so the line can grow but never drop below them.
-      if (input.quantity < sentQuantity(item.kotItems)) {
+      if (input.quantity < sentQuantity(item.kotItems, item.sentQuantity)) {
         throw new ConflictException('Quantity cannot be lower than the amount already sent');
+      }
+      const selections =
+        item.selectionSnapshot == null
+          ? null
+          : orderSelectionSnapshotSchema.parse(item.selectionSnapshot);
+      if (
+        selections?.components.some(
+          (component) => component.quantity > Math.floor(MAX_QUANTITY / input.quantity),
+        )
+      ) {
+        throw new BadRequestException('Combo quantity exceeds the supported maximum');
       }
     });
   }
@@ -103,7 +124,7 @@ export class OrderItemsService {
     orderId: string,
     itemId: string,
     input: UpdateOrderItemQuantityRequest | UpdateOrderItemInstructionsRequest,
-    guard: (item: { quantity: number; kotItems: { quantity: number }[] }) => void,
+    guard: (item: NonNullable<Awaited<ReturnType<LockedOrderContext['findItem']>>>) => void,
   ): Promise<OrderItem> {
     return this.repository.withLockedOrder(actor.restaurantId, orderId, async (context) => {
       this.requireMutable(context);

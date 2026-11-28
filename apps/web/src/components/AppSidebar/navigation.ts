@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   type LucideIcon,
+  MessageSquare,
   QrCode,
   Receipt,
   Soup,
@@ -81,12 +82,24 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'MANAGE',
     items: [
       {
+        label: 'Operating checks',
+        icon: ClipboardList,
+        href: '/operating-tasks',
+        permission: Permission.TASK_READ,
+      },
+      {
         label: 'Menu items',
         icon: Soup,
         href: '/menu/items',
         activePaths: ['/menu'],
         permission: Permission.MENU_READ,
         badge: 'missing-recipes',
+      },
+      {
+        label: 'Guest feedback',
+        icon: MessageSquare,
+        href: '/guest-feedback',
+        permission: Permission.QR_SETTINGS_WRITE,
       },
       {
         label: 'Inventory',

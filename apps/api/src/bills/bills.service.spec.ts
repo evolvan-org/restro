@@ -14,6 +14,7 @@ function setup(
   bill: { status: string; subtotal: Prisma.Decimal; totalAmount: Prisma.Decimal } | null,
   orderStatus = 'SUBMITTED',
   createPayment = jest.fn(),
+  paidQrShares = jest.fn().mockResolvedValue([]),
 ) {
   const repository = {
     withLockedOrder: (_r: string, _t: unknown, run: (c: unknown) => unknown) =>
@@ -24,6 +25,7 @@ function setup(
           items: [{ quantity: 1, unitPrice: D('100.00'), kotItems: [{ quantity: 1 }] }],
         },
         createPayment,
+        paidQrShares,
       }),
   } as unknown as BillsRepository;
   const qrRealtime = { publish: jest.fn() } as unknown as QrRealtimePublisher;
@@ -80,6 +82,59 @@ describe('BillsService.recordPayment', () => {
       recordedByUserId: 'u1',
     });
     expect(createPayment.mock.calls[1][0]).toMatchObject({ referenceNumber: 'x' });
+  });
+
+  it('rejects a split that leaves a balance due', async () => {
+    const { service, createPayment } = setup(open);
+    await expect(
+      service.recordPayment(actor, 'b', {
+        paymentMethod: 'CASH',
+        amount: '118.00',
+        tenders: [
+          { method: 'CASH', amount: '60.00' },
+          { method: 'UPI', amount: '57.99' },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+
+  it('keeps each mixed-payment amount and its reference', async () => {
+    const createPayment = jest.fn().mockRejectedValue(new PaymentConflictError());
+    const { service } = setup(open, 'SUBMITTED', createPayment);
+    await expect(
+      service.recordPayment(actor, 'b', {
+        paymentMethod: 'CASH',
+        amount: '123.00',
+        tipAmount: '5.00',
+        tenders: [
+          { method: 'CASH', amount: '50.00' },
+          { method: 'UPI', amount: '73.00', referenceNumber: 'UPI-1' },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(createPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentMethod: 'UPI',
+        tenders: [
+          { method: 'CASH', amount: '50.00', referenceNumber: null },
+          { method: 'UPI', amount: '73.00', referenceNumber: 'UPI-1' },
+        ],
+      }),
+    );
+  });
+
+  it('blocks staff settlement once QR collection has started', async () => {
+    const { service, createPayment } = setup(
+      open,
+      'SUBMITTED',
+      jest.fn(),
+      jest.fn().mockResolvedValue([{}]),
+    );
+    await expect(
+      service.recordPayment(actor, 'b', { paymentMethod: 'CASH', amount: '118.00' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(createPayment).not.toHaveBeenCalled();
   });
 });
 

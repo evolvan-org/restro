@@ -81,7 +81,10 @@ export function useQrQueue(scope: QrQueueScope, enabled = true): UseQueryResult<
   });
 }
 
-export function useQrSummary(enabled: boolean): UseQueryResult<QrSummaryResponse> {
+export function useQrSummary(
+  enabled: boolean,
+  observeLive = true,
+): UseQueryResult<QrSummaryResponse> {
   return useQuery({
     queryKey: [QrQueryKey.Summary],
     queryFn: async ({ signal }) =>
@@ -89,7 +92,7 @@ export function useQrSummary(enabled: boolean): UseQueryResult<QrSummaryResponse
         (await api.get('/qr-orders/summary', { signal, errorDisplay: 'inline' })).data,
       ),
     enabled,
-    ...live,
+    ...(observeLive ? live : { refetchOnWindowFocus: false, refetchOnReconnect: false }),
   });
 }
 
@@ -267,6 +270,21 @@ export function useCollectQrAtTable(
             qrCollectAtTableRequestSchema.parse(input),
           )
         ).data,
+      ),
+    onSettled: invalidate,
+    onError: showApiError,
+  });
+}
+
+export function useFinalizeQrPayment(
+  sessionId: string,
+): UseMutationResult<QrStaffBill, unknown, void> {
+  const invalidate = useInvalidateQr();
+  const showApiError = useShowApiError('Unable to close the paid bill.');
+  return useMutation({
+    mutationFn: async () =>
+      qrStaffBillSchema.parse(
+        (await api.post(`/qr-orders/sessions/${sessionId}/finalize-payment`)).data,
       ),
     onSettled: invalidate,
     onError: showApiError,

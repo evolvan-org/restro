@@ -9,6 +9,8 @@ import { ProvisioningModule } from '../provisioning/provisioning.module';
 import { AuthController } from './auth.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
+import { AuthenticatorController } from './authenticator.controller';
+import { AuthenticatorService } from './authenticator.service';
 
 @Module({
   imports: [
@@ -19,8 +21,8 @@ import { AuthService } from './auth.service';
     RateLimitModule,
     AuthorizationModule,
   ],
-  controllers: [AuthController],
-  providers: [AuthRepository, AuthService],
+  controllers: [AuthController, AuthenticatorController],
+  providers: [AuthRepository, AuthService, AuthenticatorService],
   exports: [AuthService],
 })
 export class AuthModule {}

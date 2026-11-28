@@ -23,6 +23,7 @@ import {
   useInventoryCommand,
   useInventoryOptions,
   useInventoryReceipts,
+  useLatestSupplierPrices,
 } from '@/services/api/requests/inventory';
 
 import {
@@ -106,6 +107,29 @@ function supplyDraft(
   };
 }
 
+/** Keep all draft terms in fixed-point until rounding the total to currency precision. */
+function estimatePurchaseTotal(lines: readonly LineDraft[]): string | null {
+  const scaled = (value: string, scale: number): bigint => {
+    const [whole = '', fraction = ''] = value.split('.');
+    return BigInt(whole) * 10n ** BigInt(scale) + BigInt(fraction.padEnd(scale, '0'));
+  };
+  let amount = 0n;
+  for (const line of lines) {
+    if (
+      !line.stockItemId ||
+      !line.unit ||
+      !/^\d{1,9}(?:\.\d{1,3})?$/.test(line.quantity) ||
+      !/^\d{1,10}(?:\.\d{1,8})?$/.test(line.unitCost)
+    )
+      return null;
+    const quantity = scaled(line.quantity, 3);
+    if (!quantity) return null;
+    amount += quantity * scaled(line.unitCost, 8);
+  }
+  const minor = (amount + 500000000n) / 1000000000n;
+  return (minor / 100n).toString() + '.' + (minor % 100n).toString().padStart(2, '0');
+}
+
 export function DocumentForm({
   mode,
   purchase,
@@ -126,6 +150,13 @@ export function DocumentForm({
   const lines = useWatch({ control: form.control, name: 'lines' });
   const { errors } = form.formState;
   const isReceipt = mode === 'receipt';
+  const supplierId = useWatch({ control: form.control, name: 'supplierId' });
+  const prices = useLatestSupplierPrices(
+    isReceipt ? '' : supplierId,
+    lines.map((line) => line.stockItemId).filter(Boolean),
+  );
+  const pricesByItem = new Map(prices.data?.map((price) => [price.stockItemId, price]));
+  const estimatedTotal = isReceipt ? null : estimatePurchaseTotal(lines);
   const poLines = purchase?.lines.filter(({ quantityRemaining }) => Number(quantityRemaining) > 0);
   const optionsData = options.data;
   const itemOptions = optionsData?.items.filter(({ opened }) => !isReceipt || opened) ?? [];
@@ -262,6 +293,7 @@ export function DocumentForm({
           <div className="space-y-3">
             {fields.map((field, index) => {
               const line = lines[index];
+              const lastPrice = line ? pricesByItem.get(line.stockItemId) : undefined;
               const error = errors.lines?.[index];
               const selectedOrderLine = poLines?.find(({ id }) => id === line?.purchaseOrderLineId);
               const selectedItem = itemOptions.find(({ id }) => id === line?.stockItemId);
@@ -373,6 +405,17 @@ export function DocumentForm({
                       />
                     </div>
                   )}
+                  {lastPrice && !isReceipt && (
+                    <p className="text-sm text-muted-foreground">
+                      Last received at {lastPrice.unitCost} per {priceUnit(lastPrice.unit)}
+                      {lastPrice.packageSize &&
+                        ` · ${packageDescription(lastPrice.unit, lastPrice.packageSize)}`}
+                      {' · '}
+                      <time dateTime={lastPrice.receivedAt}>
+                        {new Date(lastPrice.receivedAt).toLocaleDateString()}
+                      </time>
+                    </p>
+                  )}
                   <div className="grid gap-3 sm:grid-cols-2">
                     <InventoryInput
                       label={`Quantity${unit}`}
@@ -421,6 +464,12 @@ export function DocumentForm({
               <Plus /> Add line
             </Button>
           </div>
+          {!isReceipt && (
+            <p className="flex justify-between border-t pt-3 text-sm" aria-live="polite">
+              <span>Estimated order total</span>
+              <strong>{estimatedTotal ?? '—'}</strong>
+            </p>
+          )}
           <InventorySubmit
             pending={isPending}
             label={isReceipt ? 'Post receipt' : 'Create draft'}

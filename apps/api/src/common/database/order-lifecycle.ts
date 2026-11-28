@@ -28,3 +28,11 @@ export async function lockOrderLifecycle(
     select: { id: true, tableId: true, reservationId: true },
   });
 }
+
+/** Prevent a staff settlement and a QR share collection from both recording the same balance. */
+export async function lockRestaurantPayments(
+  tx: Prisma.TransactionClient,
+  restaurantId: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'payments:' + restaurantId}, 0))`;
+}

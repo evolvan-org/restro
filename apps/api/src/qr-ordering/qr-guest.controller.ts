@@ -33,6 +33,8 @@ import {
   qrChannelAuthRequestSchema,
   type QrChannelAuthResponse,
   qrChannelAuthResponseSchema,
+  type QrFeedbackRequest,
+  qrFeedbackRequestSchema,
   type QrJoinRequest,
   qrJoinRequestSchema,
   type QrJoinResponse,
@@ -56,6 +58,7 @@ import type { Request } from 'express';
 
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { apiError, zodOpenApiSchema } from '../common/swagger/zod-openapi';
+import { QrFeedbackService } from './qr-feedback.service';
 import { QrGuestService } from './qr-guest.service';
 import { QrTokenPipe } from './qr-token.pipe';
 
@@ -77,7 +80,10 @@ const guestSecretHeader = ApiHeader({
 @ApiResponse({ status: 429, ...apiError('Too many requests') })
 @Controller('qr/:token')
 export class QrGuestController {
-  constructor(private readonly service: QrGuestService) {}
+  constructor(
+    private readonly service: QrGuestService,
+    private readonly feedback: QrFeedbackService,
+  ) {}
 
   @Get()
   @Header('Cache-Control', 'no-store')
@@ -88,6 +94,19 @@ export class QrGuestController {
     @Req() request: Request,
   ): Promise<QrResolveResponse> {
     return this.service.resolve(token, clientIp(request));
+  }
+
+  @Post('feedback')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Send anonymous feedback about this table visit' })
+  @ApiBody({ schema: zodOpenApiSchema(qrFeedbackRequestSchema) })
+  @ApiOkResponse({ schema: zodOpenApiSchema(okResponseSchema) })
+  submitFeedback(
+    @Param('token', QrTokenPipe) token: string,
+    @Req() request: Request,
+    @Body(new ZodValidationPipe(qrFeedbackRequestSchema)) input: QrFeedbackRequest,
+  ): Promise<OkResponse> {
+    return this.feedback.submit(token, clientIp(request), input);
   }
 
   @Get('menu')

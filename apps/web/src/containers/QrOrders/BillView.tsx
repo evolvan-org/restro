@@ -22,6 +22,7 @@ import useNow from '@/hooks/useNow';
 import { formatClockTime, formatRupees, initialsOf, minutesAgo } from '@/lib/qr';
 import {
   useCollectQrAtTable,
+  useFinalizeQrPayment,
   useQrBill,
   useRecordQrSharePayment,
   useUpiQrImage,
@@ -40,9 +41,13 @@ const SPLIT_TITLE: Record<NonNullable<QrStaffBill['splitMode']>, (n: number) => 
 /** A QR table's bill and per-share payment status (C4); payments confirmed manually. */
 export default function QrBillView({ sessionId }: { sessionId: string }): ReactElement {
   const bill = useQrBill(sessionId);
+  const finalize = useFinalizeQrPayment(sessionId);
   const now = useNow(30_000);
   const [collect, setCollect] = useState<{ share: QrShare | null } | null>(null);
   const data = bill.data;
+  const readyToClose = Boolean(
+    data && !data.settled && Number(data.paid) > 0 && data.paid === data.payable,
+  );
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -146,7 +151,7 @@ export default function QrBillView({ sessionId }: { sessionId: string }): ReactE
                             : 'Unpaid'
                         }
                       />
-                      {!data.settled && (
+                      {!data.settled && !readyToClose && (
                         <Button
                           size="sm"
                           className="min-h-10"
@@ -168,7 +173,16 @@ export default function QrBillView({ sessionId }: { sessionId: string }): ReactE
           </div>
 
           <div className="sticky bottom-0 mt-6 flex flex-col border-t bg-background px-4 pt-3 pb-4">
-            {!data.settled && (
+            {readyToClose && (
+              <Button
+                className="min-h-14 w-full text-base"
+                disabled={finalize.isPending}
+                onClick={() => finalize.mutate()}
+              >
+                <CheckCheck aria-hidden /> {finalize.isPending ? 'Closing…' : 'Close paid bill'}
+              </Button>
+            )}
+            {!data.settled && !readyToClose && (
               <Button
                 className="min-h-14 w-full text-base"
                 onClick={() => setCollect({ share: null })}

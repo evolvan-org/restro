@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { type ReactElement, useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import { useStaffLanguage } from '@/components/StaffPreferences';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,9 @@ import {
   paymentFormSchema,
   type PaymentFormValues,
   paymentNeedsReference,
+  paymentTotalWithTip,
+  splitPaymentFields,
+  summarizeSplitPayment,
   toCancellationRequest,
   toDiscountRequest,
   toPaymentRequest,
@@ -74,6 +78,7 @@ export default function BillDetails({ id }: { id: string }): ReactElement | null
 
 function BillContent({ bill }: { bill: Bill }): ReactElement {
   const { can } = usePermissions();
+  const t = useStaffLanguage();
   const { mutateAsync: updateBill, isPending: updating } = useUpdateBill();
   const { mutateAsync: cancelBill, isPending: cancelling } = useCancelBill();
   const { mutateAsync: reopenBill, isPending: reopening } = useGenerateBill();
@@ -100,7 +105,12 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
     resolver: zodResolver(paymentFormSchema),
     defaultValues: paymentDefaults(),
   });
-  const paymentMethod = useWatch({ control: payment.control, name: 'paymentMethod' });
+  const paymentValues = useWatch({ control: payment.control });
+  const paymentMethod = paymentValues.paymentMethod ?? 'CASH';
+  const checkoutTotal = paymentTotalWithTip(bill.totalAmount, paymentValues.tip ?? '');
+  const mixedPayment = paymentMethod === 'MIXED';
+  const split =
+    mixedPayment && checkoutTotal ? summarizeSplitPayment(checkoutTotal, paymentValues) : null;
   const needsReference = paymentNeedsReference(paymentMethod);
   const { reset: resetDiscount } = discount;
   const { reset: resetCancellation } = cancellation;
@@ -236,20 +246,35 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               className={`${styles.panel} ${styles.form}`}
               noValidate
               onSubmit={payment.handleSubmit(async (values) => {
+                const total = paymentTotalWithTip(bill.totalAmount, values.tip);
+                if (total === null) {
+                  payment.setError('tip', { message: 'Total with tip exceeds the payment limit' });
+                  return;
+                }
+                if (
+                  values.paymentMethod === 'MIXED' &&
+                  !summarizeSplitPayment(total, values)?.ready
+                ) {
+                  payment.setError('root', {
+                    message: 'Enter amounts for at least two methods that add up to the total.',
+                  });
+                  return;
+                }
                 if (!confirmingPayment) {
                   setPaymentConfirmation(paymentVersion);
                   return;
                 }
                 setPaymentConfirmation(null);
                 try {
-                  await recordPayment({ id: bill.id, input: toPaymentRequest(bill, values) });
+                  await recordPayment({ id: bill.id, input: toPaymentRequest(values, total) });
                 } catch {
                   /* Hook owns the error; retain form values. */
                 }
               })}
             >
               <h2 className={styles.sectionTitle}>
-                <Banknote className="size-4 text-muted-foreground" aria-hidden /> Record payment
+                <Banknote className="size-4 text-muted-foreground" aria-hidden />{' '}
+                {t('Record payment')}
               </h2>
               <div className={styles.formFields}>
                 <label>
@@ -263,13 +288,71 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
                     <NativeSelectOption value="CASH">Cash</NativeSelectOption>
                     <NativeSelectOption value="CARD">Card</NativeSelectOption>
                     <NativeSelectOption value="UPI">UPI</NativeSelectOption>
+                    <NativeSelectOption value="MIXED">Split payment</NativeSelectOption>
                   </NativeSelect>
                 </label>
                 <label>
-                  Amount
-                  <Input value={bill.totalAmount} readOnly disabled />
+                  {t('Amount to collect')}
+                  <Input value={checkoutTotal ?? ''} readOnly />
+                </label>
+                <label>
+                  {t('Optional tip')}
+                  <Input
+                    inputMode="decimal"
+                    {...payment.register('tip', {
+                      onChange: () => setPaymentConfirmation(null),
+                    })}
+                    disabled={busy}
+                    aria-invalid={Boolean(payment.formState.errors.tip)}
+                    aria-describedby="bill-tip-error"
+                  />
+                  <FieldError id="bill-tip-error">
+                    {payment.formState.errors.tip?.message}
+                  </FieldError>
                 </label>
               </div>
+              {mixedPayment && (
+                <>
+                  <div className={styles.formFields}>
+                    {splitPaymentFields.map(({ label, amount, reference }) => (
+                      <div className="space-y-2" key={amount}>
+                        <label>
+                          {label} amount
+                          <Input
+                            inputMode="decimal"
+                            {...payment.register(amount, {
+                              onChange: () => setPaymentConfirmation(null),
+                            })}
+                            disabled={busy}
+                            aria-invalid={Boolean(payment.formState.errors[amount])}
+                          />
+                          <FieldError>{payment.formState.errors[amount]?.message}</FieldError>
+                        </label>
+                        {reference && (
+                          <label>
+                            {label} reference (optional)
+                            <Input
+                              maxLength={255}
+                              {...payment.register(reference, {
+                                onChange: () => setPaymentConfirmation(null),
+                              })}
+                              disabled={busy}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p
+                    aria-live="polite"
+                    className={split?.overpaid ? 'text-sm text-destructive' : 'text-sm font-medium'}
+                  >
+                    {split &&
+                      `${split.overpaid ? 'Over by' : 'Balance due'} ${bill.currency} ${split.balance}`}
+                  </p>
+                  <FieldError>{payment.formState.errors.root?.message}</FieldError>
+                </>
+              )}
               {needsReference && (
                 <label>
                   {paymentMethod === 'CARD' ? 'Card slip reference' : 'UPI transaction id'}{' '}
@@ -290,12 +373,18 @@ function BillContent({ bill }: { bill: Bill }): ReactElement {
               </FieldError>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {confirmingPayment
-                  ? `Confirm receiving ${bill.currency} ${bill.totalAmount} by ${paymentMethod}. A recorded payment cannot be edited, and the bill and order will be closed.`
-                  : 'The full bill total is settled in one payment. Split payments are not supported.'}
+                  ? `Confirm receiving ${bill.currency} ${checkoutTotal}${mixedPayment ? ' across the selected methods' : ` by ${paymentMethod}`}. This closes the bill and order.`
+                  : mixedPayment
+                    ? 'Enter the amounts received using at least two methods.'
+                    : null}
               </p>
               <div className="flex gap-2">
                 <Button type="submit" className={`${styles.touchButton} flex-1`} disabled={busy}>
-                  {paying ? 'Recording…' : confirmingPayment ? 'Confirm payment' : 'Mark as paid'}
+                  {paying
+                    ? 'Recording…'
+                    : confirmingPayment
+                      ? 'Confirm payment'
+                      : t('Mark as paid')}
                 </Button>
                 {confirmingPayment && !paying && (
                   <Button

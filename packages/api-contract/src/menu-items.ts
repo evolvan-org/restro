@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { paginatedResponseSchema, paginationQuerySchema } from './common';
+import { menuCustomizationsSchema } from './menu-customizations';
 import { servingTypeSchema } from './serving-types';
 import { stockItemSchema, unitSchema } from './stock-items';
 
@@ -97,6 +98,7 @@ export const menuItemSchema = z
     /** Veg / non-veg marker on the guest QR menu; null shows no marker. */
     isVeg: z.boolean().nullable(),
     recipe: z.array(recipeItemSchema),
+    customizations: menuCustomizationsSchema.optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })

@@ -74,6 +74,9 @@ enum AuthRateLimitAction {
   QR_RESOLVE_MINUTE
   QR_JOIN_WINDOW
   QR_GUEST_WRITE_MINUTE
+  QR_FEEDBACK_WINDOW
+  MENU_PHOTO_SCAN_WINDOW
+  AUTHENTICATOR_ATTEMPT
 }
 
 enum NotificationType {
@@ -207,27 +210,33 @@ enum PaymentStatus {
 // ----------------------------------------------------------------------------
 
 model Restaurant {
-  id                    String           @id @default(uuid()) @db.Uuid
-  name                  String           @db.VarChar(255)
-  gstNumber             String?          @map("gst_number") @db.VarChar(50)
-  defaultGstRate        Decimal          @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
-  maxDiscountPercent    Decimal          @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
-  address               String?          @db.VarChar(500)
-  currency              String           @default("INR") @db.VarChar(10)
-  timezone              String           @default("Asia/Kolkata") @db.VarChar(100)
-  status                RestaurantStatus @default(ACTIVE)
+  thermalPrinters       ThermalPrinter[]
+  thermalPrintConnector ThermalPrintConnector?
+  logo                  RestaurantLogo?
+  foodIncidents         FoodIncident[]
+  foodIncidentBatches   FoodIncidentBatch[]
+  foodIncidentEntries   FoodIncidentEntry[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String                 @db.VarChar(255)
+  gstNumber             String?                @map("gst_number") @db.VarChar(50)
+  defaultGstRate        Decimal                @default(0) @map("default_gst_rate") @db.Decimal(5, 2)
+  maxDiscountPercent    Decimal                @default(20) @map("max_discount_percent") @db.Decimal(5, 2)
+  address               String?                @db.VarChar(500)
+  currency              String                 @default("INR") @db.VarChar(10)
+  timezone              String                 @default("Asia/Kolkata") @db.VarChar(100)
+  status                RestaurantStatus       @default(ACTIVE)
   /// Null while the owner's guided setup is pending; set once by `POST /onboarding/complete`.
-  onboardingCompletedAt DateTime?        @map("onboarding_completed_at") @db.Timestamptz(6)
+  onboardingCompletedAt DateTime?              @map("onboarding_completed_at") @db.Timestamptz(6)
   /// Master switch for guest QR ordering (REST-88). Off by default.
-  qrOrderingEnabled     Boolean          @default(false) @map("qr_ordering_enabled")
+  qrOrderingEnabled     Boolean                @default(false) @map("qr_ordering_enabled")
   /// Minutes a guest round may wait for its captain before managers are alerted (1–15).
-  qrEscalationMinutes   Int              @default(3) @map("qr_escalation_minutes")
+  qrEscalationMinutes   Int                    @default(3) @map("qr_escalation_minutes")
   /// Phone number on the guest "Call restaurant" button.
-  guestPhone            String?          @map("guest_phone") @db.VarChar(30)
+  guestPhone            String?                @map("guest_phone") @db.VarChar(30)
   /// Guest app accent (#RRGGBB). Null uses the default; must give 4.5:1 with white text.
-  brandColor            String?          @map("brand_color") @db.VarChar(7)
-  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  brandColor            String?                @map("brand_color") @db.VarChar(7)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   users                   User[]
   userTokens              UserToken[]
@@ -240,6 +249,7 @@ model Restaurant {
   reservations            Reservation[]
   menuCategories          MenuCategory[]
   menuItems               MenuItem[]
+  menuItemRevisions       MenuItemRevision[]
   stockItems              StockItem[]
   stockBatches            StockBatch[]
   stockMovements          StockMovement[]
@@ -248,6 +258,16 @@ model Restaurant {
   inventoryReceipts       InventoryReceipt[]
   orders                  Order[]
   kots                    Kot[]
+  preparationEvents       PreparationEvent[]
+  operatingTasks          OperatingTask[]
+  operatingTaskEvents     OperatingTaskEvent[]
+  attendanceSessions      AttendanceSession[]
+  attendanceEvents        AttendanceEvent[]
+  attendanceCorrections   AttendanceCorrection[]
+  staffShifts             StaffShift[]
+  staffAvailability       StaffAvailability[]
+  staffLeave              StaffLeave[]
+  workforceEvents         WorkforceEvent[]
   bills                   Bill[]
   notifications           Notification[]
   billCancellationReasons BillCancellationReason[]
@@ -258,6 +278,7 @@ model Restaurant {
   qrRounds                QrRound[]
   qrBillShares            QrBillShare[]
   qrAlerts                QrAlert[]
+  qrFeedback              QrFeedback[]
   pushSubscriptions       PushSubscription[]
 
   @@map("restaurants")
@@ -284,24 +305,33 @@ model OnboardingDraft {
 // ----------------------------------------------------------------------------
 
 model User {
-  id                 String     @id @default(uuid()) @db.Uuid
-  restaurantId       String     @map("restaurant_id") @db.Uuid
-  roleId             String     @map("role_id") @db.Uuid
-  name               String     @db.VarChar(255)
-  email              String     @unique @db.VarChar(255) // globally unique across all tenants
-  phone              String?    @db.VarChar(30)
+  foodIncidentsCreated        FoodIncident[]      @relation("IncidentCreator")
+  foodIncidentsResolved       FoodIncident[]      @relation("IncidentResolver")
+  foodIncidentEntries         FoodIncidentEntry[]
+  id                          String              @id @default(uuid()) @db.Uuid
+  restaurantId                String              @map("restaurant_id") @db.Uuid
+  roleId                      String              @map("role_id") @db.Uuid
+  name                        String              @db.VarChar(255)
+  email                       String              @unique @db.VarChar(255) // globally unique across all tenants
+  phone                       String?             @db.VarChar(30)
   /// Authentication-only; never expose through the API.
-  passwordHash       String?    @map("password_hash") @db.VarChar(255)
-  status             UserStatus @default(ACTIVE)
-  emailVerifiedAt    DateTime?  @map("email_verified_at") @db.Timestamptz(6)
-  authVersion        Int        @default(0) @map("auth_version")
+  passwordHash                String?             @map("password_hash") @db.VarChar(255)
+  status                      UserStatus          @default(ACTIVE)
+  emailVerifiedAt             DateTime?           @map("email_verified_at") @db.Timestamptz(6)
+  authVersion                 Int                 @default(0) @map("auth_version")
+  authenticatorSecret         String?             @map("authenticator_secret")
+  authenticatorPending        String?             @map("authenticator_pending")
+  authenticatorPendingUntil   DateTime?           @map("authenticator_pending_until") @db.Timestamptz(6)
+  authenticatorCounter        Int?                @map("authenticator_counter")
+  authenticatorRecoveryHashes String[]            @default([]) @map("authenticator_recovery_hashes")
+  authenticatorVersion        Int                 @default(0) @map("authenticator_version")
   /// Set for accounts created with a generated one-time password; cleared on the first password change.
-  mustChangePassword Boolean    @default(false) @map("must_change_password")
-  lastLoginAt        DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  mustChangePassword          Boolean             @default(false) @map("must_change_password")
+  lastLoginAt                 DateTime?           @map("last_login_at") @db.Timestamptz(6)
   /// Last authenticated request (throttled to one write a minute). Drives captain availability.
-  lastSeenAt         DateTime?  @map("last_seen_at") @db.Timestamptz(6)
-  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastSeenAt                  DateTime?           @map("last_seen_at") @db.Timestamptz(6)
+  createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant Restaurant  @relation(fields: [restaurantId], references: [id])
   role       Role        @relation(fields: [roleId], references: [id]) // Restrict (default): can't delete a role in use
@@ -311,7 +341,10 @@ model User {
   reservationsCreated     Reservation[]            @relation("ReservationCreatedBy")
   tablesCaptained         RestaurantTable[]        @relation("TableCaptain")
   ordersCreated           Order[]                  @relation("OrderCreatedBy")
+  ordersDiscarded         Order[]                  @relation("OrderDiscardedBy")
+  kotItemsVoided          KotItem[]                @relation("KotItemVoidedBy")
   kotsCreated             Kot[]                    @relation("KotCreatedBy")
+  preparationEvents       PreparationEvent[]
   billsGenerated          Bill[]                   @relation("BillGeneratedBy")
   paymentsRecorded        Payment[]                @relation("PaymentRecordedBy")
   notifications           Notification[]
@@ -326,6 +359,26 @@ model User {
   qrSharesRecorded        QrBillShare[]            @relation("QrShareRecordedBy")
   qrAlertsResolved        QrAlert[]                @relation("QrAlertResolvedBy")
   pushSubscriptions       PushSubscription[]
+
+  menuItemRevisions      MenuItemRevision[]
+  operatingTasksAssigned OperatingTask[]      @relation("TaskAssignee")
+  operatingTasksCreated  OperatingTask[]      @relation("TaskCreator")
+  operatingTaskEvents    OperatingTaskEvent[]
+
+  attendanceSessions             AttendanceSession[]
+  attendanceEvents               AttendanceEvent[]
+  attendanceCorrections          AttendanceCorrection[] @relation("AttendanceSubject")
+  attendanceCorrectionsRequested AttendanceCorrection[] @relation("AttendanceRequester")
+  attendanceCorrectionsReviewed  AttendanceCorrection[] @relation("AttendanceReviewer")
+
+  staffShifts             StaffShift[]        @relation("ShiftSubject")
+  staffShiftsCreated      StaffShift[]        @relation("ShiftCreator")
+  staffAvailability       StaffAvailability[]
+  staffLeave              StaffLeave[]        @relation("LeaveSubject")
+  staffLeaveRequested     StaffLeave[]        @relation("LeaveRequester")
+  staffLeaveReviewed      StaffLeave[]        @relation("LeaveReviewer")
+  workforceEvents         WorkforceEvent[]    @relation("WorkforceSubject")
+  workforceEventsRecorded WorkforceEvent[]    @relation("WorkforceRecorder")
 
   @@index([restaurantId])
   @@index([roleId])
@@ -516,6 +569,7 @@ model RestaurantTable {
   qrSessions    QrSession[]
   qrRounds      QrRound[]
   qrAlerts      QrAlert[]
+  qrFeedback    QrFeedback[]
 
   // Case-insensitive uniqueness per section is enforced by a raw index on
   // (restaurant_id, section_id, lower(table_number))
@@ -614,19 +668,44 @@ model MenuItem {
   recipeRequired Boolean     @default(true) @map("recipe_required")
   /// FSSAI marker for the guest menu: true = veg, false = non-veg, null = not shown.
   isVeg          Boolean?    @map("is_veg")
+  customizations Json        @default("{\"variants\":[],\"groups\":[],\"components\":[]}")
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id])
-  category     MenuCategory  @relation(fields: [categoryId], references: [id])
-  orderItems   OrderItem[]
-  recipeItems  RecipeItem[]
-  qrCartItems  QrCartItem[]
-  qrRoundItems QrRoundItem[]
+  restaurant    Restaurant         @relation(fields: [restaurantId], references: [id])
+  category      MenuCategory       @relation(fields: [categoryId], references: [id])
+  orderItems    OrderItem[]
+  recipeItems   RecipeItem[]
+  qrCartItems   QrCartItem[]
+  qrRoundItems  QrRoundItem[]
+  revisions     MenuItemRevision[]
+  kotComponents KotItem[]          @relation("KotComponent")
 
   @@index([restaurantId])
   @@index([categoryId])
   @@map("menu_items")
+}
+
+/// Append-only observations of menu prices and recipes. Existing history is never inferred.
+model MenuItemRevision {
+  id               String   @id @default(uuid()) @db.Uuid
+  restaurantId     String   @map("restaurant_id") @db.Uuid
+  menuItemId       String   @map("menu_item_id") @db.Uuid
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+  revision         Int
+  reason           String   @db.VarChar(30)
+  snapshot         Json
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id])
+  recordedBy User       @relation(fields: [recordedByUserId], references: [id])
+
+  @@unique([menuItemId, revision])
+  @@index([restaurantId, menuItemId, createdAt])
+  @@index([recordedByUserId])
+  @@map("menu_item_revisions")
 }
 
 /// Unit of measure for a recipe ingredient quantity.
@@ -672,6 +751,7 @@ model RecipeItem {
   stockItemId String   @map("stock_item_id") @db.Uuid
   quantity    Decimal  @db.Decimal(12, 3)
   unit        Unit
+  isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   menuItem  MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
@@ -698,6 +778,7 @@ enum StockMovementKind {
   ADJUSTMENT
   RECEIPT
   WASTE
+  USAGE
 }
 
 enum InventoryPurchaseStatus {
@@ -709,16 +790,17 @@ enum InventoryPurchaseStatus {
 }
 
 model StockBatch {
-  id                String    @id @default(uuid()) @db.Uuid
-  restaurantId      String    @map("restaurant_id") @db.Uuid
-  stockItemId       String    @map("stock_item_id") @db.Uuid
-  receiptLineId     String?   @unique @map("receipt_line_id") @db.Uuid
-  batchNumber       String    @map("batch_number") @db.VarChar(80)
-  quantityReceived  Decimal   @map("quantity_received") @db.Decimal(12, 3)
-  quantityRemaining Decimal   @map("quantity_remaining") @db.Decimal(12, 3)
-  unitCost          Decimal   @map("unit_cost") @db.Decimal(18, 8)
-  expiryDate        DateTime? @map("expiry_date") @db.Date
-  receivedAt        DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  foodIncidentLinks FoodIncidentBatch[]
+  id                String              @id @default(uuid()) @db.Uuid
+  restaurantId      String              @map("restaurant_id") @db.Uuid
+  stockItemId       String              @map("stock_item_id") @db.Uuid
+  receiptLineId     String?             @unique @map("receipt_line_id") @db.Uuid
+  batchNumber       String              @map("batch_number") @db.VarChar(80)
+  quantityReceived  Decimal             @map("quantity_received") @db.Decimal(12, 3)
+  quantityRemaining Decimal             @map("quantity_remaining") @db.Decimal(12, 3)
+  unitCost          Decimal             @map("unit_cost") @db.Decimal(18, 8)
+  expiryDate        DateTime?           @map("expiry_date") @db.Date
+  receivedAt        DateTime            @default(now()) @map("received_at") @db.Timestamptz(6)
 
   restaurant  Restaurant            @relation(fields: [restaurantId], references: [id])
   stockItem   StockItem             @relation(fields: [stockItemId], references: [id])
@@ -737,6 +819,7 @@ model StockMovement {
   batchId      String?           @map("batch_id") @db.Uuid
   receiptId    String?           @map("receipt_id") @db.Uuid
   actorId      String            @map("actor_id") @db.Uuid
+  kotItemId    String?           @map("kot_item_id") @db.Uuid
   kind         StockMovementKind
   quantity     Decimal           @db.Decimal(12, 3)
   unitCost     Decimal?          @map("unit_cost") @db.Decimal(18, 8)
@@ -747,11 +830,13 @@ model StockMovement {
   stockItem  StockItem         @relation(fields: [stockItemId], references: [id])
   batch      StockBatch?       @relation(fields: [batchId], references: [id])
   receipt    InventoryReceipt? @relation(fields: [receiptId], references: [id])
+  kotItem     KotItem?           @relation(fields: [kotItemId], references: [id], onDelete: SetNull)
   actor      User              @relation(fields: [actorId], references: [id])
 
   @@index([restaurantId, createdAt])
   @@index([restaurantId, stockItemId, createdAt])
   @@index([batchId])
+  @@index([kotItemId])
   @@index([receiptId])
   @@map("stock_movements")
 }
@@ -893,6 +978,9 @@ model Order {
   reservationId   String?     @map("reservation_id") @db.Uuid // [C1] nullable: walk-ins have no reservation
   createdByUserId String      @map("created_by_user_id") @db.Uuid
   status          OrderStatus @default(OPEN)
+  seatedReservationOnOpen Boolean @default(false) @map("seated_reservation_on_open")
+  discardedByUserId String? @map("discarded_by_user_id") @db.Uuid
+  discardReason   String?     @map("discard_reason") @db.VarChar(255)
   notes           String?     @db.VarChar(255)
   openedAt        DateTime    @map("opened_at") @db.Timestamptz(6)
   completedAt     DateTime?   @map("completed_at") @db.Timestamptz(6)
@@ -903,6 +991,7 @@ model Order {
   table         RestaurantTable @relation(fields: [tableId], references: [id])
   reservation   Reservation?    @relation(fields: [reservationId], references: [id])
   createdByUser User            @relation("OrderCreatedBy", fields: [createdByUserId], references: [id])
+  discardedBy   User?            @relation("OrderDiscardedBy", fields: [discardedByUserId], references: [id], onDelete: SetNull)
   items         OrderItem[]
   kots          Kot[]
   bill          Bill?
@@ -925,6 +1014,13 @@ model OrderItem {
   quantity            Int
   /// Price snapshot at time of ordering — insulates the bill from later menu edits.
   unitPrice           Decimal         @map("unit_price") @db.Decimal(12, 2)
+  nameSnapshot        String?         @map("name_snapshot") @db.Text
+  /// Observed when the line is created; null for older lines. Snapshot IDs are historical facts.
+  itemTypeSnapshot    ServingType?    @map("item_type_snapshot")
+  selectionSnapshot   Json?           @map("selection_snapshot")
+  recipeSnapshot      Json?           @map("recipe_snapshot")
+  configurationKey    String?         @map("configuration_key") @db.VarChar(64)
+  sentQuantity        Int?            @map("sent_quantity")
   specialInstructions String?         @map("special_instructions") @db.VarChar(255)
   status              OrderItemStatus @default(ACTIVE)
   createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -944,23 +1040,40 @@ model OrderItem {
 // Kitchen Order Tickets (KOT)
 // ----------------------------------------------------------------------------
 
+enum KotPrintStatus {
+  QUEUED
+  PRINTING
+  SENT
+  UNCONFIRMED
+}
+
 model Kot {
-  id               String         @id @default(uuid()) @db.Uuid
-  restaurantId     String         @map("restaurant_id") @db.Uuid
-  orderId          String         @map("order_id") @db.Uuid
-  createdByUserId  String         @map("created_by_user_id") @db.Uuid
-  kotNumber        String         @map("kot_number") @db.VarChar(50)
-  destination      KotDestination
-  status           KotStatus      @default(PENDING)
+  id                String             @id @default(uuid()) @db.Uuid
+  restaurantId      String             @map("restaurant_id") @db.Uuid
+  orderId           String             @map("order_id") @db.Uuid
+  createdByUserId   String             @map("created_by_user_id") @db.Uuid
+  kotNumber         String             @map("kot_number") @db.VarChar(50)
+  destination       KotDestination
+  status            KotStatus          @default(PENDING)
   /// QR tickets carry the round they came from and who approved it ("QR · approved by …").
-  source           KotSource      @default(STAFF)
-  qrRoundId        String?        @map("qr_round_id") @db.Uuid
-  approvedByUserId String?        @map("approved_by_user_id") @db.Uuid
+  source            KotSource          @default(STAFF)
+  qrRoundId         String?            @map("qr_round_id") @db.Uuid
+  approvedByUserId  String?            @map("approved_by_user_id") @db.Uuid
   /// Set when the chef's Ready reached the guest tracker ("Guest notified · h:mm pm").
-  guestNotifiedAt  DateTime?      @map("guest_notified_at") @db.Timestamptz(6)
-  completedAt      DateTime?      @map("completed_at") @db.Timestamptz(6)
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  guestNotifiedAt   DateTime?          @map("guest_notified_at") @db.Timestamptz(6)
+  correctionOf      String?            @map("correction_of") @db.VarChar(50)
+  printStatus       KotPrintStatus?    @map("print_status")
+  printAttemptAt    DateTime?          @map("print_attempt_at") @db.Timestamptz(6)
+  controlVersion    Int                @default(0) @map("control_version")
+  acceptedAt        DateTime?          @map("accepted_at") @db.Timestamptz(6)
+  heldAt            DateTime?          @map("held_at") @db.Timestamptz(6)
+  holdReason        String?            @map("hold_reason") @db.VarChar(255)
+  isPriority        Boolean            @default(false) @map("is_priority")
+  targetSeconds     Int?               @map("target_seconds")
+  preparationEvents PreparationEvent[]
+  completedAt       DateTime?          @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id])
   order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -979,19 +1092,32 @@ model Kot {
 }
 
 model KotItem {
-  id          String    @id @default(uuid()) @db.Uuid
-  kotId       String    @map("kot_id") @db.Uuid
-  orderItemId String    @map("order_item_id") @db.Uuid
-  quantity    Int
-  status      KotStatus @default(PENDING)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String    @id @default(uuid()) @db.Uuid
+  kotId                String    @map("kot_id") @db.Uuid
+  orderItemId          String    @map("order_item_id") @db.Uuid
+  quantity             Int
+  componentMenuItemId  String?   @map("component_menu_item_id") @db.Uuid
+  nameSnapshot         String?   @map("name_snapshot") @db.Text
+  instructionsSnapshot String?   @map("instructions_snapshot") @db.Text
+  voidedAt             DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedByUserId       String?   @map("voided_by_user_id") @db.Uuid
+  voidReason           String?   @map("void_reason") @db.VarChar(255)
+  stockUsageIssue      String?   @map("stock_usage_issue") @db.VarChar(500)
+  status               KotStatus @default(PENDING)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  kot       Kot       @relation(fields: [kotId], references: [id], onDelete: Cascade)
-  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+  kot               Kot       @relation(fields: [kotId], references: [id], onDelete: Cascade)
+  orderItem         OrderItem @relation(fields: [orderItemId], references: [id])
+  componentMenuItem MenuItem? @relation("KotComponent", fields: [componentMenuItemId], references: [id])
+
+  voidedBy          User?     @relation("KotItemVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+
+  stockMovements StockMovement[]
 
   @@index([kotId])
   @@index([orderItemId])
+  @@index([componentMenuItemId])
   @@map("kot_items")
 }
 
@@ -1049,6 +1175,7 @@ model Bill {
 }
 
 model Payment {
+  tipAmount        Decimal       @default(0) @map("tip_amount") @db.Decimal(12, 2)
   id               String        @id @default(uuid()) @db.Uuid
   billId           String        @map("bill_id") @db.Uuid
   recordedByUserId String        @map("recorded_by_user_id") @db.Uuid
@@ -1057,6 +1184,7 @@ model Payment {
   /// MVP permits one COMPLETED settlement per bill (enforced by a partial
   /// unique index added via raw migration — see [H6] header note). Retries may
   /// create additional PENDING/FAILED records.
+  tenders          Json?         @map("tenders")
   status           PaymentStatus @default(COMPLETED)
   referenceNumber  String?       @map("reference_number") @db.VarChar(255)
   paidAt           DateTime?     @map("paid_at") @db.Timestamptz(6)
@@ -1069,6 +1197,18 @@ model Payment {
   @@index([billId])
   @@index([recordedByUserId])
   @@map("payments")
+}
+
+/// Image loaded separately so ordinary restaurant queries never select the image bytes.
+model RestaurantLogo {
+  restaurantId String     @id @map("restaurant_id") @db.Uuid
+  mimeType     String?    @map("mime_type") @db.VarChar(20)
+  data         Bytes?
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  @@map("restaurant_logos")
 }
 
 // ----------------------------------------------------------------------------
@@ -1088,6 +1228,24 @@ model RestaurantUpiQr {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@map("restaurant_upi_qrs")
+}
+
+/// Anonymous feedback submitted through the table's QR menu.
+model QrFeedback {
+  id           String   @id @default(uuid()) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  tableId      String   @map("table_id") @db.Uuid
+  submissionId String  @map("submission_id") @db.Uuid
+  rating       Int
+  comment      String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id])
+  table      RestaurantTable @relation(fields: [tableId], references: [id])
+
+  @@unique([tableId, submissionId])
+  @@index([restaurantId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("qr_feedback")
 }
 
 /// One visit at a table, shared by every phone that scans its QR. At most one OPEN session per
@@ -1327,4 +1485,414 @@ model PushSubscription {
 
   @@index([restaurantId, userId])
   @@map("push_subscriptions")
+}
+
+/// Append-only observations; BASELINE never claims that an earlier stage occurred at this time.
+model PreparationEvent {
+  id               String    @id @default(uuid()) @db.Uuid
+  restaurantId     String    @map("restaurant_id") @db.Uuid
+  kotId            String    @map("kot_id") @db.Uuid
+  recordedByUserId String    @map("recorded_by_user_id") @db.Uuid
+  action           String    @db.VarChar(20)
+  status           KotStatus
+  version          Int
+  acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz(6)
+  heldAt           DateTime? @map("held_at") @db.Timestamptz(6)
+  holdReason       String?   @map("hold_reason") @db.VarChar(255)
+  isPriority       Boolean   @map("is_priority")
+  targetSeconds    Int?      @map("target_seconds")
+  reason           String?   @db.VarChar(255)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  kot        Kot        @relation(fields: [kotId], references: [id])
+  recordedBy User       @relation(fields: [recordedByUserId], references: [id])
+
+  @@unique([kotId, version])
+  @@index([restaurantId, kotId, createdAt])
+  @@index([recordedByUserId])
+  @@map("preparation_events")
+}
+
+enum OperatingTaskKind {
+  OPENING
+  CLOSING
+  CLEANING
+  TEMPERATURE
+  EXPIRY
+}
+
+enum OperatingTaskStatus {
+  PENDING
+  COMPLETED
+  EXCEPTION
+  CANCELLED
+}
+
+model OperatingTask {
+  id               String              @id @default(uuid()) @db.Uuid
+  restaurantId     String              @map("restaurant_id") @db.Uuid
+  createdByUserId  String              @map("created_by_user_id") @db.Uuid
+  assignedToUserId String              @map("assigned_to_user_id") @db.Uuid
+  title            String              @db.VarChar(255)
+  kind             OperatingTaskKind
+  instructions     String              @db.VarChar(2000)
+  dueAt            DateTime            @map("due_at") @db.Timestamptz(6)
+  status           OperatingTaskStatus @default(PENDING)
+  version          Int                 @default(0)
+  completedAt      DateTime?           @map("completed_at") @db.Timestamptz(6)
+  result           Json?
+  resolution       String?             @db.VarChar(2000)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant           @relation(fields: [restaurantId], references: [id])
+  createdBy  User                 @relation("TaskCreator", fields: [createdByUserId], references: [id])
+  assignedTo User                 @relation("TaskAssignee", fields: [assignedToUserId], references: [id])
+  events     OperatingTaskEvent[]
+
+  @@index([restaurantId, status, dueAt])
+  @@index([assignedToUserId, dueAt])
+  @@index([createdByUserId])
+  @@map("operating_tasks")
+}
+
+model OperatingTaskEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  restaurantId     String   @map("restaurant_id") @db.Uuid
+  taskId           String   @map("task_id") @db.Uuid
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+  action           String   @db.VarChar(20)
+  version          Int
+  snapshot         Json
+  wasOverdue       Boolean  @map("was_overdue")
+  reason           String?  @db.VarChar(2000)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant    @relation(fields: [restaurantId], references: [id])
+  task       OperatingTask @relation(fields: [taskId], references: [id])
+  recordedBy User          @relation(fields: [recordedByUserId], references: [id])
+
+  @@unique([taskId, version])
+  @@index([restaurantId, taskId, createdAt])
+  @@index([recordedByUserId])
+  @@map("operating_task_events")
+}
+
+// Retained for historical attendance and scheduling records.
+model AttendanceSession {
+  id                  String    @id @default(uuid()) @db.Uuid
+  restaurantId        String    @map("restaurant_id") @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  clockInAt           DateTime  @map("clock_in_at") @db.Timestamptz(6)
+  clockOutAt          DateTime? @map("clock_out_at") @db.Timestamptz(6)
+  version             Int       @default(0)
+  appliedCorrectionId String?   @unique @map("applied_correction_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant        Restaurant             @relation(fields: [restaurantId], references: [id])
+  user              User                   @relation(fields: [userId], references: [id])
+  breaks            AttendanceBreak[]
+  events            AttendanceEvent[]
+  corrections       AttendanceCorrection[] @relation("SessionCorrections")
+  appliedCorrection AttendanceCorrection?  @relation("AppliedCorrection", fields: [appliedCorrectionId], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, userId, clockInAt])
+  @@index([restaurantId, clockOutAt])
+  @@map("attendance_sessions")
+}
+
+model AttendanceBreak {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @map("session_id") @db.Uuid
+  startedAt DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, startedAt])
+  @@map("attendance_breaks")
+}
+
+model AttendanceCorrection {
+  id                 String    @id @default(uuid()) @db.Uuid
+  restaurantId       String    @map("restaurant_id") @db.Uuid
+  sessionId          String    @map("session_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  requestedByUserId  String    @map("requested_by_user_id") @db.Uuid
+  reviewedByUserId   String?   @map("reviewed_by_user_id") @db.Uuid
+  status             String    @default("PENDING") @db.VarChar(20)
+  reason             String    @db.VarChar(2000)
+  timeline           Json
+  originalTimeline   Json      @map("original_timeline")
+  baseSessionVersion Int       @map("base_session_version")
+  version            Int       @default(0)
+  reviewNote         String?   @map("review_note") @db.VarChar(2000)
+  reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant  Restaurant         @relation(fields: [restaurantId], references: [id])
+  session     AttendanceSession  @relation("SessionCorrections", fields: [sessionId], references: [id])
+  user        User               @relation("AttendanceSubject", fields: [userId], references: [id])
+  requestedBy User               @relation("AttendanceRequester", fields: [requestedByUserId], references: [id])
+  reviewedBy  User?              @relation("AttendanceReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  appliedTo   AttendanceSession? @relation("AppliedCorrection")
+  events      AttendanceEvent[]
+
+  @@index([restaurantId, status, createdAt])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([requestedByUserId])
+  @@index([reviewedByUserId])
+  @@map("attendance_corrections")
+}
+
+model AttendanceEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  restaurantId     String   @map("restaurant_id") @db.Uuid
+  sessionId        String   @map("session_id") @db.Uuid
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+  correctionId     String?  @map("correction_id") @db.Uuid
+  action           String   @db.VarChar(30)
+  deviceLabel      String?  @map("device_label") @db.VarChar(120)
+  locationLabel    String?  @map("location_label") @db.VarChar(255)
+  userAgent        String?  @map("user_agent") @db.VarChar(1000)
+  note             String   @db.VarChar(2000)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant            @relation(fields: [restaurantId], references: [id])
+  session    AttendanceSession     @relation(fields: [sessionId], references: [id])
+  recordedBy User                  @relation(fields: [recordedByUserId], references: [id])
+  correction AttendanceCorrection? @relation(fields: [correctionId], references: [id], onDelete: Restrict)
+
+  @@index([restaurantId, sessionId, createdAt])
+  @@index([recordedByUserId])
+  @@index([correctionId])
+  @@map("attendance_events")
+}
+
+enum StaffShiftStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum StaffAvailabilityKind {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum StaffLeaveKind {
+  ANNUAL
+  SICK
+  UNPAID
+  OTHER
+}
+
+enum StaffLeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model StaffShift {
+  id              String           @id @default(uuid()) @db.Uuid
+  restaurantId    String           @map("restaurant_id") @db.Uuid
+  userId          String           @map("user_id") @db.Uuid
+  createdByUserId String           @map("created_by_user_id") @db.Uuid
+  startsAt        DateTime         @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime         @map("ends_at") @db.Timestamptz(6)
+  note            String           @db.VarChar(1000)
+  status          StaffShiftStatus @default(SCHEDULED)
+  version         Int              @default(0)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  restaurant      Restaurant       @relation(fields: [restaurantId], references: [id])
+  user            User             @relation("ShiftSubject", fields: [userId], references: [id])
+  createdBy       User             @relation("ShiftCreator", fields: [createdByUserId], references: [id])
+  events          WorkforceEvent[]
+
+  @@index([restaurantId, userId, startsAt, endsAt])
+  @@index([createdByUserId])
+  @@map("staff_shifts")
+}
+
+model StaffAvailability {
+  id           String                @id @default(uuid()) @db.Uuid
+  restaurantId String                @map("restaurant_id") @db.Uuid
+  userId       String                @map("user_id") @db.Uuid
+  startsAt     DateTime              @map("starts_at") @db.Timestamptz(6)
+  endsAt       DateTime              @map("ends_at") @db.Timestamptz(6)
+  kind         StaffAvailabilityKind
+  note         String                @db.VarChar(1000)
+  isActive     Boolean               @default(true) @map("is_active")
+  version      Int                   @default(0)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  restaurant   Restaurant            @relation(fields: [restaurantId], references: [id])
+  user         User                  @relation(fields: [userId], references: [id])
+  events       WorkforceEvent[]
+
+  @@index([restaurantId, userId, startsAt, endsAt])
+  @@map("staff_availability")
+}
+
+model StaffLeave {
+  id                String           @id @default(uuid()) @db.Uuid
+  restaurantId      String           @map("restaurant_id") @db.Uuid
+  userId            String           @map("user_id") @db.Uuid
+  requestedByUserId String           @map("requested_by_user_id") @db.Uuid
+  reviewedByUserId  String?          @map("reviewed_by_user_id") @db.Uuid
+  startsAt          DateTime         @map("starts_at") @db.Timestamptz(6)
+  endsAt            DateTime         @map("ends_at") @db.Timestamptz(6)
+  kind              StaffLeaveKind
+  reason            String           @db.VarChar(2000)
+  status            StaffLeaveStatus @default(PENDING)
+  reviewNote        String?          @map("review_note") @db.VarChar(2000)
+  reviewedAt        DateTime?        @map("reviewed_at") @db.Timestamptz(6)
+  version           Int              @default(0)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  restaurant        Restaurant       @relation(fields: [restaurantId], references: [id])
+  user              User             @relation("LeaveSubject", fields: [userId], references: [id])
+  requestedBy       User             @relation("LeaveRequester", fields: [requestedByUserId], references: [id])
+  reviewedBy        User?            @relation("LeaveReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  events            WorkforceEvent[]
+
+  @@index([restaurantId, userId, status, startsAt, endsAt])
+  @@index([requestedByUserId])
+  @@index([reviewedByUserId])
+  @@map("staff_leave")
+}
+
+model WorkforceEvent {
+  id               String             @id @default(uuid()) @db.Uuid
+  restaurantId     String             @map("restaurant_id") @db.Uuid
+  userId           String             @map("user_id") @db.Uuid
+  recordedByUserId String             @map("recorded_by_user_id") @db.Uuid
+  shiftId          String?            @map("shift_id") @db.Uuid
+  availabilityId   String?            @map("availability_id") @db.Uuid
+  leaveId          String?            @map("leave_id") @db.Uuid
+  entityVersion    Int                @map("entity_version")
+  action           String             @db.VarChar(20)
+  snapshot         Json
+  reason           String?            @db.VarChar(2000)
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  restaurant       Restaurant         @relation(fields: [restaurantId], references: [id])
+  user             User               @relation("WorkforceSubject", fields: [userId], references: [id])
+  recordedBy       User               @relation("WorkforceRecorder", fields: [recordedByUserId], references: [id])
+  shift            StaffShift?        @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  availability     StaffAvailability? @relation(fields: [availabilityId], references: [id], onDelete: Restrict)
+  leave            StaffLeave?        @relation(fields: [leaveId], references: [id], onDelete: Restrict)
+
+  @@unique([shiftId, entityVersion])
+  @@unique([availabilityId, entityVersion])
+  @@unique([leaveId, entityVersion])
+  @@index([restaurantId, userId, createdAt])
+  @@index([recordedByUserId])
+  @@map("workforce_events")
+}
+
+// Retained for historical food incident records.
+enum FoodIncidentStatus {
+  OPEN
+  RESOLVED
+}
+
+enum FoodIncidentEntryKind {
+  CREATED
+  NOTE
+  DECISION
+  CORRECTIVE_ACTION
+  RESOLVED
+}
+
+model FoodIncident {
+  id               String              @id @default(uuid()) @db.Uuid
+  restaurantId     String              @map("restaurant_id") @db.Uuid
+  title            String              @db.VarChar(150)
+  description      String              @db.VarChar(4000)
+  status           FoodIncidentStatus  @default(OPEN)
+  version          Int                 @default(0)
+  createdByUserId  String              @map("created_by_user_id") @db.Uuid
+  resolvedByUserId String?             @map("resolved_by_user_id") @db.Uuid
+  resolution       String?             @db.VarChar(4000)
+  resolvedAt       DateTime?           @map("resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  restaurant       Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  createdBy        User                @relation("IncidentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  resolvedBy       User?               @relation("IncidentResolver", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  batches          FoodIncidentBatch[]
+  entries          FoodIncidentEntry[]
+
+  @@index([restaurantId, status, createdAt])
+  @@index([createdByUserId])
+  @@index([resolvedByUserId])
+  @@map("food_incidents")
+}
+
+model FoodIncidentBatch {
+  id           String       @id @default(uuid()) @db.Uuid
+  restaurantId String       @map("restaurant_id") @db.Uuid
+  incidentId   String       @map("incident_id") @db.Uuid
+  batchId      String       @map("batch_id") @db.Uuid
+  /// Immutable batch identity facts observed when the incident is recorded.
+  snapshot     Json
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  incident     FoodIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  batch        StockBatch   @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([incidentId, batchId])
+  @@index([restaurantId, batchId])
+  @@index([batchId])
+  @@map("food_incident_batches")
+}
+
+model FoodIncidentEntry {
+  id           String                @id @default(uuid()) @db.Uuid
+  restaurantId String                @map("restaurant_id") @db.Uuid
+  incidentId   String                @map("incident_id") @db.Uuid
+  actorId      String                @map("actor_id") @db.Uuid
+  kind         FoodIncidentEntryKind
+  note         String                @db.VarChar(4000)
+  version      Int
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  restaurant   Restaurant            @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  incident     FoodIncident          @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  actor        User                  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([incidentId, version])
+  @@index([restaurantId, incidentId, createdAt])
+  @@index([actorId])
+  @@map("food_incident_entries")
+}
+
+model ThermalPrinter {
+  restaurantId String     @map("restaurant_id") @db.Uuid
+  destination  String     @db.VarChar(10)
+  connection   String     @db.VarChar(10)
+  networkHost  String?    @map("network_host") @db.VarChar(15)
+  networkPort  Int?       @map("network_port")
+  usbDevice    String?    @map("usb_device") @db.VarChar(32)
+  ticketLayout String     @default("STANDARD") @map("ticket_layout") @db.VarChar(10)
+  autoPrint    Boolean    @default(false) @map("auto_print")
+  paper        String     @db.VarChar(2)
+  codePage     String     @map("code_page") @db.VarChar(8)
+  columns      Int?
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  @@id([restaurantId, destination])
+  @@map("thermal_printers")
+}
+
+model ThermalPrintConnector {
+  restaurantId String     @id @map("restaurant_id") @db.Uuid
+  tokenHash    String?    @unique @map("token_hash") @db.VarChar(64)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  @@map("thermal_print_connectors")
 }

@@ -4,6 +4,7 @@ import { qrJoinRequestSchema } from '@rms/api-contract';
 import { type FormEvent, type ReactElement, useEffect, useState } from 'react';
 
 import { guestErrorMessage, readProfile, useJoin } from './api';
+import GuestFeedback from './GuestFeedback';
 import { type Brand, BrandHeader } from './parts';
 
 /**
@@ -138,6 +139,9 @@ export default function JoinView({
           No app, no login. Everyone at the table can order from their own phone.
         </p>
       </form>
+      <div className="px-5 pb-6">
+        <GuestFeedback token={token} />
+      </div>
     </div>
   );
 }

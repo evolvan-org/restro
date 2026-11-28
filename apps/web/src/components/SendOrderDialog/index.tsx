@@ -92,7 +92,20 @@ export default function SendOrderDialog({
                     </span>
                   )}
                 </span>
-                <Badge variant="outline">{item.itemType === 'FOOD' ? 'KITCHEN' : 'BAR'}</Badge>
+                <span className="flex flex-wrap justify-end gap-1">
+                  {[
+                    ...new Set(
+                      (item.selections?.components.length
+                        ? item.selections.components.map((component) => component.itemType)
+                        : [item.itemType]
+                      ).map((type) => (type === 'FOOD' ? 'KITCHEN' : 'BAR')),
+                    ),
+                  ].map((destination) => (
+                    <Badge key={destination} variant="outline">
+                      {destination}
+                    </Badge>
+                  ))}
+                </span>
               </li>
             ))}
           </ul>

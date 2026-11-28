@@ -18,7 +18,6 @@ import {
 } from '@rms/api-contract';
 import { Permission } from '@rms/permissions';
 import { compare, hash } from 'bcrypt';
-import jwt from 'jsonwebtoken';
 
 import { AuthTokenService } from '../auth-tokens/auth-token.service';
 import { BCRYPT_ROUNDS } from '../common/auth/password';
@@ -28,7 +27,9 @@ import { RateLimitService } from '../common/rate-limit/rate-limit.service';
 import { EmailService } from '../email/email.service';
 import { deliverBestEffort } from '../email/email-delivery';
 import { ProvisioningService } from '../provisioning/provisioning.service';
+import { signAccessToken } from './access-token';
 import { AuthRepository, type AuthUserRecord } from './auth.repository';
+import { AuthenticatorService } from './authenticator.service';
 
 const FORGOT_PASSWORD_MESSAGE =
   'If an active account exists for that email, a password reset link has been sent.';
@@ -44,6 +45,7 @@ export class AuthService {
     private readonly tokens: AuthTokenService,
     private readonly email: EmailService,
     private readonly rateLimit: RateLimitService,
+    private readonly authenticator: AuthenticatorService,
   ) {}
 
   async register(input: RegisterRequest): Promise<RegisterResponse> {
@@ -71,7 +73,7 @@ export class AuthService {
       message: emailSent
         ? 'User registered successfully. Check your inbox to verify your email.'
         : "User registered successfully, but we couldn't send the verification email. Use Resend to try again.",
-      accessToken: this.signAccessToken({ userId, restaurantId, roleId, authVersion: 0 }),
+      accessToken: this.signAccessToken({ id: userId, restaurantId, roleId, authVersion: 0 }),
       onboarding: 'PENDING',
       emailSent,
     };
@@ -82,6 +84,7 @@ export class AuthService {
     if (!user?.passwordHash || user.status !== 'ACTIVE') throw invalidCredentials();
     if (!(await compare(input.password, user.passwordHash))) throw invalidCredentials();
 
+    await this.authenticator.verifyLogin(user, input.verificationCode);
     const setupPending = user.restaurant.onboardingCompletedAt === null;
     // Checked after the password so the restaurant name is only revealed to its own staff.
     if (setupPending && !roleCan(user.role, Permission.ONBOARDING_MANAGE)) {
@@ -186,21 +189,19 @@ export class AuthService {
   }
 
   private signAccessToken(payload: {
-    id?: string;
-    userId?: string;
+    id: string;
     restaurantId: string;
     roleId: string;
     authVersion: number;
   }): string {
-    return jwt.sign(
+    return signAccessToken(
       {
-        userId: payload.userId ?? payload.id,
+        userId: payload.id,
         restaurantId: payload.restaurantId,
         roleId: payload.roleId,
         authVersion: payload.authVersion,
       },
       this.config.getOrThrow<string>('JWT_SECRET'),
-      { expiresIn: '1d', algorithm: 'HS256' },
     );
   }
 }

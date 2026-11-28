@@ -94,3 +94,19 @@ export const restaurantSettingsResponseSchema = z
 
 export type UpdateRestaurantSettingsRequest = z.infer<typeof updateRestaurantSettingsRequestSchema>;
 export type RestaurantSettingsResponse = z.infer<typeof restaurantSettingsResponseSchema>;
+
+export const restaurantLogoMimeSchema = z.enum(['image/png', 'image/jpeg', 'image/webp']);
+export const restaurantLogoSchema = z
+  .object({
+    mimeType: restaurantLogoMimeSchema,
+    data: z
+      .string()
+      .max(700_000)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  })
+  .strict();
+export const restaurantLogoResponseSchema = z
+  .object({ logo: restaurantLogoSchema.nullable() })
+  .strict();
+export type RestaurantLogo = z.infer<typeof restaurantLogoSchema>;
+export type RestaurantLogoResponse = z.infer<typeof restaurantLogoResponseSchema>;

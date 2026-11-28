@@ -1,4 +1,5 @@
 import type { Bill, Payment } from '@rms/api-contract';
+import { paymentTendersSchema } from '@rms/api-contract';
 
 import type { BillRecord, PaymentRecord } from './bills.repository';
 
@@ -24,7 +25,7 @@ export function toBill(record: BillRecord): Bill {
     maxDiscountPercent: record.restaurant.maxDiscountPercent.toFixed(2),
     lines: record.order.items.map((line) => ({
       id: line.id,
-      name: line.menuItem.name,
+      name: line.nameSnapshot ?? line.menuItem.name,
       quantity: line.quantity,
       unitPrice: line.unitPrice.toFixed(2),
       amount: line.unitPrice.mul(line.quantity).toFixed(2),
@@ -38,7 +39,9 @@ export function toPayment(record: PaymentRecord): Payment {
     billId: record.billId,
     recordedByUserId: record.recordedByUserId,
     paymentMethod: record.paymentMethod,
+    ...(record.tenders && { tenders: paymentTendersSchema.parse(record.tenders) }),
     amount: record.amount.toFixed(2),
+    tipAmount: record.tipAmount?.toFixed(2) ?? '0.00',
     status: record.status,
     referenceNumber: record.referenceNumber,
     paidAt: record.paidAt?.toISOString() ?? null,

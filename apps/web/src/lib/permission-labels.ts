@@ -11,6 +11,14 @@ type PermissionGroup = { label: string; items: readonly PermissionItem[] };
  */
 export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
   {
+    label: 'Operating checks',
+    items: [
+      { permission: Permission.TASK_READ, label: 'View assigned operating checks' },
+      { permission: Permission.TASK_COMPLETE, label: 'Record check completion or exceptions' },
+      { permission: Permission.TASK_MANAGE, label: 'Assign, edit and review all operating checks' },
+    ],
+  },
+  {
     label: 'Dashboard & reports',
     items: [
       { permission: Permission.DASHBOARD_READ, label: 'View dashboard' },
@@ -44,6 +52,7 @@ export const PERMISSION_GROUPS: readonly PermissionGroup[] = [
       { permission: Permission.ORDER_READ, label: 'View orders' },
       { permission: Permission.ORDER_WRITE, label: 'Place orders' },
       { permission: Permission.ORDER_UPDATE, label: 'Change orders' },
+      { permission: Permission.ORDER_VOID_ITEM, label: 'Void pending kitchen items' },
     ],
   },
   {

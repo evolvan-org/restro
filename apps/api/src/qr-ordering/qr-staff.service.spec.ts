@@ -6,6 +6,7 @@ import type { BillsService } from '../bills/bills.service';
 import type { Actor } from '../common/auth/authenticated-request';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
+import type { ThermalPrintingService } from '../thermal-printing/thermal-printing.service';
 import type { QrGuestRepository } from './qr-guest.repository';
 import type { QrNotifier } from './qr-notifier.service';
 import type { QrStaffRepository } from './qr-staff.repository';
@@ -65,6 +66,7 @@ function setup(round: { status: string; ownerCaptainUserId: string | null }) {
     {} as QrRealtimePublisher,
     {} as BillsService,
     notifications as unknown as NotificationsService,
+    { scheduleAutomatic: jest.fn() } as unknown as ThermalPrintingService,
   );
   return { service, repository, notifications, approveRound };
 }
@@ -233,6 +235,7 @@ describe('QrStaffService payments', () => {
       {} as QrRealtimePublisher,
       bills as unknown as BillsService,
       {} as NotificationsService,
+      { scheduleAutomatic: jest.fn() } as unknown as ThermalPrintingService,
     );
     return { service, repository, guests, bills };
   }

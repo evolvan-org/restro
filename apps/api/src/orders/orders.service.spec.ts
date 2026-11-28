@@ -6,6 +6,7 @@ import { Permission } from '@rms/permissions';
 import type { Actor } from '../common/auth/authenticated-request';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { QrRealtimePublisher } from '../notifications/qr-realtime.publisher';
+import type { ThermalPrintingService } from '../thermal-printing/thermal-printing.service';
 import type { CaptainOrderRecord, OrderListRecord, OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 
@@ -37,6 +38,7 @@ function setup(result: unknown) {
     repository,
     {} as NotificationsService,
     { publish: jest.fn() } as unknown as QrRealtimePublisher,
+    { scheduleAutomatic: jest.fn() } as unknown as ThermalPrintingService,
   );
   return { service, findCaptainOrders };
 }
@@ -116,6 +118,7 @@ describe('OrdersService.list', () => {
       { findOrderList } as unknown as OrdersRepository,
       {} as NotificationsService,
       { publish: jest.fn() } as unknown as QrRealtimePublisher,
+      { scheduleAutomatic: jest.fn() } as unknown as ThermalPrintingService,
     );
     return { service, findOrderList };
   }
@@ -229,6 +232,7 @@ describe('OrdersService.updateKotStatus · QR tickets (REST-88)', () => {
       repository,
       { ticketReady: jest.fn() } as unknown as NotificationsService,
       { publish } as unknown as QrRealtimePublisher,
+      { scheduleAutomatic: jest.fn() } as unknown as ThermalPrintingService,
     );
     return { service, publish };
   }
@@ -262,5 +266,63 @@ describe('OrdersService.updateKotStatus · QR tickets (REST-88)', () => {
     });
     await service.updateKotStatus(actor, 'k1', { status: 'READY', expectedStatus: 'PREPARING' });
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrdersService.updateKotStatus · voided station tickets', () => {
+  const actor = { userId: 'chef', restaurantId: 'r1' } as Actor;
+  const item = {
+    voidedAt: new Date(),
+    voidReason: 'Wrong item',
+    orderItem: { menuItemId: 'menu-item', specialInstructions: null, menuItem: { name: 'Naan' } },
+  };
+
+  function setup(items: (typeof item | { voidedAt: null })[]) {
+    const kot = {
+      items,
+      id: 'k1',
+      status: 'PENDING',
+      source: 'STAFF',
+      createdAt: new Date(),
+      order: { table: { id: 'table', tableNumber: '1', section: { id: 'section', name: 'Main' } } },
+    };
+    const setStatus = jest.fn().mockResolvedValue({ ...kot, status: 'COMPLETED' });
+    const repository = {
+      withLockedKot: (_restaurant: string, _id: string, action: (context: unknown) => unknown) =>
+        action({ kot, setStatus }),
+    } as unknown as OrdersRepository;
+    const service = new OrdersService(
+      repository,
+      { ticketReady: jest.fn() } as unknown as NotificationsService,
+      { publish: jest.fn() } as unknown as QrRealtimePublisher,
+      { scheduleAutomatic: jest.fn() } as unknown as ThermalPrintingService,
+    );
+    return { service, setStatus };
+  }
+
+  it('rejects starting preparation for a fully voided ticket', async () => {
+    const { service, setStatus } = setup([item]);
+    await expect(
+      service.updateKotStatus(actor, 'k1', { expectedStatus: 'PENDING', status: 'PREPARING' }),
+    ).rejects.toThrow('This ticket was voided');
+    expect(setStatus).not.toHaveBeenCalled();
+  });
+
+  it('allows acknowledging a fully voided ticket from pending', async () => {
+    const { service, setStatus } = setup([item]);
+    const ticket = await service.updateKotStatus(actor, 'k1', {
+      expectedStatus: 'PENDING',
+      status: 'COMPLETED',
+    });
+    expect(setStatus).toHaveBeenCalledWith('COMPLETED');
+    expect(ticket.items[0]?.void?.reason).toBe('Wrong item');
+  });
+
+  it('rejects bypassing preparation when the ticket still has active items', async () => {
+    const { service, setStatus } = setup([item, { voidedAt: null }]);
+    await expect(
+      service.updateKotStatus(actor, 'k1', { expectedStatus: 'PENDING', status: 'COMPLETED' }),
+    ).rejects.toThrow('A KOT cannot move from PENDING to COMPLETED');
+    expect(setStatus).not.toHaveBeenCalled();
   });
 });
